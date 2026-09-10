@@ -1,6 +1,6 @@
 import { integer, pgEnum, pgTable, varchar } from "drizzle-orm/pg-core";
 
-export const roleEnum = pgEnum('Role', ['Admin', 'Manager', 'Employee']);
+export const roleEnum = pgEnum('Role', ['Admin', 'Manager', 'Cashier', "Stock"]);
 
 export const users = pgTable("users", {
     id: integer().primaryKey().generatedAlwaysAsIdentity(),
