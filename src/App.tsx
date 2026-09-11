@@ -492,9 +492,8 @@ function StaffAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
                 setTab(t);
                 setError("");
               }}
-              className={`flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
-                tab === t ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-              }`}
+              className={`flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${tab === t ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                }`}
             >
               {t === "login" ? "เข้าสู่ระบบพนักงาน" : "สมัครสมาชิก"}
             </button>
@@ -667,9 +666,8 @@ function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
                 setTab(t);
                 setError("");
               }}
-              className={`flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
-                tab === t ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-              }`}
+              className={`flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${tab === t ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                }`}
             >
               {t === "login" ? "เข้าสู่ระบบฝ่ายบริหาร" : "ลงทะเบียนฝ่ายบริหาร"}
             </button>
@@ -838,31 +836,31 @@ function ShiftSelectPage({
     tagline: string;
     isCurrent: boolean;
   }[] = [
-    {
-      id: "morning",
-      title: "เช้า",
-      subTitle: "กะเช้า",
-      time: "08:00 – 16:00",
-      tagline: "เปิดร้าน รับสินค้า ตรวจนับสต็อก และบริการลูกค้าช่วงเช้า",
-      isCurrent: hour >= 6 && hour < 14,
-    },
-    {
-      id: "afternoon",
-      title: "บ่าย",
-      subTitle: "กะบ่าย",
-      time: "16:00 – 00:00",
-      tagline: "ดูแลลูกค้าหน้าร้าน เติมสต็อก สรุปยอดเงิน และปิดร้าน",
-      isCurrent: hour >= 14 && hour < 22,
-    },
-    {
-      id: "both",
-      title: "ควบ",
-      subTitle: "ควบสองกะ",
-      time: "08:00 – 00:00",
-      tagline: "ควงกะปฏิบัติงานต่อเนื่องตลอดวัน ทั้งรอบเช้าและรอบบ่าย",
-      isCurrent: false,
-    },
-  ];
+      {
+        id: "morning",
+        title: "เช้า",
+        subTitle: "กะเช้า",
+        time: "08:00 – 16:00",
+        tagline: "เปิดร้าน รับสินค้า ตรวจนับสต็อก และบริการลูกค้าช่วงเช้า",
+        isCurrent: hour >= 6 && hour < 14,
+      },
+      {
+        id: "afternoon",
+        title: "บ่าย",
+        subTitle: "กะบ่าย",
+        time: "16:00 – 00:00",
+        tagline: "ดูแลลูกค้าหน้าร้าน เติมสต็อก สรุปยอดเงิน และปิดร้าน",
+        isCurrent: hour >= 14 && hour < 22,
+      },
+      {
+        id: "both",
+        title: "ควบ",
+        subTitle: "ควบสองกะ",
+        time: "08:00 – 00:00",
+        tagline: "ควงกะปฏิบัติงานต่อเนื่องตลอดวัน ทั้งรอบเช้าและรอบบ่าย",
+        isCurrent: false,
+      },
+    ];
 
   return (
     <div className="min-h-screen bg-slate-50/60 flex flex-col justify-between px-4 py-6 sm:py-10">
@@ -1272,8 +1270,8 @@ function ChecklistPage({
                   className="text-xs px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 transition-colors font-semibold flex items-center gap-1.5 min-h-[36px] cursor-pointer"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                    <polyline points="9 22 9 12 15 12 15 22"/>
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
                   </svg>
                   แดชบอร์ด
                 </button>
@@ -1311,27 +1309,24 @@ function ChecklistPage({
             <button
               type="button"
               onClick={() => setFilter("all")}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                filter === "all" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${filter === "all" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                }`}
             >
               ทั้งหมด ({total})
             </button>
             <button
               type="button"
               onClick={() => setFilter("pending")}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                filter === "pending" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${filter === "pending" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                }`}
             >
               ที่ต้องทำ ({total - done})
             </button>
             <button
               type="button"
               onClick={() => setFilter("done")}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                filter === "done" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${filter === "done" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                }`}
             >
               เสร็จแล้ว ({done})
             </button>
@@ -1365,18 +1360,16 @@ function ChecklistPage({
                   role="checkbox"
                   aria-checked={isDone}
                   onClick={() => toggleItem(item.id)}
-                  className={`w-full flex items-start gap-3.5 p-4 rounded-2xl border text-left transition-all duration-150 focus-visible:outline-2 focus-visible:outline-slate-900 shadow-2xs cursor-pointer ${
-                    isDone
-                      ? "bg-slate-50/80 border-slate-200"
-                      : "bg-white border-slate-300 hover:border-slate-500 hover:shadow-xs"
-                  }`}
+                  className={`w-full flex items-start gap-3.5 p-4 rounded-2xl border text-left transition-all duration-150 focus-visible:outline-2 focus-visible:outline-slate-900 shadow-2xs cursor-pointer ${isDone
+                    ? "bg-slate-50/80 border-slate-200"
+                    : "bg-white border-slate-300 hover:border-slate-500 hover:shadow-xs"
+                    }`}
                 >
                   <div
-                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                      isDone
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-500 bg-white hover:border-slate-800"
-                    }`}
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${isDone
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-500 bg-white hover:border-slate-800"
+                      }`}
                   >
                     {isDone && (
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -1673,21 +1666,20 @@ function ManagerDashboard({
           <div>
             <div className="flex items-center gap-2">
               <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  user.position?.includes("กรรมการ")
-                    ? "bg-amber-500"
-                    : user.position?.includes("ผู้ช่วย")
+                className={`w-2.5 h-2.5 rounded-full ${user.position?.includes("กรรมการ")
+                  ? "bg-amber-500"
+                  : user.position?.includes("ผู้ช่วย")
                     ? "bg-blue-500"
                     : "bg-emerald-500"
-                }`}
+                  }`}
                 aria-hidden="true"
               />
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 {user.position?.includes("กรรมการ")
                   ? "คณะกรรมการบริหาร (Executive Board)"
                   : user.position?.includes("ผู้ช่วย")
-                  ? "ฝ่ายบริหารสาขา (Assistant Store Manager)"
-                  : "ผู้จัดการสาขา (Store Manager)"}
+                    ? "ฝ่ายบริหารสาขา (Assistant Store Manager)"
+                    : "ผู้จัดการสาขา (Store Manager)"}
               </p>
             </div>
             <div className="flex items-center gap-2.5 mt-1 flex-wrap">
@@ -1698,8 +1690,8 @@ function ManagerDashboard({
                     user.position.includes("กรรมการ")
                       ? "amber"
                       : user.position.includes("ผู้ช่วย")
-                      ? "blue"
-                      : "green"
+                        ? "blue"
+                        : "green"
                   }
                 >
                   {user.position}
@@ -1763,9 +1755,8 @@ function ManagerDashboard({
               aria-selected={activeTab === t}
               aria-controls={`${t}-panel`}
               onClick={() => setActiveTab(t)}
-              className={`flex-1 py-2 px-2 text-xs sm:text-sm font-medium rounded-md transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === t ? "bg-white text-slate-900 shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
-              }`}
+              className={`flex-1 py-2 px-2 text-xs sm:text-sm font-medium rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === t ? "bg-white text-slate-900 shadow-sm font-bold" : "text-slate-600 hover:text-slate-900"
+                }`}
             >
               {t === "my-checklist" && (
                 <>
@@ -1963,9 +1954,8 @@ function ManagerDashboard({
                       <div
                         className="h-full bg-emerald-600 transition-all duration-300 rounded-full"
                         style={{
-                          width: `${
-                            (activeSession.items.filter((i) => i.completedAt).length / activeSession.items.length) * 100
-                          }%`,
+                          width: `${(activeSession.items.filter((i) => i.completedAt).length / activeSession.items.length) * 100
+                            }%`,
                         }}
                       />
                     </div>
@@ -2018,16 +2008,14 @@ function ManagerDashboard({
                           <button
                             type="button"
                             onClick={() => toggleDashboardItem(item.id)}
-                            className={`w-full text-left p-3.5 rounded-xl border flex items-start gap-3 transition-all ${
-                              isDone
-                                ? "bg-emerald-50/70 border-emerald-300 text-slate-600"
-                                : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-900"
-                            }`}
+                            className={`w-full text-left p-3.5 rounded-xl border flex items-start gap-3 transition-all ${isDone
+                              ? "bg-emerald-50/70 border-emerald-300 text-slate-600"
+                              : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-900"
+                              }`}
                           >
                             <div
-                              className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 ${
-                                isDone ? "border-emerald-600 bg-emerald-600" : "border-slate-400 bg-white"
-                              }`}
+                              className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 ${isDone ? "border-emerald-600 bg-emerald-600" : "border-slate-400 bg-white"
+                                }`}
                             >
                               {isDone && (
                                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="2">
@@ -2121,7 +2109,7 @@ function ManagerDashboard({
                   className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5 min-h-[36px]"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                   เพิ่มพนักงานใหม่
                 </button>
@@ -2141,9 +2129,8 @@ function ManagerDashboard({
                     return (
                       <div
                         key={emp.id}
-                        className={`p-4 rounded-xl border transition-all ${
-                          !emp.position ? "bg-amber-50/40 border-amber-300" : "bg-white border-slate-200 hover:border-slate-300"
-                        }`}
+                        className={`p-4 rounded-xl border transition-all ${!emp.position ? "bg-amber-50/40 border-amber-300" : "bg-white border-slate-200 hover:border-slate-300"
+                          }`}
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           {/* Employee Info */}
@@ -2210,7 +2197,7 @@ function ManagerDashboard({
                                 className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-300 hover:bg-red-50 transition-colors min-h-[32px] inline-flex items-center gap-1 font-medium"
                               >
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                                 ลบ
                               </button>
@@ -2239,8 +2226,8 @@ function ManagerDashboard({
                 <div className="text-center py-16 text-slate-500">
                   <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-slate-400" aria-hidden="true">
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2"/>
-                      <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" />
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" />
                     </svg>
                   </div>
                   <p className="text-sm">ไม่มีการแจ้งเตือน</p>
@@ -2309,7 +2296,7 @@ function ManagerDashboard({
                         <p className="text-[10px] font-mono text-slate-500">{fmtDate(sess.completedAt!)} {fmtTime(sess.startedAt)} → {fmtTime(sess.completedAt!)}</p>
                       </div>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-slate-400" aria-hidden="true">
-                        <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </div>
                   </button>
@@ -2346,7 +2333,7 @@ function ManagerDashboard({
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5 min-h-[38px]"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                       </svg>
                       เพิ่มตำแหน่ง
                     </button>
@@ -2383,8 +2370,8 @@ function ManagerDashboard({
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 flex-shrink-0">
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                                <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
                               </svg>
                             </div>
                             <div>
@@ -2549,7 +2536,7 @@ function ManagerDashboard({
                   </div>
                 </div>
                 <button type="button" onClick={() => setSelectedSession(null)} aria-label="ปิดรายละเอียดกะ" className="p-2 -mr-2 text-slate-500 hover:text-slate-800 rounded-lg min-w-[36px] min-h-[36px] flex items-center justify-center focus-visible:outline-2 focus-visible:outline-emerald-700">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
                 </button>
               </div>
               <Divider />
@@ -2564,7 +2551,7 @@ function ManagerDashboard({
                       )}
                       <div className={`flex items-start gap-3 p-3 rounded-lg border ${item.completedAt ? "bg-emerald-50/60 border-emerald-200" : "bg-slate-50/70 border-slate-200"}`}>
                         <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${item.completedAt ? "border-emerald-600 bg-emerald-600" : "border-slate-400 bg-white"}`}>
-                          {item.completedAt && <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          {item.completedAt && <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                         </div>
                         <div className="flex-1">
                           <div className="flex gap-2">
