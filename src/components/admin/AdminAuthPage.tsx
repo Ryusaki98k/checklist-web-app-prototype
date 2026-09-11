@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Role, User } from "../../types";
+import { User } from "../../types";
 import { MANAGEMENT_POSITIONS } from "../../data/checklists";
-import { getUsers, saveUsers, seedSampleData, uid } from "../../data/storage";
+import { getUsers, saveUsers } from "../../data/storage";
 import { BrandLogo } from "../common/BrandLogo";
+import { loginAction, registerAction } from "../../actions/auth";
 
 export function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -13,69 +14,84 @@ export function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
     position: MANAGEMENT_POSITIONS[1], // default "ผู้จัดการร้าน"
   });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function directLogin(email: string, pass: string, position: string) {
-    const users = getUsers();
-    let user = users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === pass
-    );
-    if (!user) {
-      seedSampleData(true);
-      const reUsers = getUsers();
-      user = reUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    }
-    if (user) {
-      const activeUser: User = { ...user, role: "manager", position };
+  async function directLogin(email: string, pass: string, position: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await loginAction(email, pass);
+      if (!res.success || !res.user) {
+        setError(res.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        setLoading(false);
+        return;
+      }
+      const activeUser: User = { ...res.user, role: "manager", position: position || res.user.position };
+      const localUsers = getUsers();
+      if (!localUsers.some((u) => u.id === activeUser.id)) {
+        saveUsers([...localUsers, activeUser]);
+      }
       onLogin(activeUser);
+    } catch {
+      setError("เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล");
+      setLoading(false);
     }
   }
 
-  function handleLogin() {
+  async function handleLogin() {
     if (!form.email.trim() || !form.password.trim()) {
       setError("กรุณากรอกอีเมลและรหัสผ่าน");
       return;
     }
-    const users = getUsers();
-    const user = users.find(
-      (u) => u.email.toLowerCase() === form.email.trim().toLowerCase() && u.password === form.password
-    );
-    if (!user) {
-      setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
-      return;
-    }
-
-    const activePosition = user.position || "ผู้จัดการร้าน";
-    const updatedUsers = users.map((u) =>
-      u.id === user.id ? { ...u, role: "manager" as Role, position: activePosition } : u
-    );
-    saveUsers(updatedUsers);
-    const activeUser: User = { ...user, role: "manager", position: activePosition };
-
+    setLoading(true);
     setError("");
-    onLogin(activeUser);
+    try {
+      const res = await loginAction(form.email, form.password);
+      if (!res.success || !res.user) {
+        setError(res.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        setLoading(false);
+        return;
+      }
+      const activeUser: User = { ...res.user, role: "manager", position: res.user.position || form.position };
+      const localUsers = getUsers();
+      if (!localUsers.some((u) => u.id === activeUser.id)) {
+        saveUsers([...localUsers, activeUser]);
+      }
+      onLogin(activeUser);
+    } catch {
+      setError("เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล");
+      setLoading(false);
+    }
   }
 
-  function handleRegister() {
+  async function handleRegister() {
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
       setError("กรุณากรอกข้อมูลให้ครบถ้วน");
       return;
     }
-    const users = getUsers();
-    if (users.find((u) => u.email.toLowerCase() === form.email.trim().toLowerCase())) {
-      setError("อีเมลนี้มีผู้ใช้งานแล้วในระบบ");
-      return;
-    }
-    const newUser: User = {
-      id: uid(),
-      name: form.name.trim(),
-      email: form.email.trim(),
-      password: form.password.trim(),
-      role: "manager",
-      position: form.position,
-    };
-    saveUsers([...users, newUser]);
+    setLoading(true);
     setError("");
-    onLogin(newUser);
+    try {
+      const res = await registerAction({
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: "manager",
+        position: form.position,
+      });
+      if (!res.success || !res.user) {
+        setError(res.error || "ไม่สามารถลงทะเบียนได้");
+        setLoading(false);
+        return;
+      }
+      const activeUser: User = { ...res.user, role: "manager", position: form.position };
+      const localUsers = getUsers();
+      saveUsers([...localUsers, activeUser]);
+      onLogin(activeUser);
+    } catch {
+      setError("เกิดข้อผิดพลาดในการลงทะเบียน");
+      setLoading(false);
+    }
   }
 
   const inputStyle =
@@ -221,13 +237,18 @@ export function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
 
           <button
             type="button"
+            disabled={loading}
             onClick={tab === "login" ? handleLogin : handleRegister}
-            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-sm font-semibold rounded-xl shadow-sm transition-all cursor-pointer mt-1 flex items-center justify-center gap-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+            className={`w-full py-2.5 bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-sm font-semibold rounded-xl shadow-sm transition-all cursor-pointer mt-1 flex items-center justify-center gap-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${
+              loading ? "opacity-70 cursor-not-allowed" : ""
+            }`}
           >
-            <span>{tab === "login" ? "เข้าสู่ระบบผู้จัดการ" : "ยืนยันการลงทะเบียน"}</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
+            <span>{loading ? "กำลังตรวจสอบข้อมูล..." : (tab === "login" ? "เข้าสู่ระบบผู้จัดการ" : "ยืนยันการลงทะเบียน")}</span>
+            {!loading && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            )}
           </button>
         </div>
 

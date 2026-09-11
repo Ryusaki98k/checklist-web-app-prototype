@@ -8,7 +8,7 @@ import {
     taskRoleEnum,
     taskWork,
     users,
-} from "./db/schema";
+} from "../db/schema";
 
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
