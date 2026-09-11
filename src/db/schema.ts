@@ -26,21 +26,10 @@ export const tasks = pgTable("tasks", {
     disabled: boolean("disabled").notNull().default(false),
 })
 
-export const shiftSession = pgTable("shift_session", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    user: uuid("user_id").notNull().references(() => users.id),
-    task_role: taskRoleEnum("task_role").notNull(),
-    shift: shiftEnum("shift").notNull(),
-
-    start: timestamp("start_timestamp").notNull(),
-    end: timestamp("end_timestamp"),
-})
-
 export const taskWork = pgTable("task_work", {
     id: uuid("id").primaryKey().defaultRandom(),
     task: uuid("task_id").notNull().references(() => tasks.id),
     user: uuid("user_id").notNull().references(() => users.id),
-    shift_session: uuid("shift_session_id").notNull().references(() => shiftSession.id),
 
     timestamp: timestamp("timestamp"),
     manager_assistance_approve_timestamp: timestamp("manager_assistance_approve_timestamp"),
@@ -52,5 +41,5 @@ export const branches = pgTable("branches", {
     name: text("name").notNull(),
     members: uuid("member_ids").array().notNull().default([]),
     tasks: uuid("task_ids").array().notNull().default([]),
-    last_update: timestamp().notNull(),
+    last_update: timestamp().default(new Date()),
 });
