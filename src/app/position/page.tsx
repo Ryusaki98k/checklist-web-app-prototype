@@ -4,10 +4,11 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { PositionSelectPage } from "../../components/staff/PositionSelectPage";
 import { useApp } from "../../context/AppContext";
+import { LoadingSpinner } from "../loading";
 
 export default function PositionRoutePage() {
   const router = useRouter();
-  const { currentUser, selectedShift, isReady, selectPosition, logout } = useApp();
+  const { currentUser, isReady, selectPosition, logout } = useApp();
 
   useEffect(() => {
     if (!isReady) return;
@@ -22,11 +23,7 @@ export default function PositionRoutePage() {
   }, [currentUser, isReady, router]);
 
   if (!isReady || !currentUser) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)]">
-        <div className="h-8 w-8 animate-spin rounded-full border-3 border-amber-500 border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner text="กำลังเตรียมข้อมูลตำแหน่ง..." />;
   }
 
   return (

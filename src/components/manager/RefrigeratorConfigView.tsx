@@ -42,16 +42,46 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
     }
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadData();
-        const handleExternalRefresh = () => {
+        if (subTab === "config") {
             loadData();
+        }
+        const handleExternalRefresh = () => {
+            if (subTab === "config") {
+                loadData();
+            }
             setLiveRefreshKey((k) => k + 1);
         };
         window.addEventListener("refresh-dashboard-data", handleExternalRefresh);
         return () => window.removeEventListener("refresh-dashboard-data", handleExternalRefresh);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [subTab]);
+
+    async function handleToggleDisable(ref: RefrigeratorConfig) {
+        const newDisable = !ref.disable_check;
+        setRefrigerators((prev) =>
+            prev.map((r) => (r.id === ref.id ? { ...r, disable_check: newDisable } : r))
+        );
+        try {
+            const res = await updateRefrigeratorAction({
+                id: ref.id,
+                name: ref.name,
+                minTemperature: ref.min_temperature ?? 0,
+                maxTemperature: ref.max_temperature ?? 4,
+                disableCheck: newDisable,
+            });
+            if (res.success) {
+                setLiveRefreshKey((k) => k + 1);
+            } else {
+                setRefrigerators((prev) =>
+                    prev.map((r) => (r.id === ref.id ? { ...r, disable_check: ref.disable_check } : r))
+                );
+            }
+        } catch {
+            setRefrigerators((prev) =>
+                prev.map((r) => (r.id === ref.id ? { ...r, disable_check: ref.disable_check } : r))
+            );
+        }
+    }
 
     function handleOpenAdd() {
         setIsAdding(true);
@@ -307,16 +337,32 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             </h4>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => handleOpenEdit(ref)}
-                                        className="p-1.5 text-[var(--color-text-muted)] hover:text-amber-950 hover:bg-amber-100/70 dark:hover:bg-amber-950/50 dark:hover:text-amber-200 rounded-lg transition-colors cursor-pointer"
-                                        title="แก้ไขข้อมูล"
-                                    >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                        </svg>
-                                    </button>
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleDisable(ref)}
+                                            title={ref.disable_check ? "คลิกเพื่อเปิดใช้งานตู้แช่นี้" : "คลิกเพื่อปิดใช้งานตู้แช่นี้ (งดตรวจ)"}
+                                            className={`px-2 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1 min-h-[32px] ${
+                                                ref.disable_check
+                                                    ? "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-800 hover:bg-rose-200"
+                                                    : "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-200"
+                                            }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full ${ref.disable_check ? "bg-rose-500" : "bg-emerald-500"}`} />
+                                            <span>{ref.disable_check ? "ปิดอยู่" : "เปิดอยู่"}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenEdit(ref)}
+                                            className="p-1.5 min-h-[32px] min-w-[32px] flex items-center justify-center text-[var(--color-text-muted)] hover:text-amber-950 hover:bg-amber-100/70 dark:hover:bg-amber-950/50 dark:hover:text-amber-200 rounded-lg transition-colors cursor-pointer"
+                                            title="แก้ไขข้อมูล"
+                                        >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="flex items-center justify-between text-xs font-semibold">

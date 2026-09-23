@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShiftSelectPage } from "../../components/staff/ShiftSelectPage";
 import { useApp } from "../../context/AppContext";
+import { LoadingSpinner } from "../loading";
 
 export default function ShiftRoutePage() {
   const router = useRouter();
@@ -21,11 +22,7 @@ export default function ShiftRoutePage() {
   }, [currentUser, isReady, router]);
 
   if (!isReady || !currentUser || (currentUser.role === "employee" && !currentUser.position)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)]">
-        <div className="h-8 w-8 animate-spin rounded-full border-3 border-amber-500 border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner text="กำลังเตรียมข้อมูลกะการทำงาน..." />;
   }
 
   return (

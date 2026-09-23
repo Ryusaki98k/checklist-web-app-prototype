@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChecklistPage } from "../../components/staff/ChecklistPage";
 import { useApp } from "../../context/AppContext";
+import { LoadingSpinner } from "../loading";
 
 export default function ChecklistRoutePage() {
   const router = useRouter();
@@ -21,11 +22,7 @@ export default function ChecklistRoutePage() {
   }, [currentUser, activeSession, isReady, router]);
 
   if (!isReady || !currentUser || !activeSession) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)] text-[var(--color-text)]">
-        <div className="h-8 w-8 animate-spin rounded-full border-3 border-amber-500 border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner text="กำลังเตรียมรายการเช็คลิสต์..." />;
   }
 
   return (

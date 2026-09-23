@@ -56,6 +56,10 @@ export function BranchRefrigeratorChecklist({
   }, [loadTasks]);
 
   function handleOpenCheck(task: RefrigeratorTaskItem) {
+    if (task.disableCheck) {
+      alert("ตู้แช่นี้ถูกตั้งค่าปิดการตรวจสอบไว้ในระบบ จึงไม่สามารถบันทึกผลได้");
+      return;
+    }
     setActiveTask(task);
     setTempValue(task.temperature ?? task.maxTemperature ?? 4);
     setIsOkayValue(task.isOkay ?? true);
@@ -234,12 +238,17 @@ export function BranchRefrigeratorChecklist({
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm sm:text-base font-bold text-[var(--color-text)] leading-snug">
+                        <h3 className={`text-sm sm:text-base font-bold leading-snug ${task.disableCheck ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text)]"}`}>
                           {task.name}
                         </h3>
                         <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-muted)]">
                           เกณฑ์: {task.minTemperature}°C ~ {task.maxTemperature}°C
                         </span>
+                        {task.disableCheck && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                            ปิดใช้งาน (งดตรวจ)
+                          </span>
+                        )}
                       </div>
 
                       {/* Completed Details */}
@@ -302,7 +311,11 @@ export function BranchRefrigeratorChecklist({
 
                   {/* Action Buttons */}
                   <div className="shrink-0 flex items-center gap-1">
-                    {isDone ? (
+                    {task.disableCheck ? (
+                      <span className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[var(--color-surface-2)] text-[var(--color-text-muted)] font-bold text-xs border border-[var(--color-border)] cursor-not-allowed inline-flex items-center gap-1.5 opacity-70">
+                        <span>งดตรวจ</span>
+                      </span>
+                    ) : isDone ? (
                       <button
                         type="button"
                         onClick={() => handleOpenCheck(task)}

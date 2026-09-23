@@ -1,5 +1,5 @@
-import { eq, and, gte, lte, desc, asc, inArray, sql } from "drizzle-orm";
-import { tasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks } from "../db/schema";
+import { eq, and, or, gte, lte, lt, desc, asc, inArray, isNull, sql } from "drizzle-orm";
+import { tasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions } from "../db/schema";
 import { IChecklistService, INotificationService } from "./types";
 import { ShiftSession, ShiftType, ChecklistItem } from "../types";
 
@@ -566,6 +566,258 @@ export class ChecklistService implements IChecklistService {
     } catch (err: any) {
       console.error("ChecklistService.resetTodayChecklistData error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการรีเซ็ตข้อมูล" };
+    }
+  }
+
+  async autoEndUnfinishedShifts(): Promise<{
+    success: boolean;
+    endedCount: number;
+    sessions?: Array<{
+      sessionId: string;
+      userId: string;
+      userName: string;
+      branchId: string;
+      shift: string;
+      totalItems: number;
+      completedItems: number;
+    }>;
+    error?: string;
+  }> {
+    try {
+      // Find all shifts that have started but have not ended
+      const unclosedSessions = await this.db
+        .select({
+          id: shiftSession.id,
+          user: shiftSession.user,
+          branch: shiftSession.branch,
+          task_role: shiftSession.task_role,
+          shift: shiftSession.shift,
+          start: shiftSession.start,
+        })
+        .from(shiftSession)
+        .where(isNull(shiftSession.end));
+
+      if (unclosedSessions.length === 0) {
+        return { success: true, endedCount: 0, sessions: [] };
+      }
+
+      const now = new Date();
+      const sessionIds: string[] = unclosedSessions.map((s: any) => s.id);
+
+      // End all unclosed sessions
+      await this.db
+        .update(shiftSession)
+        .set({ end: now })
+        .where(inArray(shiftSession.id, sessionIds));
+
+      // Fetch user and branch names
+      const userIds = Array.from(new Set(unclosedSessions.map((s: any) => s.user))) as string[];
+      const branchIds = Array.from(new Set(unclosedSessions.map((s: any) => s.branch))) as string[];
+
+      const userRows =
+        userIds.length > 0
+          ? await this.db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds))
+          : [];
+      const userMap = new Map<string, string>(userRows.map((u: any) => [u.id, u.name]));
+
+      const branchRows =
+        branchIds.length > 0
+          ? await this.db.select({ id: branches.id, name: branches.name }).from(branches).where(inArray(branches.id, branchIds))
+          : [];
+      const branchMap = new Map<string, string>(branchRows.map((b: any) => [b.id, b.name]));
+
+      // Fetch task works for these sessions to report checklist completion
+      const works = await this.db
+        .select({
+          id: taskWork.id,
+          shift_session: taskWork.shift_session,
+          timestamp: taskWork.timestamp,
+        })
+        .from(taskWork)
+        .where(inArray(taskWork.shift_session, sessionIds));
+
+      const processedSessions: Array<{
+        sessionId: string;
+        userId: string;
+        userName: string;
+        branchId: string;
+        shift: string;
+        totalItems: number;
+        completedItems: number;
+      }> = [];
+
+      for (const sess of unclosedSessions) {
+        const sessWorks = works.filter((w: any) => w.shift_session === sess.id);
+        const totalItems = sessWorks.length;
+        const completedItems = sessWorks.filter((w: any) => w.timestamp !== null).length;
+        const userName = userMap.get(sess.user) || "พนักงาน";
+        const branchName = branchMap.get(sess.branch) || "สาขา";
+        const shiftTitle =
+          sess.shift === "morning"
+            ? "กะเช้า"
+            : sess.shift === "afternoon"
+            ? "กะบ่าย"
+            : "กะเช้า-บ่าย";
+        const roleTitle =
+          sess.task_role === "cashier"
+            ? "แคชเชียร์"
+            : sess.task_role === "stock"
+            ? "สต็อก"
+            : "ผู้ช่วยผู้จัดการ";
+
+        processedSessions.push({
+          sessionId: sess.id,
+          userId: sess.user,
+          userName,
+          branchId: sess.branch,
+          shift: sess.shift,
+          totalItems,
+          completedItems,
+        });
+
+        if (this.notificationService) {
+          const detailMsg = `${userName} (${roleTitle}) ไม่ได้ทำการกดจบกะ ระบบจึงทำการปิดกะงาน${shiftTitle} ประจำ${branchName} อัตโนมัติเมื่อสิ้นสุดวัน (เช็คลิสต์เสร็จสิ้น ${completedItems}/${totalItems} รายการ)`;
+
+          // 1. Notify Manager of branch
+          await this.notificationService.createNotification({
+            branchId: sess.branch,
+            recipientRole: "manager",
+            title: `⚠️ แจ้งเตือน: ระบบปิดกะงานอัตโนมัติ (${shiftTitle})`,
+            message: detailMsg,
+            type: "system",
+            shiftSessionId: sess.id,
+          });
+
+          // 2. Notify Assistant Manager of branch
+          await this.notificationService.createNotification({
+            branchId: sess.branch,
+            recipientRole: "manager_assistant",
+            title: `⚠️ แจ้งเตือน: ระบบปิดกะงานอัตโนมัติ (${shiftTitle})`,
+            message: detailMsg,
+            type: "system",
+            shiftSessionId: sess.id,
+          });
+
+          // 3. Notify the employee themselves
+          await this.notificationService.createNotification({
+            recipientId: sess.user,
+            branchId: sess.branch,
+            title: `⚠️ ระบบปิดกะงานของคุณอัตโนมัติ (${shiftTitle})`,
+            message: `ระบบได้ทำการปิดกะงานของคุณโดยอัตโนมัติเมื่อสิ้นสุดวันปฏิบัติงาน เนื่องจากไม่ได้กดส่งมอบงาน (เช็คลิสต์เสร็จสิ้น ${completedItems}/${totalItems} รายการ)`,
+            type: "system",
+            shiftSessionId: sess.id,
+          });
+        }
+      }
+
+      return {
+        success: true,
+        endedCount: unclosedSessions.length,
+        sessions: processedSessions,
+      };
+    } catch (err: any) {
+      console.error("ChecklistService.autoEndUnfinishedShifts error:", err);
+      return { success: false, endedCount: 0, error: err?.message || "เกิดข้อผิดพลาดในการปิดกะงานอัตโนมัติ" };
+    }
+  }
+
+  async cleanupOldData(retentionDays: number = 14): Promise<{
+    success: boolean;
+    cutoffDate?: string;
+    deleted?: {
+      shiftSessions: number;
+      taskWorks: number;
+      refrigeratorTasks: number;
+      notifications: number;
+      pointTransactions: number;
+    };
+    error?: string;
+  }> {
+    try {
+      const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+      const y = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", year: "numeric" }).format(cutoffDate);
+      const m = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", month: "2-digit" }).format(cutoffDate);
+      const d = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", day: "2-digit" }).format(cutoffDate);
+      const cutoffDateStr = `${y}-${m}-${d}`;
+
+      // 1. Identify old shift sessions
+      const oldSessions = await this.db
+        .select({ id: shiftSession.id })
+        .from(shiftSession)
+        .where(lt(shiftSession.start, cutoffDate));
+
+      const oldSessionIds: string[] = oldSessions.map((s: any) => s.id);
+      let deletedTaskWorks = 0;
+
+      if (oldSessionIds.length > 0) {
+        // Delete taskWork referencing these old sessions
+        const deletedWorks = await this.db
+          .delete(taskWork)
+          .where(inArray(taskWork.shift_session, oldSessionIds))
+          .returning({ id: taskWork.id });
+        deletedTaskWorks = deletedWorks.length;
+      }
+
+      // 2. Delete old refrigerator tasks (by created_at, task_date, or session_id)
+      const refConditions = [
+        lt(refrigeratorTasks.created_at, cutoffDate),
+        lte(refrigeratorTasks.task_date, cutoffDateStr),
+      ];
+      if (oldSessionIds.length > 0) {
+        refConditions.push(inArray(refrigeratorTasks.shift_session_id, oldSessionIds));
+      }
+
+      const deletedRefs = await this.db
+        .delete(refrigeratorTasks)
+        .where(or(...refConditions))
+        .returning({ id: refrigeratorTasks.id });
+
+      // 3. Delete old point transactions referencing old sessions or created before cutoff
+      const pointConditions = [lt(pointTransactions.created_at, cutoffDate)];
+      if (oldSessionIds.length > 0) {
+        pointConditions.push(inArray(pointTransactions.shift_session_id, oldSessionIds));
+      }
+
+      const deletedPoints = await this.db
+        .delete(pointTransactions)
+        .where(or(...pointConditions))
+        .returning({ id: pointTransactions.id });
+
+      // 4. Delete old notifications referencing old sessions or created before cutoff
+      const notifConditions = [lt(notifications.created_at, cutoffDate)];
+      if (oldSessionIds.length > 0) {
+        notifConditions.push(inArray(notifications.shift_session_id, oldSessionIds));
+      }
+
+      const deletedNotifs = await this.db
+        .delete(notifications)
+        .where(or(...notifConditions))
+        .returning({ id: notifications.id });
+
+      // 5. Delete old shift sessions
+      let deletedSessions = 0;
+      if (oldSessionIds.length > 0) {
+        const deletedSess = await this.db
+          .delete(shiftSession)
+          .where(inArray(shiftSession.id, oldSessionIds))
+          .returning({ id: shiftSession.id });
+        deletedSessions = deletedSess.length;
+      }
+
+      return {
+        success: true,
+        cutoffDate: cutoffDate.toISOString(),
+        deleted: {
+          shiftSessions: deletedSessions,
+          taskWorks: deletedTaskWorks,
+          refrigeratorTasks: deletedRefs.length,
+          notifications: deletedNotifs.length,
+          pointTransactions: deletedPoints.length,
+        },
+      };
+    } catch (err: any) {
+      console.error("ChecklistService.cleanupOldData error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการล้างข้อมูลเก่า" };
     }
   }
 }

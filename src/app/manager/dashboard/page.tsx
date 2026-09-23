@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ExecutiveDashboard } from "../../../components/manager/ExecutiveDashboard";
 import { useApp } from "../../../context/AppContext";
+import { LoadingSpinner } from "../../loading";
 
 export default function ManagerDashboardPage() {
   const router = useRouter();
@@ -24,11 +25,7 @@ export default function ManagerDashboardPage() {
   }, [currentUser, isReady, router]);
 
   if (!isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)]">
-        <div className="h-8 w-8 animate-spin rounded-full border-3 border-amber-500 border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner text="กำลังโหลดแดชบอร์ดผู้บริหาร..." />;
   }
 
   // Use current logged in user or sample executive preview user

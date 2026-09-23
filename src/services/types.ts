@@ -101,6 +101,34 @@ export interface IChecklistService {
   }>;
 
   resetTodayChecklistData(position?: string): Promise<{ success: boolean; error?: string }>;
+
+  autoEndUnfinishedShifts(): Promise<{
+    success: boolean;
+    endedCount: number;
+    sessions?: Array<{
+      sessionId: string;
+      userId: string;
+      userName: string;
+      branchId: string;
+      shift: string;
+      totalItems: number;
+      completedItems: number;
+    }>;
+    error?: string;
+  }>;
+
+  cleanupOldData(retentionDays?: number): Promise<{
+    success: boolean;
+    cutoffDate?: string;
+    deleted?: {
+      shiftSessions: number;
+      taskWorks: number;
+      refrigeratorTasks: number;
+      notifications: number;
+      pointTransactions: number;
+    };
+    error?: string;
+  }>;
 }
 
 export interface IManagerService {
@@ -150,6 +178,7 @@ export interface RefrigeratorTaskItem {
   minTemperature: number;
   maxTemperature: number;
   targetTemperature?: number;
+  disableCheck?: boolean;
   taskDate: string;
   completed: boolean;
   completedAt?: string | null;
@@ -181,7 +210,13 @@ export interface IRefrigeratorService {
     userId?: string;
     branchId?: string;
     dateStr?: string;
-  }): Promise<{ success: boolean; data?: RefrigeratorTaskItem[]; branchName?: string; error?: string }>;
+  }): Promise<{
+    success: boolean;
+    data?: RefrigeratorTaskItem[];
+    disabledRefrigerators?: Array<{ id: string; name: string; minTemperature: number; maxTemperature: number }>;
+    branchName?: string;
+    error?: string;
+  }>;
   updateRefrigeratorTask(params: {
     taskId: string;
     userId: string;

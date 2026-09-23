@@ -96,17 +96,6 @@ export class PointService implements IPointService {
       }
 
       const isPerfect = !hasIssueOrLate;
-      const currentShiftType: "perfect" | "flawed" = isPerfect ? "perfect" : "flawed";
-
-      // Base points: 10 pts for completing shift
-      let totalPoints = 10;
-      const pointReasons: string[] = ["งานเสร็จสิ้นตามกะ (+10 แต้ม)"];
-
-      if (isPerfect) {
-        // On-time bonus: +10 pts
-        totalPoints += 10;
-        pointReasons.push("ปฏิบัติงานตรงเวลาทุกรายการ (+10 แต้ม)");
-      }
 
       // Fetch user to manage streaks
       const [targetUser] = await this.db
@@ -118,6 +107,8 @@ export class PointService implements IPointService {
       let newStreakType = targetUser?.point_streak_type || "none";
       let newStreakCount = targetUser?.point_streak || 0;
       let longestStreak = targetUser?.longest_streak || 0;
+      let totalPoints = 0;
+      const pointReasons: string[] = [];
 
       if (isPerfect) {
         if (newStreakType === "perfect") {
@@ -127,20 +118,19 @@ export class PointService implements IPointService {
           newStreakCount = 1;
         }
 
-        // Streak milestone bonuses
-        if (newStreakCount === 3) {
-          totalPoints += 15;
-          pointReasons.push("โบนัสสตรีคตรงเวลา 3 ครั้งติดต่อกัน (+15 แต้ม)");
-        } else if (newStreakCount === 5) {
-          totalPoints += 30;
-          pointReasons.push("โบนัสสตรีคตรงเวลา 5 ครั้งติดต่อกัน (+30 แต้ม)");
-        } else if (newStreakCount === 10 || (newStreakCount > 10 && newStreakCount % 5 === 0)) {
-          totalPoints += 70;
-          pointReasons.push(`โบนัสสตรีคระดับพรีเมียม ${newStreakCount} ครั้ง (+70 แต้ม)`);
+        totalPoints = 2;
+        pointReasons.push("เช็คลิสต์สมบูรณ์ตรงเวลา (+2 แต้ม)");
+
+        // Bonus: every 5 perfect in a row == 3 bonus points
+        if (newStreakCount > 0 && newStreakCount % 5 === 0) {
+          totalPoints += 3;
+          pointReasons.push(`โบนัสสตรีคสมบูรณ์ทุกๆ 5 ครั้งติดต่อกัน (สตรีคที่ ${newStreakCount}) (+3 แต้ม)`);
         }
       } else {
         newStreakType = "flawed";
-        newStreakCount = 1;
+        newStreakCount = 0;
+        totalPoints = 1;
+        pointReasons.push("เช็คลิสต์มีรายการล่าช้าหรือไม่สมบูรณ์ (+1 แต้ม)");
       }
 
       if (newStreakCount > longestStreak) {
@@ -184,7 +174,7 @@ export class PointService implements IPointService {
       return {
         success: true,
         awardedPoints: totalPoints,
-        streakType: currentShiftType,
+        streakType: newStreakType,
         streakCount: newStreakCount,
       };
     } catch (err: any) {

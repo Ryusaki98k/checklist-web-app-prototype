@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AdminDashboardView } from "../../../components/admin/AdminDashboardView";
 import { useApp } from "../../../context/AppContext";
+import { LoadingSpinner } from "../../loading";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -17,11 +18,7 @@ export default function AdminDashboardPage() {
   }, [currentUser, isReady, router]);
 
   if (!isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)]">
-        <div className="h-8 w-8 animate-spin rounded-full border-3 border-amber-500 border-t-transparent" />
-      </div>
-    );
+    return <LoadingSpinner text="กำลังโหลดระบบดูแลส่วนกลาง..." />;
   }
 
   const activeUser = currentUser || {

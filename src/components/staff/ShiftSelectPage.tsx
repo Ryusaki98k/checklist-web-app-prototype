@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { ShiftSession, ShiftType, User } from "../../types";
-import { Badge } from "../common/Badge";
 import { BrandLogo } from "../common/BrandLogo";
 import { getSessions } from "../../data/storage";
 import { getPositionShiftsStatusAction, resetTodayChecklistDataAction } from "../../actions/checklist";
@@ -30,17 +29,21 @@ export function ShiftSelectPage({
     { status: "completed" | "incomplete" | "none"; total: number; done: number }
   > | null>(null);
 
-  // Single shift selection state
   const [chosenShift, setChosenShift] = useState<ShiftType | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [isLoadingStatuses, setIsLoadingStatuses] = useState(true);
+  const [isStartingShift, setIsStartingShift] = useState(false);
 
   useEffect(() => {
     const rawSessions = getSessions();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setInternalSessions(rawSessions.filter((s) => s.userId === user.id));
   }, [user.id]);
 
   useEffect(() => {
     if (user.position) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsLoadingStatuses(true);
       setDbStatuses(null);
       setChosenShift(null);
       getPositionShiftsStatusAction(user.position, user.id)
@@ -63,7 +66,12 @@ export function ShiftSelectPage({
             }
           }
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => {
+          setIsLoadingStatuses(false);
+        });
+    } else {
+      setIsLoadingStatuses(false);
     }
   }, [user.position, user.id]);
 
@@ -106,7 +114,8 @@ export function ShiftSelectPage({
     ];
 
   const handleStartWork = () => {
-    if (chosenShift) {
+    if (chosenShift && !isStartingShift && !isLoadingStatuses) {
+      setIsStartingShift(true);
       if (typeof window !== "undefined") {
         secureRemoveItem("app_selected_shifts");
       }
@@ -114,7 +123,7 @@ export function ShiftSelectPage({
     }
   };
 
-  const hasSelection = chosenShift !== null;
+  const hasSelection = chosenShift !== null && !isLoadingStatuses && !isStartingShift;
 
   return (
     <main className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] flex flex-col justify-between px-3 sm:px-4 py-4 sm:py-10 pb-[max(1rem,env(safe-area-inset-bottom))] font-sans">
@@ -378,11 +387,20 @@ export function ShiftSelectPage({
 
                 <div className="mt-5 pt-3 border-t border-[var(--color-border-subtle)] flex items-center justify-between text-xs sm:text-sm text-[var(--color-text)] font-semibold">
                   <span>{s.subTitle}</span>
-                  {checkStatus === "completed" && (
-                    <span className="text-emerald-900 dark:text-emerald-200 font-mono text-xs font-bold">เช็คแล้ว ({doneItems}/{totalItems})</span>
-                  )}
-                  {checkStatus === "incomplete" && (
-                    <span className="text-amber-950 dark:text-amber-200 font-mono text-xs font-bold">ค้าง ({totalItems - doneItems})</span>
+                  {isLoadingStatuses ? (
+                    <span className="text-[var(--color-text-muted)] font-mono text-xs flex items-center gap-1.5 font-medium">
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+                      กำลังตรวจสถานะ...
+                    </span>
+                  ) : (
+                    <>
+                      {checkStatus === "completed" && (
+                        <span className="text-emerald-900 dark:text-emerald-200 font-mono text-xs font-bold">เช็คแล้ว ({doneItems}/{totalItems})</span>
+                      )}
+                      {checkStatus === "incomplete" && (
+                        <span className="text-amber-950 dark:text-amber-200 font-mono text-xs font-bold">ค้าง ({totalItems - doneItems})</span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -392,7 +410,12 @@ export function ShiftSelectPage({
 
         {/* Selected Shifts Summary Text */}
         <div className="w-full text-center mb-6 min-h-[36px] flex items-center justify-center">
-          {chosenShift === "morning" ? (
+          {isLoadingStatuses ? (
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] font-medium text-xs sm:text-sm">
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+              <span>กำลังตรวจสอบสถานะกะจากฐานข้อมูล...</span>
+            </div>
+          ) : chosenShift === "morning" ? (
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200 text-xs sm:text-sm font-bold shadow-xs">
               <span className="w-2 h-2 rounded-full bg-amber-600" aria-hidden="true" />
               <span>เลือกปฏิบัติงาน: กะเช้า (06:00 – 16:30)</span>
@@ -423,10 +446,24 @@ export function ShiftSelectPage({
                 : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] font-bold border border-[var(--color-border)] cursor-not-allowed"
             }`}
           >
-            <span>{hasSelection ? `เริ่มตรวจเช็คลิสต์ ${chosenShift === "morning" ? "กะเช้า" : "กะบ่าย"}` : "เลือกกะการทำงานเพื่อเริ่มตรวจงาน"}</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
+            {isLoadingStatuses ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+                <span>กำลังโหลดข้อมูลสถานะกะ...</span>
+              </>
+            ) : isStartingShift ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-950 border-t-transparent" />
+                <span>กำลังเริ่มตรวจเช็คลิสต์...</span>
+              </>
+            ) : (
+              <>
+                <span>{hasSelection ? `เริ่มตรวจเช็คลิสต์ ${chosenShift === "morning" ? "กะเช้า" : "กะบ่าย"}` : "เลือกกะการทำงานเพื่อเริ่มตรวจงาน"}</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              </>
+            )}
           </button>
         </div>
 

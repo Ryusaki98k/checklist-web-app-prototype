@@ -78,7 +78,7 @@ export function NavbarRefreshControl({
   const lastTimeString = formatLastTime(lastRefreshedAt);
 
   return (
-    <div ref={containerRef} className={`relative inline-flex items-center ${className}`}>
+    <div ref={containerRef} className={`relative inline-block text-left ${className || ""}`}>
       {/* Split Button Container */}
       <div className="inline-flex items-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] shadow-2xs hover:border-amber-500/50 transition-colors overflow-hidden">
         {/* Primary Action Button: 1-click Quick Refresh */}
@@ -125,15 +125,18 @@ export function NavbarRefreshControl({
       {/* Popover Menu & Backdrop */}
       {isOpen && (
         <>
-          {/* Subtle mobile backdrop to catch taps outside and prevent overflow confusion */}
+          {/* Backdrop to catch clicks outside and close popover cleanly */}
           <div
-            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] sm:hidden"
+            className="fixed inset-0 z-40 bg-black/10 sm:bg-transparent"
             onClick={() => setIsOpen(false)}
             aria-hidden="true"
           />
 
-          {/* Menu Card: Responsive fixed positioning on mobile to never clip screen edges; absolute right-aligned on tablet/desktop */}
-          <div className="fixed left-3 right-3 top-16 z-50 max-w-sm mx-auto sm:static sm:mx-0 sm:max-w-none sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-2 space-y-1.5 animate-fade-in backdrop-blur-xl">
+          {/* Menu Card: explicitly positioned 8px below trigger button */}
+          <div
+            style={{ position: "absolute", top: "calc(100% + 8px)", right: 0 }}
+            className="w-80 max-w-[calc(100vw-1.5rem)] z-50 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl"
+          >
             {/* Header & Status Indicator */}
             <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-[var(--color-border)] pb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-1.5">

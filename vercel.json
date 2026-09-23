@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/end-shifts",
+      "schedule": "55 16 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-data",
+      "schedule": "50 16 * * 0"
+    }
+  ]
+}

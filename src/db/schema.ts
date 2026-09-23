@@ -52,6 +52,8 @@ export const shiftSession = pgTable.withRLS("shift_session", {
 
     start: timestamp("start_timestamp").notNull(),
     end: timestamp("end_timestamp"),
+    manager_assistance_approve_timestamp: timestamp("manager_assistance_approve_timestamp"),
+    manager_approve_timestamp: timestamp("manager_approve_timestamp"),
 });
 
 export const taskWork = pgTable.withRLS("task_work", {
@@ -61,8 +63,6 @@ export const taskWork = pgTable.withRLS("task_work", {
     comment: text("comment"),
 
     timestamp: timestamp("timestamp"),
-    manager_assistance_approve_timestamp: timestamp("manager_assistance_approve_timestamp"),
-    manager_approve_timestamp: timestamp("manager_approve_timestamp"),
 });
 
 export const refrigerators = pgTable.withRLS("refrigerators", {

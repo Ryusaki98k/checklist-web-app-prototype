@@ -265,7 +265,13 @@ export class RefrigeratorService implements IRefrigeratorService {
     userId?: string;
     branchId?: string;
     dateStr?: string;
-  }): Promise<{ success: boolean; data?: RefrigeratorTaskItem[]; branchName?: string; error?: string }> {
+  }): Promise<{
+    success: boolean;
+    data?: RefrigeratorTaskItem[];
+    disabledRefrigerators?: { id: string; name: string; minTemperature: number; maxTemperature: number }[];
+    branchName?: string;
+    error?: string;
+  }> {
     try {
       const { userId, branchId: propBranchId, dateStr } = params;
       const targetDate = dateStr || getThaiDateString();
@@ -305,11 +311,8 @@ export class RefrigeratorService implements IRefrigeratorService {
         return { success: true, data: [], branchName: "" };
       }
 
-      // Automatically ensure initial tasks exist for today
-      await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
-
-      // Fetch tasks for this branch on targetDate
-      const tasksRows = await this.db
+      // Fast check: check if tasks for today already exist first before running heavy sync
+      let tasksRows = await this.db
         .select()
         .from(refrigeratorTasks)
         .where(
@@ -320,25 +323,56 @@ export class RefrigeratorService implements IRefrigeratorService {
         );
 
       if (tasksRows.length === 0) {
-        return { success: true, data: [], branchName };
+        // Automatically ensure initial tasks exist for today only when missing
+        await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
+        tasksRows = await this.db
+          .select()
+          .from(refrigeratorTasks)
+          .where(
+            and(
+              eq(refrigeratorTasks.branch_id, targetBranchId),
+              eq(refrigeratorTasks.task_date, targetDate)
+            )
+          );
       }
 
-      const refIds = tasksRows.map((t: any) => t.refrigerator_id);
+      // Fetch branch's assigned refrigerators to know all units including disabled ones
+      const [branchRow] = await this.db
+        .select({ refrigerators: branches.refrigerators })
+        .from(branches)
+        .where(eq(branches.id, targetBranchId))
+        .limit(1);
+
+      const branchRefIds: string[] = Array.isArray(branchRow?.refrigerators) ? branchRow.refrigerators : [];
+      let allBranchRefs: any[] = [];
+      if (branchRefIds.length > 0) {
+        allBranchRefs = await this.db
+          .select()
+          .from(refrigerators)
+          .where(inArray(refrigerators.id, branchRefIds));
+      }
+
+      const refMap = new Map<string, any>(allBranchRefs.map((r: any) => [r.id, r]));
+
+      const disabledRefrigerators = allBranchRefs
+        .filter((r: any) => r.disable_check)
+        .map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          minTemperature: r.min_temperature ?? 0,
+          maxTemperature: r.max_temperature ?? 4,
+        }));
+
+      if (tasksRows.length === 0) {
+        return { success: true, data: [], disabledRefrigerators, branchName };
+      }
+
       const userIds = tasksRows.map((t: any) => t.completed_by).filter(Boolean);
 
-      const refConfigs = await this.db
-        .select()
-        .from(refrigerators)
-        .where(inArray(refrigerators.id, refIds));
-
-      const refMap = new Map<string, any>(refConfigs.map((r: any) => [r.id, r]));
-
-      // Filter out tasks for refrigerators that are disabled and uncompleted
+      // Include all refrigerator tasks for the branch (disabled units have disableCheck: true)
       const activeTasksRows = tasksRows.filter((t: any) => {
         const ref = refMap.get(t.refrigerator_id);
-        if (!ref) return false;
-        if (ref.disable_check && !t.completed_at) return false;
-        return true;
+        return Boolean(ref);
       });
 
       let userMap = new Map<string, string>();
@@ -362,6 +396,7 @@ export class RefrigeratorService implements IRefrigeratorService {
           minTemperature: ref?.min_temperature ?? 0,
           maxTemperature: ref?.max_temperature ?? 4,
           targetTemperature: ref?.max_temperature ?? 4,
+          disableCheck: Boolean(ref?.disable_check),
           taskDate: t.task_date,
           completed,
           completedAt: t.completed_at ? new Date(t.completed_at).toISOString() : null,
@@ -376,7 +411,7 @@ export class RefrigeratorService implements IRefrigeratorService {
       // Sort alphabetically by refrigerator name
       items.sort((a, b) => a.name.localeCompare(b.name, "th"));
 
-      return { success: true, data: items, branchName };
+      return { success: true, data: items, disabledRefrigerators, branchName };
     } catch (err: any) {
       console.error("RefrigeratorService.getBranchRefrigeratorTasks error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการดึงรายการตรวจตู้แช่" };
@@ -404,6 +439,17 @@ export class RefrigeratorService implements IRefrigeratorService {
 
       if (!existingTask) {
         return { success: false, error: "ไม่พบรายการงานตู้แช่ที่ระบุ" };
+      }
+
+      // Check if refrigerator is disabled
+      const [refCheck] = await this.db
+        .select({ disable_check: refrigerators.disable_check, name: refrigerators.name })
+        .from(refrigerators)
+        .where(eq(refrigerators.id, existingTask.refrigerator_id))
+        .limit(1);
+
+      if (refCheck?.disable_check) {
+        return { success: false, error: `ตู้แช่ "${refCheck.name}" ถูกปิดการตรวจสอบชั่วคราว ไม่สามารถบันทึกผลได้` };
       }
 
       const completedAt = completed ? new Date() : null;

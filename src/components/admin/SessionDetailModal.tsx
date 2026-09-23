@@ -2,6 +2,7 @@ import { ShiftSession } from "../../types";
 import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, Divider, getShiftBadge } from "../common/Badge";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
+import { AlertCircle } from "lucide-react";
 
 export function SessionDetailModal({
   session,
@@ -78,23 +79,84 @@ export function SessionDetailModal({
             <span className="font-mono font-bold text-[var(--color-text)]">{total > 0 ? Math.round((done / total) * 100) : 0}%</span>
           </div>
 
+          {/* Late Tasks Alert Summary */}
+          {(() => {
+            const lateItems = session.items.filter((item) => {
+              if (item.isLate || item.comment) return true;
+              if (item.completedAt && item.category) {
+                const match = item.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+                if (match) {
+                  const [endHr, endMin] = match[2].split(':').map(Number);
+                  const completedDate = new Date(item.completedAt);
+                  const deadlineDate = new Date(session.startedAt);
+                  deadlineDate.setHours(endHr, endMin, 0, 0);
+                  if (completedDate > deadlineDate) return true;
+                }
+              }
+              return false;
+            });
+
+            if (lateItems.length === 0) return null;
+
+            return (
+              <div className="p-3 mb-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 flex items-start gap-2.5 text-xs text-rose-950 dark:text-rose-200">
+                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">กะนี้มีรายการเช็คลิสต์ล่าช้า {lateItems.length} รายการ</span>
+                  <p className="text-[11px] text-rose-800 dark:text-rose-300 mt-0.5">
+                    โปรดตรวจสอบเหตุผลการปฏิบัติงานล่าช้าที่ระบุไว้ในแต่ละข้อด้านล่างก่อนอนุมัติ
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
           <Divider />
           <div className="mt-4 space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
             {session.items.map((item, idx) => {
               const prevItem = idx > 0 ? session.items[idx - 1] : null;
               const showCat = item.category && (!prevItem || prevItem.category !== item.category);
+
+              let isLate = item.isLate ?? false;
+              if (!isLate && item.completedAt && item.category) {
+                const match = item.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+                if (match) {
+                  const endStr = match[2];
+                  const [endHr, endMin] = endStr.split(':').map(Number);
+                  const completedDate = new Date(item.completedAt);
+                  const deadlineDate = new Date(session.startedAt);
+                  deadlineDate.setHours(endHr, endMin, 0, 0);
+                  if (completedDate > deadlineDate) {
+                    isLate = true;
+                  }
+                }
+              }
+              if (item.comment) {
+                isLate = true;
+              }
+
               return (
                 <div key={item.id} className="space-y-1.5">
                   {showCat && (
                     <p className="text-xs font-bold text-[var(--color-text-muted)] pt-2 pb-0.5">{item.category}</p>
                   )}
                   <div
-                    className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${item.completedAt ? "bg-[var(--color-amber-glow)]/50 border-[var(--color-amber)]" : "bg-[var(--color-surface)] border-[var(--color-border)]"
-                      }`}
+                    className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
+                      isLate
+                        ? "bg-rose-50/40 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/60"
+                        : item.completedAt
+                        ? "bg-[var(--color-amber-glow)]/50 border-[var(--color-amber)]"
+                        : "bg-[var(--color-surface)] border-[var(--color-border)]"
+                    }`}
                   >
                     <div
-                      className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${item.completedAt ? "border-amber-500 bg-amber-500" : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                        }`}
+                      className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
+                        item.completedAt
+                          ? isLate
+                            ? "border-rose-500 bg-rose-500"
+                            : "border-amber-500 bg-amber-500"
+                          : "border-[var(--color-border)] bg-[var(--color-surface)]"
+                      }`}
                     >
                       {item.completedAt && (
                         <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -109,42 +171,35 @@ export function SessionDetailModal({
                       )}
                     </div>
                     <div className="flex-1">
-                      <div className="flex gap-2">
-                        <span className="text-xs font-mono text-[var(--color-text-subtle)]">
-                          {String(idx + 1).padStart(2, "0")}
-                        </span>
-                        <p className={`text-xs font-medium ${item.completedAt ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text)]"}`}>{item.label}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-[var(--color-text-subtle)]">
+                            {String(idx + 1).padStart(2, "0")}
+                          </span>
+                          <p className={`text-xs font-medium ${item.completedAt ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text)]"}`}>
+                            {item.label}
+                          </p>
+                        </div>
+                        {isLate && (
+                          <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800 shrink-0">
+                            ⚠️ ล่าช้า
+                          </span>
+                        )}
                       </div>
-                      {item.completedAt && (() => {
-                        let isLate = item.isLate ?? false;
-                        if (!isLate && item.category) {
-                          const match = item.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
-                          if (match) {
-                            const endStr = match[2];
-                            const [endHr, endMin] = endStr.split(':').map(Number);
-                            const completedDate = new Date(item.completedAt);
-                            const deadlineDate = new Date(session.startedAt);
-                            deadlineDate.setHours(endHr, endMin, 0, 0);
-                            if (completedDate > deadlineDate) {
-                              isLate = true;
-                            }
-                          }
-                        }
-                        return (
-                          <div className="mt-0.5 space-y-1">
-                            <p className="text-xs font-mono text-amber-800 dark:text-amber-300 font-semibold">
-                              เสร็จเมื่อ {fmtTime(item.completedAt)}
-                              {isLate && <span className="text-rose-600 dark:text-rose-400 font-bold ml-1 font-sans">(ล่าช้า)</span>}
-                            </p>
-                            {item.comment && (
-                              <div className="text-[11px] text-rose-900 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-lg px-2 py-0.5 flex items-start gap-1 font-sans font-normal">
-                                <span className="font-semibold shrink-0">เหตุผล:</span>
-                                <span className="break-words">{item.comment}</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
+
+                      {item.completedAt && (
+                        <div className="mt-1 space-y-1">
+                          <p className="text-[11px] font-mono text-[var(--color-text-muted)]">
+                            เสร็จเมื่อ {fmtTime(item.completedAt)}
+                          </p>
+                          {isLate && (
+                            <div className="text-xs text-rose-950 dark:text-rose-200 bg-rose-100/80 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800/80 rounded-lg p-2 mt-1 flex items-start gap-1.5 font-sans">
+                              <span className="font-bold text-rose-700 dark:text-rose-400 shrink-0">เหตุผลที่ล่าช้า:</span>
+                              <span className="break-words font-medium">{item.comment ? item.comment : "ผู้ปฏิบัติงานไม่ได้ระบุเหตุผล"}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

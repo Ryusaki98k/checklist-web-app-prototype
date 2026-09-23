@@ -126,20 +126,25 @@ export function ExecutiveDashboard({
             category: it.category,
             completedAt: it.completedAt,
             taskWorkId: it.taskWorkId,
+            isLate: it.isLate,
+            comment: it.comment,
           })),
           notified: true,
           branchName: s.branchName,
         }));
         setSessions(mappedSessions);
 
-        const newApprovals: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = {};
-        res.sessions.forEach((s) => {
-          newApprovals[s.id] = {
-            assistantApproved: s.assistantApproved,
-            managerApproved: s.managerApproved,
-          };
+        setApprovals((prev) => {
+          const merged: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = { ...prev };
+          (res.sessions || []).forEach((s) => {
+            const isMgr = Boolean(s.managerApproved || prev[s.id]?.managerApproved);
+            merged[s.id] = {
+              assistantApproved: isMgr || Boolean(s.assistantApproved || prev[s.id]?.assistantApproved),
+              managerApproved: isMgr,
+            };
+          });
+          return merged;
         });
-        setApprovals((prev) => ({ ...prev, ...newApprovals }));
 
         // Read notification IDs stored locally
         const readIds: string[] = (() => {
@@ -462,13 +467,17 @@ export function ExecutiveDashboard({
     }
 
     // Optimistic UI update
-    setApprovals((prev) => ({
-      ...prev,
-      [sessionId]: {
-        ...prev[sessionId],
-        [type === "assistant" ? "assistantApproved" : "managerApproved"]: true,
-      },
-    }));
+    setApprovals((prev) => {
+      const isMgr = type !== "assistant";
+      return {
+        ...prev,
+        [sessionId]: {
+          ...prev[sessionId],
+          assistantApproved: true,
+          managerApproved: isMgr ? true : Boolean(prev[sessionId]?.managerApproved ?? false),
+        },
+      };
+    });
 
     try {
       const roleForDb =
@@ -515,11 +524,11 @@ export function ExecutiveDashboard({
       prev.map((i) =>
         i.id === itemId
           ? {
-              ...i,
-              completedAt: newCompletedAt,
-              comment: willBeDone ? (comment ?? i.comment) : null,
-              isLate: willBeDone ? (comment ? true : i.isLate) : false,
-            }
+            ...i,
+            completedAt: newCompletedAt,
+            comment: willBeDone ? (comment ?? i.comment) : null,
+            isLate: willBeDone ? (comment ? true : i.isLate) : false,
+          }
           : i
       )
     );
@@ -626,12 +635,14 @@ export function ExecutiveDashboard({
     const app = approvals[s.id] || {};
     const isAssistantSession = s.taskRole === "manager_assistant" || s.userPosition === "ผู้ช่วยผู้จัดการร้าน";
     const isPending = currentRole === "manager_assistant"
-      ? (!isAssistantSession && !app.assistantApproved)
+      ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
       : !app.managerApproved;
 
     if (historyStatusFilter === "pending") return isPending;
     if (historyStatusFilter === "approved") {
-      return currentRole === "manager_assistant" ? !!app.assistantApproved : !!app.managerApproved;
+      return currentRole === "manager_assistant"
+        ? (!!app.assistantApproved || !!app.managerApproved)
+        : !!app.managerApproved;
     }
     return true;
   });
@@ -802,110 +813,126 @@ export function ExecutiveDashboard({
 
         {activeTab === "overview" && (
           <div className="space-y-6 animate-fade-in">
-            {/* ─── Integrated Store Operations Cockpit (Non-generic, cohesive layout) ─── */}
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 sm:p-6 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-6 divide-y md:divide-y-0 md:divide-x divide-[var(--color-border)]">
-              {/* Zone 1: Store Shift Operations */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />
-                  <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
-                    กะปฏิบัติงานวันนี้
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 pt-0.5">
-                  <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--color-text)]">
-                    {sessions.length}
-                  </span>
-                  <span className="text-xs text-[var(--color-text-muted)] font-medium">
-                    กะงานทั้งหมด
-                  </span>
-                </div>
-                <p className="text-xs text-[var(--color-text-subtle)]">
-                  {completedSessions.length} กะส่งมอบเรียบร้อยแล้ว ({sessions.length > 0 ? Math.round((completedSessions.length / sessions.length) * 100) : 0}%)
-                </p>
-              </div>
-
-              {/* Zone 2: Store Compliance Rate */}
-              <div className="pt-4 md:pt-0 md:pl-6 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true" />
-                    <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
-                      ความสอดคล้องมาตรฐานสาขา
+            {/* ─── Integrated Store Operations Cards (Separated columns) ─── */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+              {/* Card 1: Store Shift Operations */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 sm:p-6 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-xs" aria-hidden="true" />
+                      <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                        กะปฏิบัติงานวันนี้
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                      วันนี้
                     </span>
                   </div>
-                  <span className="text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                    {complianceRate}%
+                  <div className="flex items-baseline gap-2 pt-1">
+                    <span className="text-3xl sm:text-4xl font-extrabold font-mono text-[var(--color-text)] tracking-tight">
+                      {sessions.length}
+                    </span>
+                    <span className="text-xs sm:text-sm text-[var(--color-text-muted)] font-semibold">
+                      กะงานทั้งหมด
+                    </span>
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-[var(--color-border-subtle)] flex items-center justify-between">
+                  <p className="text-xs text-[var(--color-text-subtle)] font-medium">
+                    {completedSessions.length} กะส่งมอบเรียบร้อยแล้ว
+                  </p>
+                  <span className="text-xs font-mono font-bold text-[var(--color-text)] bg-[var(--color-surface-2)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
+                    {sessions.length > 0 ? Math.round((completedSessions.length / sessions.length) * 100) : 0}%
                   </span>
                 </div>
-                <div className="w-full bg-[var(--color-surface-2)] h-2 rounded-full overflow-hidden border border-[var(--color-border-subtle)] mt-2">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                    style={{ width: `${complianceRate}%` }}
-                  />
-                </div>
-                <p className="text-xs text-[var(--color-text-subtle)]">
-                  บันทึกแล้ว {completedChecklistItems} จาก {totalChecklistItems || 1} ข้อเช็คลิสต์
-                </p>
               </div>
 
-              {/* Zone 3: Direct Approval Action Callout */}
+              {/* Card 2: Store Compliance Rate */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 sm:p-6 shadow-xs hover:shadow-sm transition-shadow flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs" aria-hidden="true" />
+                      <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                        ความสอดคล้องมาตรฐานสาขา
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      {complianceRate}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-[var(--color-surface-2)] h-2.5 rounded-full overflow-hidden border border-[var(--color-border-subtle)] mt-2">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-500 shadow-xs"
+                      style={{ width: `${complianceRate}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-[var(--color-border-subtle)] flex items-center justify-between">
+                  <p className="text-xs text-[var(--color-text-subtle)] font-medium">
+                    บันทึกแล้ว {completedChecklistItems} จาก {totalChecklistItems || 1} ข้อเช็คลิสต์
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 3: Direct Approval Action Callout */}
               <div
                 onClick={() => {
                   if (pendingApprovalsCount > 0) {
                     setShiftQueueStatusFilter((prev) => (prev === "pending" ? "all" : "pending"));
                   }
                 }}
-                className={`pt-4 md:pt-0 md:pl-6 flex flex-col justify-between space-y-2 ${
-                  pendingApprovalsCount > 0
-                    ? `cursor-pointer group p-2.5 rounded-xl border transition-colors ${
-                        shiftQueueStatusFilter === "pending"
-                          ? "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 shadow-2xs"
-                          : "hover:bg-[var(--color-surface-2)]/60 border-transparent hover:border-[var(--color-border)]"
-                      }`
-                    : ""
-                }`}
+                className={`rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4 transition-all ${pendingApprovalsCount > 0
+                    ? `cursor-pointer group hover:shadow-md border ${shiftQueueStatusFilter === "pending"
+                      ? "bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/30"
+                      : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-amber-400"
+                    }`
+                    : "bg-[var(--color-surface)] border border-[var(--color-border)]"
+                  }`}
                 title={pendingApprovalsCount > 0 ? "คลิกเพื่อกรองเฉพาะกะที่รอดำเนินการรับรอง" : undefined}
               >
-                <div>
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${pendingApprovalsCount > 0 ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`} aria-hidden="true" />
+                      <span className={`w-2.5 h-2.5 rounded-full ${pendingApprovalsCount > 0 ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`} aria-hidden="true" />
                       <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
                         สถานะการลงนามรับรอง
                       </span>
                     </div>
                     {pendingApprovalsCount > 0 && (
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-md transition-colors ${
-                        shiftQueueStatusFilter === "pending"
-                          ? "bg-amber-200 text-amber-950 dark:bg-amber-900 dark:text-amber-200 font-bold"
-                          : "text-amber-950 bg-amber-100 dark:bg-amber-950 dark:text-amber-200 group-hover:bg-amber-200 font-bold"
-                      }`}>
-                        {shiftQueueStatusFilter === "pending" ? "✓ กำลังกรองกะค้าง" : "คลิกเพื่อกรอง →"}
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${shiftQueueStatusFilter === "pending"
+                          ? "bg-amber-300 text-amber-950 dark:bg-amber-800 dark:text-amber-100"
+                          : "text-amber-950 bg-amber-100 dark:bg-amber-950 dark:text-amber-200 group-hover:bg-amber-200 border border-amber-300 dark:border-amber-800"
+                        }`}>
+                        <span>{shiftQueueStatusFilter === "pending" ? "✓ กำลังกรองกะค้าง" : "คลิกเพื่อกรอง"}</span>
+                        <span>→</span>
                       </span>
                     )}
                   </div>
                   <div className="mt-1 flex items-center gap-2">
                     {pendingApprovalsCount > 0 ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 px-2.5 py-1 rounded-full shadow-2xs">
-                        <AlertCircle size={13} className="text-amber-700 dark:text-amber-400" />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 px-3 py-1.5 rounded-full shadow-2xs">
+                        <AlertCircle size={14} className="text-amber-700 dark:text-amber-400" />
                         <span>ค้างรับรอง {pendingApprovalsCount} กะ</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 px-2.5 py-1 rounded-full shadow-2xs">
-                        <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 px-3 py-1.5 rounded-full shadow-2xs">
+                        <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
                         <span>✨ รับรองครบถ้วนทุกกะ — มาตรฐาน 100%</span>
                       </span>
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-[var(--color-text-muted)]">
-                  {pendingApprovalsCount > 0
-                    ? shiftQueueStatusFilter === "pending"
-                      ? "กำลังแสดงเฉพาะกะที่รอดำเนินการ (คลิกการ์ดนี้เพื่อดูทั้งหมด)"
-                      : "คลิกเพื่อกรองดูเฉพาะกะที่รอการตรวจรับรองทันที"
-                    : "สาขาพร้อมเปิดทำการเต็มมาตรฐาน รับรองครบทุกกะงานแล้ว"}
-                </p>
+                <div className="pt-3 border-t border-[var(--color-border-subtle)]">
+                  <p className="text-xs text-[var(--color-text-muted)] font-medium">
+                    {pendingApprovalsCount > 0
+                      ? shiftQueueStatusFilter === "pending"
+                        ? "กำลังแสดงเฉพาะกะที่รอดำเนินการ (คลิกการ์ดนี้เพื่อดูทั้งหมด)"
+                        : "คลิกเพื่อกรองดูเฉพาะกะที่รอการตรวจรับรองทันที"
+                      : "สาขาพร้อมเปิดทำการเต็มมาตรฐาน รับรองครบทุกกะงานแล้ว"}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -974,7 +1001,7 @@ export function ExecutiveDashboard({
                   const isAssistantSession = s.taskRole === "manager_assistant" || s.userPosition === "ผู้ช่วยผู้จัดการร้าน";
                   if (currentRole === "manager_assistant") {
                     if (isAssistantSession) return false;
-                    return !app.assistantApproved;
+                    return !app.assistantApproved && !app.managerApproved;
                   }
                   return !app.managerApproved;
                 }).length;
@@ -1062,20 +1089,26 @@ export function ExecutiveDashboard({
                     const isAssistantSession =
                       sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
                     const isPending = currentRole === "manager_assistant"
-                      ? (!isAssistantSession && !app.assistantApproved)
+                      ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
                       : !app.managerApproved;
 
                     if (shiftQueueStatusFilter === "pending") return isPending;
                     if (shiftQueueStatusFilter === "approved") {
-                      return currentRole === "manager_assistant" ? !!app.assistantApproved : !!app.managerApproved;
+                      return currentRole === "manager_assistant"
+                        ? (!!app.assistantApproved || !!app.managerApproved)
+                        : !!app.managerApproved;
                     }
                     return true;
                   })
                   .sort((a, b) => {
                     const aApp = approvals[a.id] || {};
                     const bApp = approvals[b.id] || {};
-                    const aPending = currentRole === "manager_assistant" ? !aApp.assistantApproved : !aApp.managerApproved;
-                    const bPending = currentRole === "manager_assistant" ? !bApp.assistantApproved : !bApp.managerApproved;
+                    const aPending = currentRole === "manager_assistant"
+                      ? (!aApp.assistantApproved && !aApp.managerApproved)
+                      : !aApp.managerApproved;
+                    const bPending = currentRole === "manager_assistant"
+                      ? (!bApp.assistantApproved && !bApp.managerApproved)
+                      : !bApp.managerApproved;
                     if (aPending && !bPending) return -1;
                     if (!aPending && bPending) return 1;
                     if (a.shift === "morning" && b.shift !== "morning") return -1;
@@ -1163,6 +1196,21 @@ export function ExecutiveDashboard({
                         const isAssistantSession =
                           sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
 
+                        const lateItems = sess.items.filter((i) => {
+                          if (i.isLate || i.comment) return true;
+                          if (i.completedAt && i.category) {
+                            const match = i.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+                            if (match) {
+                              const [endHr, endMin] = match[2].split(':').map(Number);
+                              const completedDate = new Date(i.completedAt);
+                              const deadlineDate = new Date(sess.startedAt);
+                              deadlineDate.setHours(endHr, endMin, 0, 0);
+                              if (completedDate > deadlineDate) return true;
+                            }
+                          }
+                          return false;
+                        });
+
                         return (
                           <div
                             key={sess.id}
@@ -1213,18 +1261,58 @@ export function ExecutiveDashboard({
                               </div>
                             </div>
 
+                            {/* Late items reason display on general mobile card */}
+                            {lateItems.length > 0 && (
+                              <div className="p-2.5 rounded-xl bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-rose-800 dark:text-rose-300 font-bold">
+                                  <AlertCircle size={13} className="shrink-0" />
+                                  <span>พบรายการล่าช้า {lateItems.length} ข้อ:</span>
+                                </div>
+                                <div className="space-y-1 pl-3 text-[11px] text-rose-950 dark:text-rose-200">
+                                  {lateItems.map((li) => (
+                                    <div key={li.id} className="leading-snug">
+                                      <span className="font-semibold text-rose-800 dark:text-rose-300">{li.label}:</span>{" "}
+                                      <span className="italic">
+                                        {li.comment ? `"${li.comment}"` : "(ไม่ได้ระบุเหตุผล)"}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Status & Action */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                              <div className="min-w-0">{renderApprovalBadge(sess)}</div>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedSession(sess)}
-                                className="min-h-[44px] px-4 py-2 shrink-0 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-xl transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5"
-                              >
-                                <span>ตรวจรับรอง</span>
-                                <span>→</span>
-                              </button>
-                            </div>
+                            {(() => {
+                              const app = approvals[sess.id] || {};
+                              const isAssistantSession =
+                                sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
+                              const isPendingForMe = currentRole === "manager_assistant"
+                                ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
+                                : !app.managerApproved;
+
+                              return (
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                                  <div className="min-w-0">{renderApprovalBadge(sess)}</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedSession(sess)}
+                                    className={`min-h-[44px] px-4 py-2 shrink-0 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5 ${isPendingForMe
+                                        ? "text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500"
+                                        : "text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-2)]/80 border border-[var(--color-border)]"
+                                      }`}
+                                  >
+                                    <span>
+                                      {isPendingForMe
+                                        ? "ตรวจรับรอง"
+                                        : currentRole === "manager_assistant" && app.assistantApproved && !app.managerApproved
+                                          ? "รับรองแล้ว (รอผู้จัดการ)"
+                                          : "ดูรายละเอียด"}
+                                    </span>
+                                    {isPendingForMe && <span>→</span>}
+                                  </button>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}
@@ -1249,6 +1337,21 @@ export function ExecutiveDashboard({
                             const pct = Math.round((completedCount / (sess.items.length || 1)) * 100);
                             const isAssistantSession =
                               sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
+
+                            const lateItems = sess.items.filter((i) => {
+                              if (i.isLate || i.comment) return true;
+                              if (i.completedAt && i.category) {
+                                const match = i.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+                                if (match) {
+                                  const [endHr, endMin] = match[2].split(':').map(Number);
+                                  const completedDate = new Date(i.completedAt);
+                                  const deadlineDate = new Date(sess.startedAt);
+                                  deadlineDate.setHours(endHr, endMin, 0, 0);
+                                  if (completedDate > deadlineDate) return true;
+                                }
+                              }
+                              return false;
+                            });
 
                             return (
                               <tr key={sess.id} className="hover:bg-[var(--color-background)] transition-colors">
@@ -1280,6 +1383,17 @@ export function ExecutiveDashboard({
                                         style={{ width: `${pct}%` }}
                                       />
                                     </div>
+                                    {lateItems.length > 0 && (
+                                      <div className="mt-1">
+                                        <span
+                                          className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded cursor-help"
+                                          title={lateItems.map((li) => `${li.label}: ${li.comment || "ไม่ระบุเหตุผล"}`).join("\n")}
+                                        >
+                                          <AlertCircle size={10} className="text-rose-600" />
+                                          <span>ล่าช้า {lateItems.length} ข้อ</span>
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="py-3 px-3 font-mono text-[var(--color-text-muted)] text-xs">
@@ -1295,13 +1409,31 @@ export function ExecutiveDashboard({
                                   {renderApprovalBadge(sess)}
                                 </td>
                                 <td className="py-3 px-3 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedSession(sess)}
-                                    className="min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-0 inline-flex items-center justify-center px-4 py-2 sm:px-3.5 sm:py-1.5 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
-                                  >
-                                    ตรวจรับรอง →
-                                  </button>
+                                  {(() => {
+                                    const app = approvals[sess.id] || {};
+                                    const isAssistantSession =
+                                      sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
+                                    const isPendingForMe = currentRole === "manager_assistant"
+                                      ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
+                                      : !app.managerApproved;
+
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedSession(sess)}
+                                        className={`min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-0 inline-flex items-center justify-center px-4 py-2 sm:px-3.5 sm:py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap ${isPendingForMe
+                                            ? "text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500"
+                                            : "text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-2)]/80 border border-[var(--color-border)]"
+                                          }`}
+                                      >
+                                        {isPendingForMe
+                                          ? "ตรวจรับรอง →"
+                                          : currentRole === "manager_assistant" && app.assistantApproved && !app.managerApproved
+                                            ? "รับรองแล้ว (รอผู้จัดการ)"
+                                            : "ดูรายละเอียด"}
+                                      </button>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             );
@@ -1430,11 +1562,10 @@ export function ExecutiveDashboard({
                         setMyChecklistShift(sh);
                         loadAssistantChecklist(sh);
                       }}
-                      className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                        myChecklistShift === sh
+                      className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${myChecklistShift === sh
                           ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
                           : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                      }`}
+                        }`}
                     >
                       {sh === "morning" ? "กะเช้า" : "กะบ่าย"}
                     </button>
@@ -1464,11 +1595,10 @@ export function ExecutiveDashboard({
                             <button
                               type="button"
                               onClick={() => setMyChecklistFilter("all")}
-                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                                myChecklistFilter === "all"
+                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${myChecklistFilter === "all"
                                   ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
                                   : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                              }`}
+                                }`}
                             >
                               <span>ทั้งหมด</span>
                               <span className="font-mono text-xs font-bold">({totalCount})</span>
@@ -1477,23 +1607,21 @@ export function ExecutiveDashboard({
                             <button
                               type="button"
                               onClick={() => setMyChecklistFilter("pending")}
-                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                                myChecklistFilter === "pending"
+                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${myChecklistFilter === "pending"
                                   ? "bg-amber-400 text-amber-950 font-bold shadow-2xs"
                                   : pendingCount > 0
                                     ? "bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200/80 font-bold"
                                     : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                              }`}
+                                }`}
                             >
                               <span>ยังไม่ตรวจ</span>
                               <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-bold font-mono ${
-                                  myChecklistFilter === "pending"
+                                className={`px-2 py-0.5 rounded-full text-xs font-bold font-mono ${myChecklistFilter === "pending"
                                     ? "bg-amber-950 text-amber-200"
                                     : pendingCount > 0
                                       ? "bg-amber-400 text-amber-950"
                                       : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
-                                }`}
+                                  }`}
                               >
                                 {pendingCount}
                               </span>
@@ -1502,11 +1630,10 @@ export function ExecutiveDashboard({
                             <button
                               type="button"
                               onClick={() => setMyChecklistFilter("completed")}
-                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                                myChecklistFilter === "completed"
+                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${myChecklistFilter === "completed"
                                   ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
                                   : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                              }`}
+                                }`}
                             >
                               <span>ตรวจแล้ว</span>
                               <span className="font-mono text-xs font-bold">({doneCount})</span>
@@ -1617,18 +1744,16 @@ export function ExecutiveDashboard({
                                         handleToggleMyItem(item.id);
                                       }
                                     }}
-                                    className={`p-3 sm:p-3.5 rounded-xl border flex items-start gap-3 cursor-pointer transition-all select-none min-h-[48px] focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 ${
-                                      isDone
+                                    className={`p-3 sm:p-3.5 rounded-xl border flex items-start gap-3 cursor-pointer transition-all select-none min-h-[48px] focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 ${isDone
                                         ? "bg-[var(--color-amber-glow)]/30 border-[var(--color-amber)]/40 hover:bg-[var(--color-amber-glow)]/50"
                                         : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-amber-400 hover:bg-[var(--color-surface-2)]/50"
-                                    }`}
+                                      }`}
                                   >
                                     <div
-                                      className={`w-5 h-5 rounded-md border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
-                                        isDone
+                                      className={`w-5 h-5 rounded-md border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${isDone
                                           ? "bg-amber-500 border-amber-500 text-white"
                                           : "border-[var(--color-border-strong)] bg-[var(--color-surface)]"
-                                      }`}
+                                        }`}
                                     >
                                       {isDone && (
                                         <svg
@@ -1658,11 +1783,10 @@ export function ExecutiveDashboard({
                                         )}
                                       </div>
                                       <p
-                                        className={`text-xs sm:text-sm font-medium mt-1 leading-snug ${
-                                          isDone
+                                        className={`text-xs sm:text-sm font-medium mt-1 leading-snug ${isDone
                                             ? "text-[var(--color-text-muted)] line-through"
                                             : "text-[var(--color-text)]"
-                                        }`}
+                                          }`}
                                       >
                                         {item.label}
                                       </p>
@@ -1940,10 +2064,10 @@ export function ExecutiveDashboard({
                                 {getShiftBadge(sess.shift)}
                               </div>
                             </div>
-                            <div className="text-right font-mono text-xs text-[var(--color-text-muted)]">
-                              <span className="font-semibold text-[var(--color-text)] block">{sess.id}</span>
-                              <span className="text-[10px] text-[var(--color-text-subtle)]">
-                                {fmtDate(sess.startedAt)}
+                            <div className="text-right text-xs text-[var(--color-text-muted)]">
+                              <span className="font-semibold text-[var(--color-text)] block">{fmtDate(sess.startedAt)}</span>
+                              <span className="text-[10px] text-[var(--color-text-subtle)] font-mono">
+                                {fmtTime(sess.startedAt)}
                               </span>
                             </div>
                           </div>
@@ -1987,7 +2111,7 @@ export function ExecutiveDashboard({
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] font-semibold bg-[var(--color-surface-2)]">
-                          <th className="py-2.5 px-3 rounded-l-lg">รหัสกะ / วันที่</th>
+                          <th className="py-2.5 px-3 rounded-l-lg">วันที่ / เวลาเริ่ม</th>
                           <th className="py-2.5 px-3">ผู้ปฏิบัติงาน</th>
                           <th className="py-2.5 px-3">ตำแหน่ง</th>
                           <th className="py-2.5 px-3">กะงาน</th>
@@ -2003,9 +2127,9 @@ export function ExecutiveDashboard({
 
                           return (
                             <tr key={sess.id} className="hover:bg-[var(--color-background)] transition-colors">
-                              <td className="py-3 px-3 font-mono text-[var(--color-text-muted)]">
-                                <span className="font-semibold text-[var(--color-text)]">{sess.id}</span>
-                                <span className="block text-xs text-[var(--color-text-muted)]">{fmtDate(sess.startedAt)}</span>
+                              <td className="py-3 px-3 text-[var(--color-text-muted)]">
+                                <span className="font-semibold text-[var(--color-text)] block">{fmtDate(sess.startedAt)}</span>
+                                <span className="text-xs text-[var(--color-text-subtle)] font-mono">{fmtTime(sess.startedAt)}</span>
                               </td>
                               <td className="py-3 px-3 font-semibold text-[var(--color-text)]">
                                 {sess.userName}
@@ -2057,13 +2181,13 @@ export function ExecutiveDashboard({
         const canApprove = isAssistantSess
           ? isMgrOrHigher && !approvals[selectedSession.id]?.managerApproved
           : currentRole === "manager_assistant"
-            ? !approvals[selectedSession.id]?.assistantApproved
+            ? !approvals[selectedSession.id]?.assistantApproved && !approvals[selectedSession.id]?.managerApproved
             : !approvals[selectedSession.id]?.managerApproved;
 
         const isApproved = isAssistantSess
           ? !!approvals[selectedSession.id]?.managerApproved
           : currentRole === "manager_assistant"
-            ? !!approvals[selectedSession.id]?.assistantApproved
+            ? (!!approvals[selectedSession.id]?.assistantApproved || !!approvals[selectedSession.id]?.managerApproved)
             : !!approvals[selectedSession.id]?.managerApproved;
 
         const approveTitle = isAssistantSess
