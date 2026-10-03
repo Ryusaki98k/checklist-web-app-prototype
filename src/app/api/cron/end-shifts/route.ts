@@ -17,17 +17,21 @@ export async function GET(request: NextRequest) {
     const dateStr = searchParams.get("dateStr") || undefined;
 
     const services = getServices();
+    const result = await services.cron.runCronJob("end-shifts", { dateStr });
 
-    // 1. Alert managers & assistant managers about unended shifts and absent staff first (while end is still null)
-    const alertsResult = await services.manager.processShiftAttendanceAlerts({ dateStr });
-
-    // 2. Automatically close all unended shifts for the day
-    const endShiftsResult = await services.checklist.autoEndUnfinishedShifts();
+    if (result.skipped) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: result.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return NextResponse.json({
-      success: true,
-      alerts: alertsResult,
-      endShifts: endShiftsResult,
+      success: result.success,
+      message: result.message,
+      data: result.result,
       timestamp: new Date().toISOString(),
     });
   } catch (error: unknown) {

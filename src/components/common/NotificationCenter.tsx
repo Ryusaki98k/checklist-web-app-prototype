@@ -11,6 +11,66 @@ import {
 import { useApp } from "../../context/AppContext";
 import { createClient } from "../../db/supabase/client";
 
+function formatNotificationDateTime(dateStr: string | Date | undefined): string {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "-";
+
+    const now = new Date();
+    const dDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(d);
+    const nowDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(now);
+
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yestDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(yesterday);
+
+    const timeStr = new Intl.DateTimeFormat("th-TH", {
+      timeZone: "Asia/Bangkok",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(d) + " น.";
+
+    if (dDate === nowDate) {
+      return `วันนี้ เวลา ${timeStr}`;
+    } else if (dDate === yestDate) {
+      return `เมื่อวาน เวลา ${timeStr}`;
+    } else {
+      const dateStrThai = new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }).format(d);
+      return `${dateStrThai} เวลา ${timeStr}`;
+    }
+  } catch {
+    return String(dateStr);
+  }
+}
+
+function formatFullDateTime(dateStr: string | Date | undefined): string {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "-";
+    return (
+      new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(d) + " น."
+    );
+  } catch {
+    return String(dateStr);
+  }
+}
+
 export function NotificationCenter() {
   const { currentUser } = useApp();
   const [isOpen, setIsOpen] = useState(false);
@@ -108,6 +168,8 @@ export function NotificationCenter() {
         return <Award className="w-4 h-4 text-amber-500" />;
       case "shift_submitted":
         return <Clock className="w-4 h-4 text-blue-500" />;
+      case "incomplete_shift":
+        return <AlertTriangle className="w-4 h-4 text-amber-500" />;
       case "shift_approved":
         return <ShieldCheck className="w-4 h-4 text-emerald-500" />;
       case "refrigerator_alert":
@@ -208,14 +270,15 @@ export function NotificationCenter() {
                       <p className="text-xs text-[var(--color-text-muted)] leading-relaxed break-words">
                         {n.message}
                       </p>
-                      <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-text-subtle)]">
-                        <span>
-                          {new Date(n.createdAt).toLocaleTimeString("th-TH", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--color-text-subtle)]">
+                        <span
+                          className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-amber-950 dark:text-amber-200 bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-0.5 rounded-md shadow-2xs"
+                          title={`เวลาแจ้งเตือน: ${formatFullDateTime(n.createdAt)}`}
+                        >
+                          <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <span>{formatNotificationDateTime(n.createdAt)}</span>
                         </span>
-                        {n.branchName && <span>• สาขา {n.branchName}</span>}
+                        {n.branchName && <span className="text-[11px] font-medium text-[var(--color-text-muted)]">• สาขา {n.branchName}</span>}
                       </div>
                     </div>
                   </div>

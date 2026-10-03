@@ -166,6 +166,32 @@ input, textarea, select {
   animation: confetti-fall forwards cubic-bezier(.37, 0, .63, 1);
 }
 
+/* ─── Product Motion (Checklist Completion & Dialog Continuity) ──────── */
+/* Focal moment: the completion stamp. Floor staff tap through tasks for a whole
+   8-12 hour shift, so the acknowledgement has to land. The overshoot reads as a
+   physical stamp, not a fade. */
+@keyframes egg-stamp {
+  0%   { transform: scale(0.35) rotate(-14deg); opacity: 0; }
+  55%  { transform: scale(1.18) rotate(2deg);   opacity: 1; }
+  100% { transform: scale(1) rotate(0deg);      opacity: 1; }
+}
+
+/* Continuity: dialogs rise from the thumb dock rather than dropping from the top,
+   matching where the hand already is on a one-handed floor device. */
+@keyframes dock-rise {
+  from { transform: translateY(16px) scale(0.985); opacity: 0; }
+  to   { transform: translateY(0) scale(1);       opacity: 1; }
+}
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-egg-stamp { animation: egg-stamp 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-dock-rise { animation: dock-rise 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-scrim-in { animation: scrim-in 200ms ease-out; }
+
 /* ─── Motion Sensitivity & Accessibility (WCAG 2.3.3 Level AAA) ───────────── */
 @media (prefers-reduced-motion: reduce) {
   html {
@@ -192,6 +218,15 @@ input, textarea, select {
   .animate-spin {
     animation: none !important;
     opacity: 0.75;
+  }
+
+  /* Keep the stamp and the dialog legible, remove only the travel */
+  .animate-egg-stamp,
+  .animate-dock-rise,
+  .animate-scrim-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 
   /* Dampen continuous pulsing/pinging */

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Snowflake, CheckCircle2, Clock, UserCheck, AlertTriangle, RefreshCw, Check, Edit2, RotateCcw } from "lucide-react";
+import { Snowflake, CheckCircle2, Clock, UserCheck, AlertTriangle, RefreshCw, Check, Edit2, RotateCcw, FileSpreadsheet, Download } from "lucide-react";
 import { RefrigeratorTaskItem, getBranchRefrigeratorTasksAction, updateRefrigeratorTaskAction } from "../../actions/refrigerator";
 import { fmtTime } from "../../data/storage";
 import { ShiftType } from "../../types";
+import { exportRefrigeratorDataAsCSV, exportRefrigeratorDataAsExcel } from "../../utils/exportRefrigeratorData";
 
 export function BranchRefrigeratorChecklist({
   userId,
@@ -150,16 +151,46 @@ export function BranchRefrigeratorChecklist({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => loadTasks()}
-            disabled={refreshing}
-            className="p-1.5 sm:p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:text-sky-600 hover:border-sky-300 transition-colors cursor-pointer shrink-0"
-            title="รีเฟรชข้อมูลตู้แช่"
-            aria-label="รีเฟรชข้อมูลตู้แช่"
-          >
-            <RefreshCw size={14} className={refreshing ? "animate-spin text-sky-600" : ""} />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const targetDate = tasks[0]?.taskDate || new Date().toISOString().split("T")[0];
+                exportRefrigeratorDataAsExcel(tasks, branchName || "สาขาหลัก", targetDate);
+              }}
+              disabled={loading || tasks.length === 0}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-emerald-500/30 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              title="ส่งออกรายงานตู้แช่วันนี้เป็น Excel (.xls)"
+            >
+              <FileSpreadsheet size={13} className="text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">ส่งออก</span> Excel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const targetDate = tasks[0]?.taskDate || new Date().toISOString().split("T")[0];
+                exportRefrigeratorDataAsCSV(tasks, branchName || "สาขาหลัก", targetDate);
+              }}
+              disabled={loading || tasks.length === 0}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-amber-500/30 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              title="ส่งออกรายงานตู้แช่วันนี้เป็น CSV (.csv)"
+            >
+              <Download size={13} className="text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">ส่งออก</span> CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={() => loadTasks()}
+              disabled={refreshing}
+              className="p-1.5 sm:p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:text-sky-600 hover:border-sky-300 transition-colors cursor-pointer shrink-0"
+              title="รีเฟรชข้อมูลตู้แช่"
+              aria-label="รีเฟรชข้อมูลตู้แช่"
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin text-sky-600" : ""} />
+            </button>
+          </div>
         </div>
 
         {/* Progress bar */}

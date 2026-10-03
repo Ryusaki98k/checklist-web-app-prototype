@@ -48,7 +48,7 @@ export default function LoginPage() {
                 </span>
 
                 <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                  สำหรับแคชเชียร์, สต็อก/จัดเรียง และพนักงานทั่วไป เข้าตรวจเช็คลิสต์ประจำกะ
+                  สำหรับแคชเชียร์และพนักงานทั่วไป เข้าตรวจเช็คลิสต์ประจำกะ
                 </p>
               </div>
 
@@ -76,7 +76,7 @@ export default function LoginPage() {
                 </div>
 
                 <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] tracking-tight">
-                  ผู้จัดการ & ผู้ช่วยฯ
+                  ผู้จัดการรร้าน & ผู้ช่วยผู้จัดการร้าน
                 </h2>
                 <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 block mb-2">
                   Store Management

@@ -1,25 +1,25 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { users, branches } from "../db/schema";
 import { IAuthService } from "./types";
 import { User, Role } from "../types";
 
 const INITIAL_USERS: Array<{
   name: string;
-  email: string;
+  username: string;
   password: string;
   role: 'admin' | 'committee' | 'general_manager' | 'manager' | 'manager_assistant' | 'employee';
   position?: string;
 }> = [
-  { name: "คุณวิภาดา สุขเจริญ", email: "manager@factory.com", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
-  { name: "คุณกิตติศักดิ์ พัฒนกิจ", email: "director@factory.com", password: "director123", role: "committee", position: "กรรมการ" },
-  { name: "คุณธนากร เกียรติไพบูลย์", email: "assistant@factory.com", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
-  { name: "คุณอนุรักษ์ วงศ์สวัสดิ์", email: "manager2@factory.com", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
-  { name: "คุณพรทิพย์ สุขเจริญ", email: "asst@factory.com", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
-  { name: "สมศรี ใจดี", email: "cashier@factory.com", password: "123", role: "employee", position: "แคชเชียร์" },
-  { name: "สมชาย มั่นคง", email: "stock@factory.com", password: "123", role: "employee", position: "พนักงานสต็อก/จัดเรียง" },
-  { name: "กัญญาภัทร พิมพา", email: "kanya@factory.com", password: "123", role: "employee", position: "แคชเชียร์" },
-  { name: "ศุภชัย มีสุข", email: "suphachai@factory.com", password: "123", role: "employee", position: "พนักงานทั่วไป" },
-  { name: "คุณสมเกียรติ บริหารกิจ", email: "admin@factory.com", password: "admin123", role: "admin", position: "ผู้ดูแลระบบส่วนกลาง" },
+  { name: "คุณวิภาดา สุขเจริญ", username: "manager", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
+  { name: "คุณกิตติศักดิ์ พัฒนกิจ", username: "director", password: "director123", role: "committee", position: "กรรมการ" },
+  { name: "คุณธนากร เกียรติไพบูลย์", username: "assistant", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
+  { name: "คุณอนุรักษ์ วงศ์สวัสดิ์", username: "manager2", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
+  { name: "คุณพรทิพย์ สุขเจริญ", username: "asst", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
+  { name: "สมศรี ใจดี", username: "cashier", password: "123", role: "employee", position: "แคชเชียร์" },
+  { name: "สมชาย มั่นคง", username: "stock", password: "123", role: "employee", position: "พนักงานสต็อก/จัดเรียง" },
+  { name: "กัญญาภัทร พิมพา", username: "kanya", password: "123", role: "employee", position: "แคชเชียร์" },
+  { name: "ศุภชัย มีสุข", username: "suphachai", password: "123", role: "employee", position: "พนักงานทั่วไป" },
+  { name: "คุณสมเกียรติ บริหารกิจ", username: "admin", password: "admin123", role: "admin", position: "ผู้ดูแลระบบส่วนกลาง" },
 ];
 
 export class AuthService implements IAuthService {
@@ -32,7 +32,7 @@ export class AuthService implements IAuthService {
         await this.db.insert(users).values(
           INITIAL_USERS.map((u) => ({
             name: u.name,
-            email: u.email.toLowerCase(),
+            username: u.username.toLowerCase(),
             password: u.password,
             role: u.role,
           }))
@@ -44,31 +44,32 @@ export class AuthService implements IAuthService {
     }
   }
 
-  async login(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password.trim();
+  async login(username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
+    const cleanUsername = (username || "").trim().toLowerCase();
+    const cleanPassword = (password || "").trim();
 
-    if (!cleanEmail || !cleanPassword) {
-      return { success: false, error: "กรุณากรอกอีเมลและรหัสผ่าน" };
+    if (!cleanUsername || !cleanPassword) {
+      return { success: false, error: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" };
     }
 
     try {
       await this.seedUsersIfEmpty();
 
+      // Support login by username
       const result = await this.db
         .select()
         .from(users)
-        .where(eq(sql`lower(${users.email})`, cleanEmail))
+        .where(eq(sql`lower(${users.username})`, cleanUsername))
         .limit(1);
 
       if (result.length === 0) {
-        return { success: false, error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" };
+        return { success: false, error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" };
       }
 
       const foundUser = result[0];
 
       if (foundUser.password && foundUser.password !== cleanPassword) {
-        return { success: false, error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" };
+        return { success: false, error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" };
       }
 
       // Update last_login
@@ -95,7 +96,7 @@ export class AuthService implements IAuthService {
       const userObj: User = {
         id: foundUser.id,
         name: foundUser.name,
-        email: foundUser.email,
+        username: foundUser.username || foundUser.name,
         role: foundUser.role as Role,
         position: defaultPosition,
         branchName,
@@ -115,14 +116,15 @@ export class AuthService implements IAuthService {
 
   async register(data: {
     name: string;
-    email: string;
+    username: string;
     password?: string;
     role?: Role;
     position?: string;
     branchId?: string;
+    leaveQuota?: number | null;
   }): Promise<{ success: boolean; user?: User; error?: string }> {
-    const cleanName = data.name.trim();
-    const cleanEmail = data.email.trim().toLowerCase();
+    const cleanName = (data.name || "").trim();
+    const cleanUsername = (data.username || "").trim().toLowerCase();
     const cleanPassword = data.password ? data.password.trim() : null;
 
     let dbRole: Role = "employee";
@@ -134,28 +136,29 @@ export class AuthService implements IAuthService {
       dbRole = data.role;
     }
 
-    if (!cleanName || !cleanEmail) {
-      return { success: false, error: "กรุณากรอกข้อมูลให้ครบถ้วน" };
+    if (!cleanName || !cleanUsername) {
+      return { success: false, error: "กรุณากรอกชื่อ-นามสกุล และชื่อผู้ใช้ให้ครบถ้วน" };
     }
 
     try {
       const existing = await this.db
         .select({ id: users.id })
         .from(users)
-        .where(eq(sql`lower(${users.email})`, cleanEmail))
+        .where(eq(sql`lower(${users.username})`, cleanUsername))
         .limit(1);
 
       if (existing.length > 0) {
-        return { success: false, error: "อีเมลนี้มีผู้ใช้งานแล้วในระบบ" };
+        return { success: false, error: "ชื่อผู้ใช้นี้มีผู้อื่นใช้งานแล้วในระบบ กรุณาใช้ชื่ออื่น" };
       }
 
       const [created] = await this.db
         .insert(users)
         .values({
           name: cleanName,
-          email: cleanEmail,
+          username: cleanUsername,
           password: cleanPassword,
           role: dbRole as any,
+          leave_quota: typeof data.leaveQuota === "number" ? Math.max(0, Math.floor(data.leaveQuota)) : null,
           last_login: new Date(),
         })
         .returning();
@@ -188,7 +191,7 @@ export class AuthService implements IAuthService {
       const userObj: User = {
         id: created.id,
         name: created.name,
-        email: created.email,
+        username: created.username,
         role: created.role as Role,
         position: isManagement ? data.position ?? "ผู้จัดการร้าน" : undefined,
         branchName: assignedBranchName,
@@ -197,6 +200,7 @@ export class AuthService implements IAuthService {
         pointStreak: 0,
         pointStreakType: "none",
         longestStreak: 0,
+        leaveQuota: typeof created.leave_quota === "number" ? created.leave_quota : null,
       };
 
       return { success: true, user: userObj };
@@ -240,7 +244,7 @@ export class AuthService implements IAuthService {
       const userObj: User = {
         id: foundUser.id,
         name: foundUser.name,
-        email: foundUser.email,
+        username: foundUser.username || foundUser.name,
         role: foundUser.role as Role,
         position: defaultPosition,
         branchName,
@@ -277,7 +281,7 @@ export class AuthService implements IAuthService {
         return {
           id: u.id,
           name: u.name,
-          email: u.email,
+          username: u.username || u.name,
           password: u.password || undefined,
           role: u.role as Role,
           position: defaultPosition,
@@ -287,6 +291,7 @@ export class AuthService implements IAuthService {
           pointStreak: u.point_streak || 0,
           pointStreakType: u.point_streak_type as any,
           longestStreak: u.longest_streak || 0,
+          leaveQuota: typeof u.leave_quota === "number" ? u.leave_quota : null,
         };
       });
 
@@ -299,19 +304,24 @@ export class AuthService implements IAuthService {
 
   async syncOAuthUser(userData: {
     id: string;
-    email: string;
+    username?: string;
     name?: string;
     role?: Role;
   }): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
-      const cleanEmail = userData.email.trim().toLowerCase();
-      const displayName = userData.name || cleanEmail.split("@")[0] || "ผู้ใช้งาน";
+      const cleanUsername = (userData.username || `user_${userData.id.substring(0, 6)}`).trim().toLowerCase();
+      const displayName = userData.name || cleanUsername || "ผู้ใช้งาน";
 
-      // 1. Check if user with this email or id already exists
+      // 1. Check if user with this id or username already exists
       const [existing] = await this.db
         .select()
         .from(users)
-        .where(sql`lower(${users.email}) = ${cleanEmail}`)
+        .where(
+          or(
+            eq(users.id, userData.id),
+            eq(sql`lower(${users.username})`, cleanUsername)
+          )
+        )
         .limit(1);
 
       if (existing) {
@@ -330,7 +340,7 @@ export class AuthService implements IAuthService {
         .values({
           id: userData.id,
           name: displayName,
-          email: cleanEmail,
+          username: cleanUsername,
           password: null,
           role: (userData.role as any) || "employee",
           last_login: new Date(),
@@ -341,6 +351,26 @@ export class AuthService implements IAuthService {
     } catch (err: any) {
       console.error("AuthService.syncOAuthUser error:", err);
       return { success: false, error: err?.message || "Failed to sync OAuth user" };
+    }
+  }
+
+  async updateUserRole(userId: string, role: Role): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!userId) return { success: false, error: "ไม่พบรหัสผู้ใช้" };
+      const validRoles: Role[] = ["admin", "committee", "general_manager", "manager", "manager_assistant", "employee"];
+      if (!validRoles.includes(role)) {
+        return { success: false, error: "บทบาทไม่ถูกต้อง" };
+      }
+
+      await this.db
+        .update(users)
+        .set({ role: role as any })
+        .where(eq(users.id, userId));
+
+      return { success: true };
+    } catch (err: unknown) {
+      console.error("AuthService.updateUserRole error:", err);
+      return { success: false, error: "ไม่สามารถปรับปรุงสิทธิ์ของผู้ใช้ในฐานข้อมูลได้" };
     }
   }
 }

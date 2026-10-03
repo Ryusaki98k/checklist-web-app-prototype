@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useTransition } from "react";
+import React, { createContext, useContext, useEffect, useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ShiftSession, ShiftType, User } from "../types";
 import { STAFF_POSITIONS } from "../types";
@@ -19,7 +19,6 @@ import {
 } from "../data/storage";
 import {
   getOrCreateShiftSessionAction,
-  toggleTaskWorkAction,
   endShiftSessionAction,
 } from "../actions/checklist";
 import { getUserByIdAction, syncOAuthUserAction } from "../actions/auth";
@@ -36,10 +35,10 @@ interface AppContextType {
   isReady: boolean;
   login: (user: User, shift?: ShiftType, redirectPath?: string) => void;
   logout: (redirectTo?: string) => void;
-  selectShift: (shift: ShiftType) => void;
+  selectShift: (shift: ShiftType) => Promise<void>;
   selectPosition: (position: string) => void;
   updateSession: (updated: ShiftSession) => void;
-  endShift: (continueNextShift?: boolean) => void;
+  endShift: (continueNextShift?: boolean, reason?: string) => Promise<void>;
   setCurrentUser: (user: User | null) => void;
   setSelectedShift: (shift: ShiftType | null) => void;
   setActiveSession: (session: ShiftSession | null) => void;
@@ -59,6 +58,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeSession, setActiveSessionState] = useState<ShiftSession | null>(null);
   const [sessions, setSessionsState] = useState<ShiftSession[]>([]);
 
+  // Keep ref to activeSession so date check doesn't recreate callback or trigger effect loops
+  const activeSessionRef = useRef(activeSession);
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  });
+
   const refreshUserData = async () => {
     if (!currentUser?.id) return;
     try {
@@ -76,14 +81,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return;
     const currentThaiDate = getThaiDateString();
     const lastVisit = localStorage.getItem("app_last_visit_date");
-    const activeSess = getActiveSession();
+    const currentSession = activeSessionRef.current;
 
     // Condition 1: Recorded date is different from today's Thai date
     // Condition 2: Active session exists in state but started on a past day
-    const isPastSession = activeSession?.startedAt && !isTodayThai(activeSession.startedAt);
+    const isPastSession = currentSession?.startedAt && !isTodayThai(currentSession.startedAt);
     const dateChanged = Boolean(lastVisit && lastVisit !== currentThaiDate);
 
-    if (dateChanged || isPastSession || (!activeSess && activeSession)) {
+    if (dateChanged || isPastSession) {
       console.info("Daily cache rollover triggered. Purging previous day's operational cache...");
       localStorage.setItem("app_last_visit_date", currentThaiDate);
       evictDailyCache();
@@ -99,7 +104,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         router.replace("/shift");
       }
     }
-  }, [activeSession, router]);
+  }, [router]);
 
   useEffect(() => {
     // Check if the last time the user visited the site is a different day
@@ -124,6 +129,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const storedShift = storedSession ? getSelectedShift() : null;
     const storedSessions = getSessions();
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (storedUser) setCurrentUserState(storedUser);
     if (storedShift) {
       setSelectedShiftState(storedShift);
@@ -133,6 +139,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // Only restore active session if it matches the current user and is from today
     if (storedSession && storedUser && storedSession.userId === storedUser.id) {
+      setActiveSessionState(storedSession);
+    } else if (storedSession && isTodayThai(storedSession.startedAt)) {
       setActiveSessionState(storedSession);
     } else {
       secureRemoveItem("app_active_session");
@@ -163,15 +171,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user) {
         const authUser = data.user;
+        const username =
+          authUser.user_metadata?.user_name ||
+          authUser.email?.split("@")[0]?.toLowerCase() ||
+          `user_${authUser.id.substring(0, 6)}`;
+
         const name =
           authUser.user_metadata?.full_name ||
           authUser.user_metadata?.name ||
-          authUser.email?.split("@")[0] ||
-          "ผู้ใช้งาน";
+          username;
 
         syncOAuthUserAction({
           id: authUser.id,
-          email: authUser.email!,
+          username,
           name,
         }).then((syncRes) => {
           if (syncRes.success && syncRes.user) {
@@ -189,7 +201,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", onActivity);
       clearInterval(interval);
     };
-  }, [checkDateRollover]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function setCurrentUser(user: User | null) {
     setCurrentUserState(user);
@@ -319,7 +332,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }
 
-  async function selectShift(shift: ShiftType) {
+  async function selectShift(shift: ShiftType): Promise<void> {
     if (!currentUser) return;
 
     await withLoading(async () => {
@@ -347,16 +360,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setSessionsState(next);
           setActiveSession(session);
 
-          startTransition(() => {
-            router.push(currentUser.role === "manager" ? "/admin/dashboard" : "/checklist");
-          });
+          const targetPath = currentUser.role === "manager" ? "/admin/dashboard" : "/checklist";
+          router.push(targetPath);
           return;
         } else {
           alert("ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ: " + (res.error || ""));
+          throw new Error(res.error || "ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ");
         }
       } catch (err) {
         console.warn("Could not sync shift session from DB:", err);
-        alert("เกิดข้อผิดพลาดในการดึงข้อมูลจากระบบ กรุณาลองใหม่อีกครั้ง");
+        if (!(err instanceof Error && err.message.includes("ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ"))) {
+          alert("เกิดข้อผิดพลาดในการดึงข้อมูลจากระบบ กรุณาลองใหม่อีกครั้ง");
+        }
+        throw err;
       }
     }, "กำลังเตรียมเช็คลิสต์ประจำกะ...");
   }
@@ -373,32 +389,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       : [...allSessions, updated];
     saveSessions(next);
     setSessionsState(next);
-
-    const changedItem = updated.items.find((item) => {
-      const prev = activeSession?.items.find((p) => p.id === item.id);
-      return prev ? prev.completedAt !== item.completedAt : false;
-    });
-
-    if (changedItem) {
-      toggleTaskWorkAction({
-        taskWorkId: changedItem.taskWorkId,
-        shiftSessionId: updated.id,
-        taskId: changedItem.id,
-        completed: Boolean(changedItem.completedAt),
-        comment: changedItem.comment || undefined,
-      }).catch((err) => console.error("Failed to sync toggle to DB:", err));
-    }
-
     setActiveSession(updated);
   }
 
-  async function endShift(continueNextShift?: boolean) {
+  async function endShift(continueNextShift?: boolean, reason?: string) {
     await withLoading(async () => {
       if (activeSession) {
         const endedAt = new Date().toISOString();
         const updated: ShiftSession = {
           ...activeSession,
           completedAt: activeSession.completedAt || endedAt,
+          incompleteReason: reason || activeSession.incompleteReason || null,
         };
         const allSessions = getSessions();
         const hasSess = allSessions.some((s) => s.id === updated.id);
@@ -409,7 +410,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSessionsState(next);
 
         try {
-          await endShiftSessionAction(activeSession.id);
+          await endShiftSessionAction({
+            shiftSessionId: activeSession.id,
+            reason,
+          });
         } catch (err) {
           console.error("Failed to end shift in DB:", err);
         }

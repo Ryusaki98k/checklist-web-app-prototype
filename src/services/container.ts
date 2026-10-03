@@ -7,6 +7,7 @@ import { ChecklistService } from "./ChecklistService";
 import { ManagerService } from "./ManagerService";
 import { BranchService } from "./BranchService";
 import { RefrigeratorService } from "./RefrigeratorService";
+import { CronService } from "./CronService";
 
 let defaultContainer: IServiceContainer | null = null;
 
@@ -20,6 +21,7 @@ export function createServiceContainer(customDb?: any, customSupabaseClient?: an
   const auth = new AuthService(database, customSupabaseClient);
   const branch = new BranchService(database);
   const refrigerator = new RefrigeratorService(database, notifications);
+  const cron = new CronService(database, checklist, manager, refrigerator, points);
 
   return {
     auth,
@@ -29,6 +31,7 @@ export function createServiceContainer(customDb?: any, customSupabaseClient?: an
     manager,
     branch,
     refrigerator,
+    cron,
   };
 }
 

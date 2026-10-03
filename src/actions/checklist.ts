@@ -19,14 +19,26 @@ export async function toggleTaskWorkAction(params: {
   taskId?: string;
   completed: boolean;
   comment?: string;
-}): Promise<{ success: boolean; completedAt?: string | null; error?: string }> {
+}): Promise<{ success: boolean; completedAt?: string | null; taskWorkId?: string; error?: string }> {
   const services = getServices();
   return await services.checklist.toggleTaskWork(params);
 }
 
-export async function endShiftSessionAction(shiftSessionId: string): Promise<{ success: boolean; error?: string }> {
+export async function validateShiftCompletionAction(shiftSessionId: string): Promise<{
+  success: boolean;
+  isComplete: boolean;
+  totalTasks: number;
+  doneTasks: number;
+  pendingTasks: Array<{ id: string; name: string }>;
+  error?: string;
+}> {
   const services = getServices();
-  return await services.checklist.endShiftSession(shiftSessionId);
+  return await services.checklist.validateShiftCompletion(shiftSessionId);
+}
+
+export async function endShiftSessionAction(params: string | { shiftSessionId: string; reason?: string }): Promise<{ success: boolean; error?: string }> {
+  const services = getServices();
+  return await services.checklist.endShiftSession(params);
 }
 
 export async function getPositionShiftsStatusAction(position: string, userId?: string): Promise<{

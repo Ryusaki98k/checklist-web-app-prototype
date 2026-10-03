@@ -18,7 +18,7 @@ export function EmployeeAuthPage({
     const [branches, setBranches] = useState<DashboardBranch[]>([]);
     const [form, setForm] = useState({
         name: "",
-        email: "",
+        username: "",
         password: "",
         confirmPassword: "",
         branchId: "",
@@ -38,16 +38,16 @@ export function EmployeeAuthPage({
     }, [tab]);
 
     async function handleLogin() {
-        if (!form.email.trim() || !form.password.trim()) {
-            setError("กรุณากรอกอีเมลและรหัสผ่าน");
+        if (!form.username.trim() || !form.password.trim()) {
+            setError("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
             return;
         }
         setLoading(true);
         setError("");
         try {
-            const res = await loginAction(form.email, form.password);
+            const res = await loginAction(form.username, form.password);
             if (!res.success || !res.user) {
-                setError(res.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+                setError(res.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
                 setLoading(false);
                 return;
             }
@@ -70,15 +70,15 @@ export function EmployeeAuthPage({
             onLogin(res.user);
         } catch (err: unknown) {
             console.error("Login error:", err);
-            const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง";
+            const msg = err instanceof Error ? err.message : "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่";
             setError(msg);
             setLoading(false);
         }
     }
 
     async function handleRegister() {
-        if (!form.name.trim() || !form.email.trim() || !form.password.trim() || !form.confirmPassword.trim()) {
-            setError("กรุณากรอกชื่อ-นามสกุล, อีเมล และรหัสผ่านให้ครบถ้วน");
+        if (!form.name.trim() || !form.username.trim() || !form.password.trim() || !form.confirmPassword.trim()) {
+            setError("กรุณากรอกชื่อ-นามสกุล, ชื่อผู้ใช้ และรหัสผ่านให้ครบถ้วน");
             return;
         }
         if (form.password !== form.confirmPassword) {
@@ -90,7 +90,7 @@ export function EmployeeAuthPage({
         try {
             const res = await registerAction({
                 name: form.name,
-                email: form.email,
+                username: form.username,
                 password: form.password,
                 role: "employee",
                 branchId: form.branchId || undefined,
@@ -190,19 +190,19 @@ export function EmployeeAuthPage({
                     )}
 
                     <div>
-                        <label htmlFor="emp-email" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-                            อีเมล
+                        <label htmlFor="emp-username" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
+                            ชื่อผู้ใช้ (Username)
                         </label>
                         <input
-                            id="emp-email"
+                            id="emp-username"
                             className={inp}
-                            placeholder="user@email.com"
-                            type="email"
-                            autoComplete="email"
+                            placeholder="เช่น somchai หรือ cashier"
+                            type="text"
+                            autoComplete="username"
                             aria-invalid={Boolean(error)}
                             aria-describedby={error ? "emp-auth-error" : undefined}
-                            value={form.email}
-                            onChange={(e) => setForm({ ...form, email: e.target.value })}
+                            value={form.username}
+                            onChange={(e) => setForm({ ...form, username: e.target.value })}
                         />
                     </div>
 

@@ -13,6 +13,7 @@ export interface DashboardBranch {
   todayCompletionRate: number;
   members: string[];
   tasks: string[];
+  leaveQuota: number;
 }
 
 export class BranchService implements IBranchService {
@@ -165,6 +166,7 @@ export class BranchService implements IBranchService {
           todayCompletionRate: 0,
           members: b.members || [],
           tasks: b.tasks || [],
+          leaveQuota: typeof b.leave_quota === "number" ? b.leave_quota : 3,
         };
       });
 
@@ -240,6 +242,28 @@ export class BranchService implements IBranchService {
     } catch (err: any) {
       console.error("BranchService.assignTasksToBranch error:", err);
       return { success: false, error: "ไม่สามารถปรับปรุงงานของสาขาได้" };
+    }
+  }
+
+  async updateBranchLeaveQuota(branchId: string, quota: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!branchId || typeof branchId !== "string") {
+        return { success: false, error: "ID ของสาขาไม่ถูกต้อง" };
+      }
+      const safeQuota = Math.max(0, Math.floor(quota));
+      await this.db
+        .update(branches)
+        .set({
+          leave_quota: safeQuota,
+          last_update: new Date(),
+        })
+        .where(eq(branches.id, branchId));
+
+      this.invalidateCache();
+      return { success: true };
+    } catch (err: any) {
+      console.error("BranchService.updateBranchLeaveQuota error:", err);
+      return { success: false, error: "ไม่สามารถปรับปรุงโควตาการลาของสาขาได้" };
     }
   }
 }

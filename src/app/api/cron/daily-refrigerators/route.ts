@@ -18,13 +18,24 @@ export async function GET(request: NextRequest) {
     const yesterdayDate = searchParams.get("yesterdayDate") || undefined;
 
     const services = getServices();
-    const result = await services.refrigerator.processDailyRefrigeratorTasks({
+    const result = await services.cron.runCronJob("daily-refrigerators", {
       targetDate,
       yesterdayDate,
     });
 
+    if (result.skipped) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: result.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return NextResponse.json({
-      ...result,
+      success: result.success,
+      message: result.message,
+      data: result.result,
       timestamp: new Date().toISOString(),
     });
   } catch (error: unknown) {

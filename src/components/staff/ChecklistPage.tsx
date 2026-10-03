@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ChecklistItem, ShiftSession, ShiftType } from "../../types";
-import { fmtTime, getSelectedShift, isTodayThai } from "../../data/storage";
+import { fmtTime, isTodayThai } from "../../data/storage";
 import { secureGetItem, secureSetItem, secureRemoveItem } from "../../utils/crypto";
 import { getShiftBadge } from "../common/Badge";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
@@ -13,7 +13,6 @@ import {
   Check, 
   CheckCircle2, 
   Clock, 
-  Lock, 
   LogOut, 
   Sparkles, 
   ArrowRight, 
@@ -23,7 +22,7 @@ import {
 } from "lucide-react";
 import { BranchRefrigeratorChecklist } from "./BranchRefrigeratorChecklist";
 import { LateReasonModal } from "../common/LateReasonModal";
-import { getOrCreateShiftSessionAction } from "../../actions/checklist";
+import { getOrCreateShiftSessionAction, validateShiftCompletionAction, toggleTaskWorkAction } from "../../actions/checklist";
 
 function getCategoryColor(category?: string) {
   if (!category) {
@@ -57,9 +56,14 @@ function getCategoryColor(category?: string) {
   };
 }
 
+// A floor shift is 8-12 hours on mobile data, so the sync backs off on
+// failure and stops entirely while the tab is hidden.
+const POLL_BASE_MS = 8000;
+const POLL_MAX_MS = 60000;
+
 export function ChecklistPage({
   session,
-  selectedShift: propSelectedShift,
+  selectedShift: _selectedShift,
   onUpdate,
   onEndShift,
   onOpenDashboard,
@@ -68,11 +72,15 @@ export function ChecklistPage({
   session: ShiftSession;
   selectedShift?: ShiftType | null;
   onUpdate: (s: ShiftSession) => void;
-  onEndShift: (continueNextShift?: boolean) => void;
+  onEndShift: (continueNextShift?: boolean, reason?: string) => void;
   onOpenDashboard?: () => void;
   onExit?: () => void;
 }) {
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [incompleteReason, setIncompleteReason] = useState("");
+  const [dbPendingTasks, setDbPendingTasks] = useState<Array<{ id: string; name: string }>>([]);
+  const [isValidatingDb, setIsValidatingDb] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
   const [mobileTab, setMobileTab] = useState<"tasks" | "refrigerators">("tasks");
@@ -81,9 +89,6 @@ export function ChecklistPage({
     session.taskRole === "stock" ||
     Boolean(session.userPosition?.includes("สต็อก") || session.userPosition?.includes("stock"));
 
-  const activeSelectedShift = propSelectedShift || (typeof window !== "undefined"
-    ? getSelectedShift()
-    : null);
 
   const hasNextShift = session.shift === "morning";
 
@@ -99,6 +104,10 @@ export function ChecklistPage({
     showConfirm,
     () => setShowConfirm(false)
   );
+  const { dialogRef: incompleteDialogRef, handleKeyDown: handleIncompleteKeyDown } = useModalFocusTrap(
+    showIncompleteModal,
+    () => setShowIncompleteModal(false)
+  );
   const { dialogRef: exitDialogRef, handleKeyDown: handleExitKeyDown } = useModalFocusTrap(
     showExitConfirm,
     () => setShowExitConfirm(false)
@@ -106,32 +115,43 @@ export function ChecklistPage({
 
   const [items, setItems] = useState<ChecklistItem[]>(session.items || []);
   const [shiftCompleted, setShiftCompleted] = useState<boolean>(Boolean(session.completedAt));
+  const [prevSession, setPrevSession] = useState(session);
 
-  useEffect(() => {
+  if (session !== prevSession) {
+    setPrevSession(session);
     if (session.items) {
       setItems(session.items);
     }
-  }, [session.items]);
-
-  useEffect(() => {
     setShiftCompleted(Boolean(session.completedAt));
-  }, [session.completedAt]);
+  }
 
   const itemsRef = useRef(items);
-  itemsRef.current = items;
   const sessionRef = useRef(session);
-  sessionRef.current = session;
   const onUpdateRef = useRef(onUpdate);
-  onUpdateRef.current = onUpdate;
 
-  // Background sync every 8 seconds to reflect tasks added/disabled by manager live
+  useEffect(() => {
+    itemsRef.current = items;
+    sessionRef.current = session;
+    onUpdateRef.current = onUpdate;
+  });
+
+  // Track in-flight or recently toggled task IDs to prevent background DB sync from reverting them
+  const pendingTogglesRef = useRef<Map<string, { completed: boolean; comment: string | null; timestamp: number }>>(new Map());
+  const pollDelayRef = useRef(POLL_BASE_MS);
+
+  // Background sync to reflect tasks added/disabled by manager live
   useEffect(() => {
     let isMounted = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    let generation = 0;
 
     async function syncTasksFromDb() {
+      if (inFlight || !isMounted) return;
       if (typeof document !== "undefined" && document.hidden) return;
       const currentSess = sessionRef.current;
       if (!currentSess?.userId) return;
+      inFlight = true;
 
       try {
         const res = await getOrCreateShiftSessionAction({
@@ -155,47 +175,91 @@ export function ChecklistPage({
             return;
           }
 
-          const curSig = curItems.map((i) => `${i.id}:${i.label}:${i.completedAt || ""}:${i.comment || ""}`).join("|");
-          const freshSig = freshItems.map((i) => `${i.id}:${i.label}:${i.completedAt || ""}:${i.comment || ""}`).join("|");
+          // Build a safe signature that compares meaningful completion state without millisecond string noise
+          const makeSig = (list: ChecklistItem[]) =>
+            list.map((i) => `${i.id}:${i.label}:${Boolean(i.completedAt)}:${i.comment || ""}:${i.taskWorkId || ""}`).join("|");
+
+          const curSig = makeSig(curItems);
+          const freshSig = makeSig(freshItems);
 
           if (curSig !== freshSig) {
+            const now = Date.now();
             const merged = freshItems.map((fItem) => {
               const localMatch = curItems.find((i) => i.id === fItem.id);
-              if (localMatch && localMatch.completedAt && !fItem.completedAt) {
-                return {
-                  ...fItem,
-                  completedAt: localMatch.completedAt,
-                  comment: localMatch.comment,
-                  isLate: localMatch.isLate,
-                };
+              const pending = pendingTogglesRef.current.get(fItem.id);
+
+              // 1. If this item has a pending toggle within the lock window (e.g. 8 seconds), preserve local state!
+              if (pending && (now - pending.timestamp < 8000)) {
+                return localMatch || fItem;
               }
+
+              // 2. Otherwise adopt DB update (handles external manager toggles, shared store closing task updates, etc.)
               return fItem;
             });
 
-            setItems(merged);
-            onUpdateRef.current({
-              ...currentSess,
-              items: merged,
-            });
+            const mergedSig = makeSig(merged);
+            if (mergedSig !== curSig) {
+              setItems(merged);
+              onUpdateRef.current({
+                ...currentSess,
+                items: merged,
+              });
+            }
           }
         }
+        pollDelayRef.current = POLL_BASE_MS;
       } catch (err) {
         console.warn("Live task sync error in ChecklistPage:", err);
+        pollDelayRef.current = Math.min(pollDelayRef.current * 2, POLL_MAX_MS);
+      } finally {
+        inFlight = false;
       }
     }
 
+    function stopTimer() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    }
+
+    // A generation token keeps exactly one chain alive: if the tab is toggled while
+    // a tick is awaiting the server, the stale chain must not reschedule itself
+    // alongside the fresh one or the poll rate multiplies on every visibility change.
+    function schedule(gen: number) {
+      if (!isMounted || gen !== generation) return;
+      timer = setTimeout(async () => {
+        await syncTasksFromDb();
+        schedule(gen);
+      }, pollDelayRef.current);
+    }
+
     const handleDateRollover = () => {
-      if (isMounted) syncTasksFromDb();
+      if (isMounted) void syncTasksFromDb();
     };
+
+    // Park the timer while hidden; catch up the moment the tab comes back.
+    const handleVisibility = () => {
+      generation++;
+      stopTimer();
+      if (!document.hidden) {
+        schedule(generation);
+        void syncTasksFromDb();
+      }
+    };
+
     window.addEventListener("app:date-rollover", handleDateRollover);
     window.addEventListener("focus", handleDateRollover);
+    document.addEventListener("visibilitychange", handleVisibility);
 
-    const interval = setInterval(syncTasksFromDb, 8000);
+    schedule(generation);
+
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      stopTimer();
       window.removeEventListener("app:date-rollover", handleDateRollover);
       window.removeEventListener("focus", handleDateRollover);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -205,13 +269,16 @@ export function ChecklistPage({
   const allDone = progress === 100;
 
   const canContinueShift = hasNextShift && progress === 100 && !shiftCompleted;
-  const canFinishShift = progress === 100 && !shiftCompleted;
 
-  const filteredItems = items.filter((i) => {
-    if (filter === "pending") return !i.completedAt;
-    if (filter === "done") return !!i.completedAt;
-    return true;
-  });
+  const filteredItems = useMemo(
+    () =>
+      items.filter((i) => {
+        if (filter === "pending") return !i.completedAt;
+        if (filter === "done") return !!i.completedAt;
+        return true;
+      }),
+    [items, filter]
+  );
 
   const [lateModalTarget, setLateModalTarget] = useState<{
     id: string;
@@ -219,32 +286,92 @@ export function ChecklistPage({
     deadlineText?: string;
   } | null>(null);
 
-  function applyToggle(id: string, comment: string | null, isLate: boolean) {
-    const updated = items.map((item) =>
-      item.id === id
-        ? {
-            ...item,
-            completedAt: new Date().toISOString(),
-            isLate,
-            comment: comment ?? item.comment ?? null,
+  const executeToggle = useCallback(
+    async (targetItem: ChecklistItem, willBeDone: boolean, comment?: string | null, isLate: boolean = false) => {
+      const itemId = targetItem.id;
+      const nowIso = new Date().toISOString();
+      const targetComment = willBeDone ? (comment ?? targetItem.comment ?? null) : null;
+      const targetIsLate = willBeDone ? isLate : false;
+      const now = Date.now();
+
+      // 1. Lock in pending toggles with current timestamp
+      pendingTogglesRef.current.set(itemId, {
+        completed: willBeDone,
+        comment: targetComment,
+        timestamp: now,
+      });
+
+      // 2. Optimistic local UI update
+      const updated = items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              completedAt: willBeDone ? nowIso : null,
+              isLate: targetIsLate,
+              comment: targetComment,
+            }
+          : item
+      );
+      setItems(updated);
+      if (shiftCompleted) {
+        setShiftCompleted(false);
+      }
+
+      const allComplete = updated.length > 0 && updated.every((i) => i.completedAt);
+      let updatedSession = { ...session, completedAt: null, items: updated };
+      if (allComplete && !session.notified) {
+        updatedSession = { ...updatedSession, notified: true };
+      }
+      onUpdate(updatedSession);
+
+      // 3. Direct DB persistence online
+      try {
+        const res = await toggleTaskWorkAction({
+          shiftSessionId: session.id,
+          taskId: itemId,
+          taskWorkId: targetItem.taskWorkId,
+          completed: willBeDone,
+          comment: willBeDone ? (targetComment || undefined) : undefined,
+        });
+
+        if (res.success) {
+          if (res.taskWorkId && res.taskWorkId !== targetItem.taskWorkId) {
+            setItems((prev) =>
+              prev.map((i) => (i.id === itemId ? { ...i, taskWorkId: res.taskWorkId } : i))
+            );
           }
-        : item
-    );
-    setItems(updated);
-    if (shiftCompleted) {
-      setShiftCompleted(false);
-    }
-    const allComplete = updated.length > 0 && updated.every((i) => i.completedAt);
-    let updatedSession = { ...session, completedAt: null, items: updated };
-    if (allComplete && !session.notified) {
-      updatedSession = { ...updatedSession, notified: true };
-    }
-    onUpdate(updatedSession);
-  }
+        } else {
+          console.error("toggleTaskWorkAction error from DB:", res.error);
+          // Revert local state if DB explicitly failed
+          pendingTogglesRef.current.delete(itemId);
+          setItems((prev) =>
+            prev.map((i) => (i.id === itemId ? targetItem : i))
+          );
+          alert(`บันทึกสถานะงานไม่สำเร็จ: ${res.error || "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล"}`);
+        }
+      } catch (err) {
+        console.error("Failed to execute toggle in DB:", err);
+        pendingTogglesRef.current.delete(itemId);
+        setItems((prev) =>
+          prev.map((i) => (i.id === itemId ? targetItem : i))
+        );
+        alert("ไม่สามารถบันทึกสถานะงานไปยังฐานข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
+      } finally {
+        // Retain lock for a safe buffer (5s) so that background polling doesn't overwrite with stale read
+        setTimeout(() => {
+          pendingTogglesRef.current.delete(itemId);
+        }, 5000);
+      }
+    },
+    [items, onUpdate, session, shiftCompleted]
+  );
 
   function handleLateReasonSubmit(reason: string) {
     if (!lateModalTarget) return;
-    applyToggle(lateModalTarget.id, reason, true);
+    const targetItem = items.find((i) => i.id === lateModalTarget.id);
+    if (targetItem) {
+      void executeToggle(targetItem, true, reason, true);
+    }
     setLateModalTarget(null);
   }
 
@@ -253,14 +380,8 @@ export function ChecklistPage({
     if (!targetItem) return;
 
     if (targetItem.completedAt) {
-      const updated = items.map((item) =>
-        item.id === id ? { ...item, completedAt: null, isLate: false, comment: null } : item
-      );
-      setItems(updated);
-      if (shiftCompleted) {
-        setShiftCompleted(false);
-      }
-      onUpdate({ ...session, completedAt: null, items: updated });
+      // Uncheck task
+      void executeToggle(targetItem, false, null, false);
       return;
     }
 
@@ -289,7 +410,7 @@ export function ChecklistPage({
       return;
     }
 
-    applyToggle(id, null, false);
+    void executeToggle(targetItem, true, null, false);
   }
 
   function handleToggleContinue() {
@@ -305,10 +426,54 @@ export function ChecklistPage({
     }
   }
 
-  function endShift() {
+  async function handleInitiateEndShift() {
+    if (shiftCompleted || isValidatingDb) return;
+    setIsValidatingDb(true);
+    try {
+      // Validate live directly from the database online
+      const res = await validateShiftCompletionAction(session.id);
+      if (res.success) {
+        if (res.isComplete) {
+          setShowConfirm(true);
+        } else {
+          setDbPendingTasks(res.pendingTasks || []);
+          setShowIncompleteModal(true);
+        }
+      } else {
+        // Fallback to local check if connection fails
+        if (done === total && total > 0) {
+          setShowConfirm(true);
+        } else {
+          const localPending = items.filter((i) => !i.completedAt).map((i) => ({ id: i.id, name: i.label }));
+          setDbPendingTasks(localPending);
+          setShowIncompleteModal(true);
+        }
+      }
+    } catch (err) {
+      console.error("Online validation check error:", err);
+      if (done === total && total > 0) {
+        setShowConfirm(true);
+      } else {
+        const localPending = items.filter((i) => !i.completedAt).map((i) => ({ id: i.id, name: i.label }));
+        setDbPendingTasks(localPending);
+        setShowIncompleteModal(true);
+      }
+    } finally {
+      setIsValidatingDb(false);
+    }
+  }
+
+  function endCompleteShift() {
     setShowConfirm(false);
     setShiftCompleted(true);
     onEndShift(continueShift);
+  }
+
+  function endIncompleteShift() {
+    if (!incompleteReason.trim()) return;
+    setShowIncompleteModal(false);
+    setShiftCompleted(true);
+    onEndShift(continueShift, incompleteReason.trim());
   }
 
   return (
@@ -352,7 +517,7 @@ export function ChecklistPage({
                 type="button"
                 onClick={onOpenDashboard}
                 aria-label="เปิดหน้าแดชบอร์ด"
-                className="p-1.5 sm:p-2 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:text-[var(--color-text)] hover:bg-[var(--color-border-subtle)] transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center"
+                className="p-1.5 sm:p-2 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-border-subtle)] transition-colors cursor-pointer min-w-[44px] min-h-[44px] inline-flex items-center justify-center"
                 title="เปิดหน้าแดชบอร์ด"
               >
                 <LayoutDashboard size={16} />
@@ -362,7 +527,7 @@ export function ChecklistPage({
             <button
               type="button"
               onClick={() => setShowExitConfirm(true)}
-              className="p-1.5 sm:p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:text-rose-700 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center"
+              className="p-1.5 sm:p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:text-rose-700 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 transition-colors cursor-pointer min-w-[44px] min-h-[44px] inline-flex items-center justify-center"
               title="ออกจากหน้าเช็คลิสต์"
               aria-label="ออกจากหน้าเช็คลิสต์"
             >
@@ -426,7 +591,7 @@ export function ChecklistPage({
             <button
               type="button"
               onClick={() => setMobileTab("tasks")}
-              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
+              className={`flex-1 py-2 min-h-[44px] rounded-lg text-center cursor-pointer transition-all ${
                 mobileTab === "tasks"
                   ? "bg-[var(--color-brown)] text-amber-100 dark:bg-amber-400 dark:text-amber-950 shadow-xs"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
@@ -437,7 +602,7 @@ export function ChecklistPage({
             <button
               type="button"
               onClick={() => setMobileTab("refrigerators")}
-              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
+              className={`flex-1 py-2 min-h-[44px] rounded-lg text-center cursor-pointer transition-all ${
                 mobileTab === "refrigerators"
                   ? "bg-sky-600 text-white shadow-xs"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
@@ -478,7 +643,7 @@ export function ChecklistPage({
                 aria-selected={filter === t}
                 tabIndex={filter === t ? 0 : -1}
                 onClick={() => setFilter(t)}
-                className={`flex-1 sm:flex-initial px-2 sm:px-3.5 py-2 min-h-[40px] sm:min-h-[34px] rounded-lg transition-all text-center cursor-pointer inline-flex items-center justify-center truncate ${
+                className={`flex-1 sm:flex-initial px-2 sm:px-3.5 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg transition-all text-center cursor-pointer inline-flex items-center justify-center truncate ${
                   filter === t
                     ? "bg-[var(--color-brown)] text-amber-200 dark:bg-amber-400 dark:text-amber-950 shadow-xs font-bold"
                     : "text-[var(--color-text)] hover:bg-black/5 dark:hover:bg-white/5 font-semibold"
@@ -499,24 +664,14 @@ export function ChecklistPage({
 
         {/* Shift Completed Notice Banner */}
         {shiftCompleted && (
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 flex flex-col sm:flex-row sm:items-center gap-3 shadow-xs">
             <div className="flex items-center gap-2.5 text-xs sm:text-sm text-amber-950 dark:text-amber-200">
               <Sparkles size={18} className="text-amber-600 shrink-0" />
               <div>
                 <p className="font-extrabold">กะการทำงานนี้ได้รับการบันทึกจบกะแล้ว</p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">คุณสามารถคลิกที่รายการด้านล่างเพื่อตรวจเช็คหรือแก้ไขต่อได้ตลอดเวลา</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">คุณยังคลิกแก้ไขรายการด้านล่างได้ตลอดเวลา การแก้ไขจะถูกบันทึกทันทีโดยไม่ต้องส่งมอบงานซ้ำ</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setShiftCompleted(false);
-                onUpdate({ ...session, completedAt: null });
-              }}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-extrabold text-xs transition-colors cursor-pointer shrink-0 shadow-2xs"
-            >
-              ปลดล็อคเพื่อทำรายการต่อ
-            </button>
           </div>
         )}
 
@@ -562,29 +717,38 @@ export function ChecklistPage({
                     }`}
                   >
                     {isDone && (
-                      <Check size={14} strokeWidth={3} className="animate-in zoom-in-50 duration-150" />
+                      <Check size={14} strokeWidth={3} className="animate-egg-stamp" />
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start gap-2">
-                      <span
-                        className={`text-xs font-mono select-none pt-0.5 shrink-0 ${
-                          isDone ? "text-[var(--color-text-muted)] font-bold" : "text-[var(--color-text)] font-extrabold"
-                        }`}
-                        aria-hidden="true"
-                      >
-                        {String(originalIndex + 1).padStart(2, "0")}
-                      </span>
-                      <p
-                        className={`text-sm sm:text-base leading-snug transition-all ${
-                          isDone
-                            ? "text-[var(--color-text-muted)] line-through font-medium"
-                            : "text-[var(--color-text)] font-medium"
-                        }`}
-                      >
-                        {item.label}
-                      </p>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={`text-xs font-mono select-none pt-0.5 shrink-0 ${
+                            isDone ? "text-[var(--color-text-muted)] font-bold" : "text-[var(--color-text)] font-extrabold"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {String(originalIndex + 1).padStart(2, "0")}
+                        </span>
+                        <p
+                          className={`text-sm sm:text-base leading-snug transition-all ${
+                            isDone
+                              ? "text-[var(--color-text-muted)] line-through font-medium"
+                              : "text-[var(--color-text)] font-medium"
+                          }`}
+                        >
+                          {item.label}
+                        </p>
+                      </div>
+                      {(item.isSpecial || item.zeroPoints) && (
+                        <div className="pl-0 sm:pl-6">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-900 dark:text-amber-300 border border-amber-400/40">
+                            🛡️ ชุดงานพิเศษปิดร้าน (0 แต้ม • แชร์ร่วมระดับสาขา)
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {isDone && item.completedAt && (() => {
@@ -608,6 +772,11 @@ export function ChecklistPage({
                           <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono text-emerald-900 dark:text-emerald-300 font-bold">
                             <CheckCircle2 size={13} className="text-emerald-700" />
                             <span>บันทึกเมื่อ {fmtTime(item.completedAt)}</span>
+                            {item.completedByName && (
+                              <span className="text-xs font-sans text-emerald-950 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 rounded-md border border-emerald-300/60 font-medium">
+                                ตรวจโดย {item.completedByName}
+                              </span>
+                            )}
                             {isLate && (
                               <span className="text-rose-950 dark:text-rose-200 font-bold bg-rose-100 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 px-1.5 py-0.5 rounded-md ml-1">
                                 (ล่าช้า)
@@ -681,7 +850,7 @@ export function ChecklistPage({
                 type="button"
                 disabled={!canContinueShift}
                 onClick={handleToggleContinue}
-                className={`text-xs sm:text-sm px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl border font-bold flex items-center gap-1 transition-colors min-h-[40px] sm:min-h-[44px] cursor-pointer shrink-0 ${
+                className={`text-xs sm:text-sm px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl border font-bold flex items-center gap-1 transition-colors min-h-[44px] sm:min-h-[44px] cursor-pointer shrink-0 ${
                   !canContinueShift
                     ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border-[var(--color-border)] cursor-not-allowed"
                     : continueShift
@@ -699,25 +868,33 @@ export function ChecklistPage({
             {/* Primary Action Button: "จบกะงาน" */}
             <button
               type="button"
-              disabled={!canFinishShift}
-              onClick={() => setShowConfirm(true)}
-              className={`text-xs sm:text-sm px-2.5 sm:px-5 py-2 sm:py-2.5 rounded-xl font-extrabold flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[44px] transition-all cursor-pointer shadow-xs min-w-0 truncate ${
-                !canFinishShift
+              disabled={shiftCompleted || isValidatingDb}
+              onClick={handleInitiateEndShift}
+              className={`text-xs sm:text-sm px-2.5 sm:px-5 py-2 sm:py-2.5 rounded-xl font-extrabold flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-[44px] transition-all cursor-pointer shadow-xs min-w-0 truncate ${
+                shiftCompleted
                   ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] font-bold border border-[var(--color-border)] cursor-not-allowed shadow-none"
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-md active:scale-95 ring-2 ring-emerald-400/40"
+                  : isValidatingDb
+                  ? "bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40 cursor-wait"
+                  : allDone
+                  ? "bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm hover:shadow-md active:scale-95 ring-2 ring-emerald-400/40"
+                  : "bg-amber-700 hover:bg-amber-800 text-white shadow-sm hover:shadow-md active:scale-95"
               }`}
             >
-              {!canFinishShift ? (
+              {isValidatingDb ? (
                 <>
-                  <Lock size={14} className="shrink-0" />
-                  <span className="hidden md:inline">ตรวจให้ครบทุกข้อเพื่อจบกะ </span>
-                  <span className="hidden sm:inline md:hidden">ตรวจให้ครบ </span>
-                  <span className="truncate">(เหลือ {total - done} ข้อ)</span>
+                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span>กำลังตรวจสถานะออนไลน์...</span>
                 </>
-              ) : (
+              ) : allDone ? (
                 <>
                   <Sparkles size={15} className="shrink-0" />
                   <span>ส่งมอบงานจบกะ</span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span className="hidden sm:inline">จบกะงาน </span>
+                  <span className="truncate">(เหลืองาน {total - done} ข้อ)</span>
                 </>
               )}
             </button>
@@ -725,10 +902,10 @@ export function ChecklistPage({
         </div>
       </footer>
 
-      {/* Confirmation Finish Modal */}
+      {/* Confirmation Finish Modal for 100% Completed */}
       {showConfirm && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 px-4 animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 px-4 animate-scrim-in"
           onClick={() => setShowConfirm(false)}
           onKeyDown={handleConfirmKeyDown}
         >
@@ -738,7 +915,7 @@ export function ChecklistPage({
             aria-modal="true"
             aria-labelledby="confirm-shift-title"
             tabIndex={-1}
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 sm:p-7 w-full max-w-sm focus-visible:outline-none shadow-2xl"
+            className="animate-dock-rise bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 sm:p-7 w-full max-w-sm focus-visible:outline-none shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-12 h-12 rounded-2xl bg-amber-500 text-amber-950 flex items-center justify-center mb-3.5 shadow-xs">
@@ -749,7 +926,7 @@ export function ChecklistPage({
               ยืนยันการส่งมอบงานจบกะ?
             </h2>
             <p className="text-sm text-[var(--color-text-muted)] mb-4 leading-relaxed font-medium">
-              คุณได้ตรวจสอบเช็คลิสต์ครบถ้วนสมบูรณ์ 100% แล้ว เมื่อกดยืนยัน ระบบจะบันทึกผลและส่งแจ้งเตือนไปยังผู้จัดการร้านเพื่อรอรับรองผล
+              คุณได้ตรวจสอบเช็คลิสต์ครบถ้วนสมบูรณ์ 100% แล้ว (ตรวจสอบสดจากฐานข้อมูลเรียบร้อย) เมื่อกดยืนยัน ระบบจะบันทึกผลและส่งแจ้งเตือนไปยังผู้จัดการร้านเพื่อตรวจรับรอง
             </p>
 
             {continueShift && (
@@ -769,10 +946,113 @@ export function ChecklistPage({
               </button>
               <button
                 type="button"
-                onClick={endShift}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-400 text-amber-950 text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
+                onClick={endCompleteShift}
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 dark:bg-amber-400 text-amber-950 text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
               >
                 ส่งมอบงานจบกะ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Incomplete Shift Reason Modal */}
+      {showIncompleteModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 px-4 animate-scrim-in"
+          onClick={() => setShowIncompleteModal(false)}
+          onKeyDown={handleIncompleteKeyDown}
+        >
+          <div
+            ref={incompleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="incomplete-modal-title"
+            tabIndex={-1}
+            className="animate-dock-rise bg-[var(--color-surface)] border border-amber-500/50 rounded-2xl p-5 sm:p-7 w-full max-w-md focus-visible:outline-none shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 flex items-center justify-center shrink-0 shadow-xs">
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <h2 id="incomplete-modal-title" className="text-base sm:text-lg font-extrabold text-[var(--color-text)]">
+                  แจ้งจบกะงาน (มีงานค้าง)
+                </h2>
+                <p className="text-xs text-[var(--color-text-muted)] font-medium">
+                  ตรวจสอบกับข้อมูลล่าสุดของกะแล้ว
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-950 dark:text-amber-200 space-y-1.5">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <span>⚠️ ตรวจพบงานที่ยังไม่ได้ทำ {dbPendingTasks.length} รายการ</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-900/80 dark:text-amber-300/80">
+                คุณสามารถจบกะได้ แต่จำเป็นต้องระบุเหตุผลเพื่อส่งให้ผู้จัดการและผู้ช่วยผู้จัดการพิจารณาดำเนินการ
+              </p>
+            </div>
+
+            {/* List of pending tasks */}
+            {dbPendingTasks.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-[var(--color-text-muted)]">
+                  รายการงานคงค้างในระบบ ({dbPendingTasks.length} ข้อ):
+                </span>
+                <div className="max-h-28 overflow-y-auto p-2.5 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-xs space-y-1">
+                  {dbPendingTasks.map((t, idx) => (
+                    <div key={t.id || idx} className="flex items-start gap-1.5 text-[var(--color-text)] font-medium">
+                      <span className="text-amber-600 font-bold shrink-0">•</span>
+                      <span className="break-words leading-tight">{t.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-950 dark:text-amber-200 space-y-1.5">
+              <p className="font-extrabold flex items-center gap-1.5">
+                <span>⚠️ ผลกระทบการจบกะงานไม่ครบ:</span>
+              </p>
+              <p className="leading-relaxed">
+                เหตุผลของคุณจะถูกส่งแจ้งเตือนไปยังผู้จัดการร้านและผู้ช่วยผู้จัดการร้านทันที ผู้บริหารสามารถเลือกพิจารณาได้ว่า: <strong>อนุโลม (ไม่ลงโทษ)</strong>, <strong>หักคะแนน</strong>, <strong>ตัดสตรีคเป็น 0</strong> หรือ <strong>หักโควตาลา</strong> (คล้ายระบบลางาน)
+              </p>
+            </div>
+
+            {/* Reason Textarea */}
+            <div className="space-y-1.5">
+              <label htmlFor="incomplete-shift-reason" className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                <span>ระบุเหตุผลที่ทำงานไม่ครบก่อนจบกะ <span className="text-rose-500">*</span></span>
+                <span className="text-[10px] text-[var(--color-text-muted)] font-normal">จำเป็นต้องระบุ</span>
+              </label>
+              <textarea
+                id="incomplete-shift-reason"
+                rows={3}
+                value={incompleteReason}
+                onChange={(e) => setIncompleteReason(e.target.value)}
+                placeholder="เช่น สินค้าหมดสต็อก, มีเหตุฉุกเฉินหน้าร้าน, ป่วยกะทันหัน, ลูกค้าหน้าร้านแน่นมาก ฯลฯ"
+                className="w-full text-xs sm:text-sm p-3 rounded-xl border border-[var(--color-border)] focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-[var(--color-surface)] text-[var(--color-text)] resize-none transition-all placeholder:text-[var(--color-text-muted)]/60"
+              />
+            </div>
+
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowIncompleteModal(false)}
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
+              >
+                กลับไปตรวจต่อ
+              </button>
+              <button
+                type="button"
+                disabled={!incompleteReason.trim()}
+                onClick={endIncompleteShift}
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-amber-400 text-amber-950 text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
+              >
+                ยืนยันจบกะและส่งเหตุผล
               </button>
             </div>
           </div>
@@ -782,7 +1062,7 @@ export function ChecklistPage({
       {/* Exit Modal */}
       {showExitConfirm && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 px-4 animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 px-4 animate-scrim-in"
           onClick={() => setShowExitConfirm(false)}
           onKeyDown={handleExitKeyDown}
         >
@@ -792,7 +1072,7 @@ export function ChecklistPage({
             aria-modal="true"
             aria-labelledby="exit-modal-title"
             tabIndex={-1}
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 sm:p-7 w-full max-w-sm focus-visible:outline-none shadow-2xl"
+            className="animate-dock-rise bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 sm:p-7 w-full max-w-sm focus-visible:outline-none shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex items-center justify-center mb-3.5 shadow-xs">

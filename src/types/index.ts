@@ -1,5 +1,41 @@
 export type Role = "employee" | "manager" | "manager_assistant" | "committee" | "general_manager" | "admin";
 export type ShiftType = "morning" | "afternoon" | "both";
+export type LeaveType = "paid" | "unpaid" | "ลาเเบบได้เงิน" | "ลาเเบบไม่ได้รับเงิน" | "ลาแบบได้เงิน" | "ลาแบบไม่ได้รับเงิน" | "sick" | "personal" | "other";
+
+export interface EmployeeLeave {
+  id: string;
+  userId: string;
+  userName?: string;
+  userPosition?: string;
+  branchId: string;
+  branchName?: string;
+  leaveType: LeaveType;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  reason: string;
+  preserveStreak: boolean;
+  previousStreak?: number;
+  recordedBy: string;
+  recordedByName?: string;
+  recordedByRole?: Role;
+  status?: "pending" | "approved" | "rejected";
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface LeaveQuotaInfo {
+  userId: string;
+  branchId?: string;
+  allocatedQuota: number;
+  branchDefaultQuota: number;
+  customQuota: number | null;
+  usedDays: number;
+  pendingDays: number;
+  remainingDays: number;
+}
 
 export interface Position {
   id: string;
@@ -9,12 +45,13 @@ export interface Position {
 export interface User {
   id: string;
   name: string;
-  email: string;
+  username?: string;
   password?: string;
   role: Role;
   position?: string;
   branchName?: string;
   branchId?: string;
+  leaveQuota?: number | null;
   point?: number;
   pointStreak?: number;
   pointStreakType?: "none" | "flawed" | "perfect";
@@ -26,9 +63,13 @@ export interface ChecklistItem {
   label: string;
   category?: string;
   completedAt: string | null;
+  completedBy?: string | null;
+  completedByName?: string | null;
   taskWorkId?: string;
   isLate?: boolean;
   comment?: string | null;
+  isSpecial?: boolean;
+  zeroPoints?: boolean;
 }
 
 export interface ShiftSession {
@@ -43,6 +84,14 @@ export interface ShiftSession {
   items: ChecklistItem[];
   notified: boolean;
   branchName?: string;
+  incompleteReason?: string | null;
+  incompleteStatus?: "none" | "pending_review" | "reviewed";
+  incompleteAction?: "no_penalty" | "deduct_points" | "break_streak" | "deduct_leave_quota" | string | null;
+  incompleteActionPoints?: number;
+  incompleteActionNote?: string | null;
+  incompleteReviewedBy?: string | null;
+  incompleteReviewedByName?: string | null;
+  incompleteReviewedAt?: string | null;
 }
 
 export interface Notification {

@@ -8,7 +8,7 @@ import { DashboardBranch } from "../../actions/branch";
 import { fetchBranchesWithCache } from "../../utils/cache";
 import { useApp } from "../../context/AppContext";
 import { useRouter } from "next/navigation";
-import { UserPlus, Building2, Mail, Lock, CheckCircle2, AlertCircle } from "lucide-react";
+import { UserPlus, Building2, AtSign, Lock, CheckCircle2, AlertCircle } from "lucide-react";
 
 interface EmployeeRegisterFormProps {
   onSuccess?: (user: User) => void;
@@ -26,7 +26,7 @@ export function EmployeeRegisterForm({
   const [branches, setBranches] = useState<DashboardBranch[]>([]);
   const [form, setForm] = useState({
     name: "",
-    email: "",
+    username: "",
     password: "",
     confirmPassword: "",
     branchId: "",
@@ -47,8 +47,8 @@ export function EmployeeRegisterForm({
 
   async function handleRegister(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim() || !form.confirmPassword.trim()) {
-      setError("กรุณากรอกชื่อ-นามสกุล, อีเมล และรหัสผ่านให้ครบถ้วน");
+    if (!form.name.trim() || !form.username.trim() || !form.password.trim() || !form.confirmPassword.trim()) {
+      setError("กรุณากรอกชื่อ-นามสกุล, ชื่อผู้ใช้ และรหัสผ่านให้ครบถ้วน");
       return;
     }
     if (form.password !== form.confirmPassword) {
@@ -67,7 +67,7 @@ export function EmployeeRegisterForm({
     try {
       const res = await registerAction({
         name: form.name.trim(),
-        email: form.email.trim().toLowerCase(),
+        username: form.username.trim().toLowerCase(),
         password: form.password,
         role: "employee",
         branchId: form.branchId || undefined,
@@ -162,21 +162,21 @@ export function EmployeeRegisterForm({
       </div>
 
       <div>
-        <label htmlFor="reg-email" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-          อีเมลสำหรับเข้าสู่ระบบ <span className="text-rose-500">*</span>
+        <label htmlFor="reg-username" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
+          ชื่อผู้ใช้สำหรับเข้าสู่ระบบ (Username) <span className="text-rose-500">*</span>
         </label>
         <div className="relative">
           <input
-            id="reg-email"
+            id="reg-username"
             className={inputClass}
-            placeholder="user@email.com"
-            type="email"
-            autoComplete="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            placeholder="เช่น somchai123 หรือ cashier01"
+            type="text"
+            autoComplete="username"
+            value={form.username}
+            onChange={(e) => setForm({ ...form, username: e.target.value })}
             required
           />
-          <Mail size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" />
+          <AtSign size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" />
         </div>
       </div>
 

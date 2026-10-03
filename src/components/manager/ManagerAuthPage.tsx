@@ -10,7 +10,7 @@ export function ManagerAuthPage({ onLogin }: { onLogin: (user: User) => void }) 
   const [tab, setTab] = useState<"login" | "register">("login");
   const [form, setForm] = useState({
     name: "",
-    email: "",
+    username: "",
     password: "",
     position: MANAGEMENT_POSITIONS[1], // default "ผู้จัดการร้าน"
   });
@@ -20,16 +20,16 @@ export function ManagerAuthPage({ onLogin }: { onLogin: (user: User) => void }) 
 
 
   async function handleLogin() {
-    if (!form.email.trim() || !form.password.trim()) {
-      setError("กรุณากรอกอีเมลและรหัสผ่าน");
+    if (!form.username.trim() || !form.password.trim()) {
+      setError("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
       return;
     }
     setLoading(true);
     setError("");
     try {
-      const res = await loginAction(form.email, form.password);
+      const res = await loginAction(form.username, form.password);
       if (!res.success || !res.user) {
-        setError(res.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        setError(res.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
         setLoading(false);
         return;
       }
@@ -57,7 +57,7 @@ export function ManagerAuthPage({ onLogin }: { onLogin: (user: User) => void }) 
   }
 
   async function handleRegister() {
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+    if (!form.name.trim() || !form.username.trim() || !form.password.trim()) {
       setError("กรุณากรอกข้อมูลให้ครบถ้วน");
       return;
     }
@@ -66,7 +66,7 @@ export function ManagerAuthPage({ onLogin }: { onLogin: (user: User) => void }) 
     try {
       const res = await registerAction({
         name: form.name,
-        email: form.email,
+        username: form.username,
         password: form.password,
         role: "manager",
         position: form.position,
@@ -151,16 +151,16 @@ export function ManagerAuthPage({ onLogin }: { onLogin: (user: User) => void }) 
           )}
 
           <div>
-            <label htmlFor="mgr-email" className="block text-xs font-semibold text-slate-200 mb-1">
-              อีเมลฝ่ายบริหาร
+            <label htmlFor="mgr-username" className="block text-xs font-semibold text-slate-200 mb-1">
+              ชื่อผู้ใช้ (Username)
             </label>
             <input
-              id="mgr-email"
+              id="mgr-username"
               className={inputStyle}
-              placeholder="user@email.com"
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="เช่น manager หรือ assistant"
+              type="text"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
           </div>
 

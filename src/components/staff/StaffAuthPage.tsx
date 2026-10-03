@@ -17,7 +17,7 @@ export function StaffAuthPage({
   const [tab, setTab] = useState<AuthTab>("staff");
   const [form, setForm] = useState({
     name: "",
-    email: "",
+    username: "",
     password: "",
     role: "employee" as 'employee' | 'manager' | 'committee' | 'manager_assistant',
     position: STAFF_POSITIONS[0],
@@ -26,16 +26,16 @@ export function StaffAuthPage({
   const [loading, setLoading] = useState(false);
 
   async function handleLogin() {
-    if (!form.email.trim() || !form.password.trim()) {
-      setError("กรุณากรอกอีเมลและรหัสผ่าน");
+    if (!form.username.trim() || !form.password.trim()) {
+      setError("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
       return;
     }
     setLoading(true);
     setError("");
     try {
-      const res = await loginAction(form.email, form.password);
+      const res = await loginAction(form.username, form.password);
       if (!res.success || !res.user) {
-        setError(res.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        setError(res.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
         setLoading(false);
         return;
       }
@@ -63,7 +63,7 @@ export function StaffAuthPage({
   }
 
   async function handleRegister() {
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+    if (!form.name.trim() || !form.username.trim() || !form.password.trim()) {
       setError("กรุณากรอกข้อมูลให้ครบถ้วน");
       return;
     }
@@ -72,7 +72,7 @@ export function StaffAuthPage({
     try {
       const res = await registerAction({
         name: form.name,
-        email: form.email,
+        username: form.username,
         password: form.password,
         role: form.role,
         position: form.position,
@@ -176,19 +176,19 @@ export function StaffAuthPage({
           )}
 
           <div>
-            <label htmlFor="staff-email" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">
-              {tab === "manager" ? "อีเมลฝ่ายบริหาร" : tab === "register" ? "อีเมล" : "อีเมลพนักงาน"}
+            <label htmlFor="staff-username" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">
+              ชื่อผู้ใช้ (Username)
             </label>
             <input
-              id="staff-email"
+              id="staff-username"
               className={inp}
-              placeholder="user@email.com"
-              type="email"
-              autoComplete="email"
+              placeholder="เช่น cashier หรือ manager"
+              type="text"
+              autoComplete="username"
               aria-invalid={Boolean(error)}
               aria-describedby={error ? "staff-auth-error" : undefined}
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
           </div>
 

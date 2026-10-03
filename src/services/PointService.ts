@@ -2,6 +2,8 @@ import { eq, desc, sql, inArray } from "drizzle-orm";
 import { users, pointTransactions, shiftSession, taskWork, tasks, branches } from "../db/schema";
 import { IPointService, INotificationService } from "./types";
 import { PointTransaction, LeaderboardEntry, Role } from "../types";
+import { isSpecialZeroPointTask } from "./ChecklistService";
+import { isValidUuid } from "../utils/validation";
 
 export class PointService implements IPointService {
   constructor(private db: any, private notificationService?: INotificationService) {}
@@ -75,13 +77,38 @@ export class PointService implements IPointService {
           ? await this.db.select().from(tasks).where(inArray(tasks.id, taskIds))
           : [];
 
+      // Fetch user to manage streaks
+      const [targetUser] = await this.db
+        .select()
+        .from(users)
+        .where(eq(users.id, session.user))
+        .limit(1);
+
+      // Check if session tasks exclusively consist of special closing checklist tasks (Zero Points Rule)
+      const nonSpecialTasks = sessionTasks.filter((t: any) => !isSpecialZeroPointTask(t.name));
+      const isOnlySpecialTasks = sessionTasks.length > 0 && nonSpecialTasks.length === 0;
+
+      if (isOnlySpecialTasks) {
+        const userStreakType = targetUser?.point_streak_type;
+        return {
+          success: true,
+          awardedPoints: 0,
+          streakType: userStreakType === "perfect" || userStreakType === "flawed" ? userStreakType : undefined,
+          streakCount: targetUser?.point_streak || 0,
+        };
+      }
+
       let hasIssueOrLate = false;
       for (const work of sessionWorks) {
+        const t = sessionTasks.find((item: any) => item.id === work.task);
+        // Special zero-point closing tasks do not penalize streaks or evaluate late infractions
+        if (t && isSpecialZeroPointTask(t.name)) {
+          continue;
+        }
         if (!work.timestamp) {
           hasIssueOrLate = true;
           break;
         }
-        const t = sessionTasks.find((item: any) => item.id === work.task);
         if (t?.end) {
           const completedDate = new Date(work.timestamp);
           const [endHour, endMinute] = t.end.split(":").map(Number);
@@ -96,13 +123,6 @@ export class PointService implements IPointService {
       }
 
       const isPerfect = !hasIssueOrLate;
-
-      // Fetch user to manage streaks
-      const [targetUser] = await this.db
-        .select()
-        .from(users)
-        .where(eq(users.id, session.user))
-        .limit(1);
 
       let newStreakType = targetUser?.point_streak_type || "none";
       let newStreakCount = targetUser?.point_streak || 0;
@@ -132,7 +152,7 @@ export class PointService implements IPointService {
         newStreakType = "flawed";
         newStreakCount = (targetUser?.point_streak || 0) + 1;
         totalPoints = 1;
-        pointReasons.push("ผู้บริหารอนุมัติแบบอนุโลม (Exception): รักษาสตรีคต่อเนื่องเป็นสถานะ Flawed (+1 แต้ม)");
+        pointReasons.push("ผู้บริหารอนุมัติแบบอนุโลม: รักษาสตรีคต่อเนื่องเป็นสถานะมีข้อบกพร่อง (+1 แต้ม)");
       } else {
         // Standard imperfect shift: breaks the streak
         newStreakType = "flawed";
@@ -211,6 +231,18 @@ export class PointService implements IPointService {
     error?: string;
   }> {
     try {
+      if (!isValidUuid(userId)) {
+        return {
+          success: false,
+          points: 0,
+          streak: 0,
+          streakType: "none",
+          longestStreak: 0,
+          transactions: [],
+          error: "ไมพบผู้ใช้งาน",
+        };
+      }
+
       const [user] = await this.db
         .select()
         .from(users)
@@ -274,13 +306,29 @@ export class PointService implements IPointService {
     error?: string;
   }> {
     try {
-      const allUsers = await this.db
-        .select()
-        .from(users)
-        .orderBy(desc(users.point))
-        .limit(30);
-
       const allBranches = await this.db.select().from(branches);
+      let allUsers: any[] = [];
+
+      if (branchId) {
+        const targetBranch = allBranches.find((b: any) => b.id === branchId);
+        const memberIds: string[] = Array.isArray(targetBranch?.members) ? targetBranch.members : [];
+        if (memberIds.length > 0) {
+          allUsers = await this.db
+            .select()
+            .from(users)
+            .where(inArray(users.id, memberIds))
+            .orderBy(desc(users.point))
+            .limit(30);
+        } else {
+          allUsers = [];
+        }
+      } else {
+        allUsers = await this.db
+          .select()
+          .from(users)
+          .orderBy(desc(users.point))
+          .limit(30);
+      }
 
       const mapped: LeaderboardEntry[] = allUsers.map((u: any) => {
         const userBranch = allBranches.find(
@@ -312,4 +360,109 @@ export class PointService implements IPointService {
       return { success: false, leaderboard: [], error: err?.message };
     }
   }
+
+  async resetEmployeeScores(params?: {
+    resetRoles?: string[];
+    recordTransaction?: boolean;
+    notifyEmployees?: boolean;
+    resetStreaks?: boolean;
+  }): Promise<{
+    success: boolean;
+    affectedUsersCount: number;
+    totalPointsReset: number;
+    error?: string;
+  }> {
+    try {
+      const targetRoles =
+        params?.resetRoles && params.resetRoles.length > 0
+          ? params.resetRoles
+          : ["employee"];
+      const shouldRecordTx = params?.recordTransaction !== false;
+      const shouldNotify = params?.notifyEmployees !== false;
+      const shouldResetStreaks = Boolean(params?.resetStreaks);
+
+      // Find all target users with points > 0 or streaks > 0 if resetting streaks
+      const targetUsers = await this.db
+        .select()
+        .from(users)
+        .where(inArray(users.role, targetRoles as ("admin" | "committee" | "general_manager" | "manager" | "manager_assistant" | "employee")[]));
+
+      const usersToReset = targetUsers.filter(
+        (u: typeof users.$inferSelect) =>
+          (u.point || 0) > 0 || (shouldResetStreaks && (u.point_streak || 0) > 0)
+      );
+
+      let totalPointsReset = 0;
+
+      if (usersToReset.length > 0) {
+        // 1. Audit trail: Record reset transaction for users who had points
+        if (shouldRecordTx) {
+          const now = new Date();
+          const txValues = usersToReset
+            .filter((u: typeof users.$inferSelect) => (u.point || 0) > 0)
+            .map((u: typeof users.$inferSelect) => {
+              totalPointsReset += u.point;
+              return {
+                user_id: u.id,
+                points: -u.point,
+                type: "monthly_reset",
+                description: `รีเซ็ตคะแนนรอบเดือนใหม่ (ล้างคะแนนเดิม ${u.point} แต้ม)`,
+                created_at: now,
+              };
+            });
+
+          if (txValues.length > 0) {
+            await this.db.insert(pointTransactions).values(txValues);
+          }
+        } else {
+          for (const u of usersToReset) {
+            totalPointsReset += u.point || 0;
+          }
+        }
+
+        // 2. Reset points in database for all users with target roles
+        const updatePayload: {
+          point: number;
+          point_streak?: number;
+          point_streak_type?: "none" | "flawed" | "perfect";
+        } = { point: 0 };
+
+        if (shouldResetStreaks) {
+          updatePayload.point_streak = 0;
+          updatePayload.point_streak_type = "none";
+        }
+
+        await this.db
+          .update(users)
+          .set(updatePayload)
+          .where(inArray(users.role, targetRoles as ("admin" | "committee" | "general_manager" | "manager" | "manager_assistant" | "employee")[]));
+      }
+
+      // 3. Send broadcast notification if enabled
+      if (shouldNotify && this.notificationService) {
+        await this.notificationService.createNotification({
+          recipientRole: "employee",
+          title: "🎉 เริ่มต้นรอบคะแนนประจำเดือนใหม่",
+          message: "ระบบได้ทำการรีเซ็ตคะแนนสะสมประจำเดือนของพนักงานเรียบร้อยแล้ว ขอให้ทุกคนร่วมสนุกกับการสะสมแต้มรอบใหม่ในเดือนนี้!",
+          type: "system",
+        });
+      }
+
+      return {
+        success: true,
+        affectedUsersCount: usersToReset.length,
+        totalPointsReset,
+      };
+    } catch (err: unknown) {
+      console.error("resetEmployeeScores error:", err);
+      const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการรีเซ็ตคะแนนพนักงานประจำเดือน";
+      return {
+        success: false,
+        affectedUsersCount: 0,
+        totalPointsReset: 0,
+        error: message,
+      };
+    }
+  }
 }
+

@@ -1,10 +1,26 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Snowflake, CheckCircle2, Clock, UserCheck, AlertTriangle, RefreshCw, Thermometer, ShieldCheck, Ban } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  Snowflake,
+  CheckCircle2,
+  Clock,
+  UserCheck,
+  AlertTriangle,
+  RefreshCw,
+  Thermometer,
+  ShieldCheck,
+  Ban,
+  FileSpreadsheet,
+  Download,
+  ChevronDown,
+  Check,
+  FileText
+} from "lucide-react";
 import { RefrigeratorTaskItem, getBranchRefrigeratorTasksAction } from "../../actions/refrigerator";
 import { fmtTime } from "../../data/storage";
 import { User } from "../../types";
+import { exportRefrigeratorDataAsCSV, exportRefrigeratorDataAsExcel } from "../../utils/exportRefrigeratorData";
 
 function getThaiToday(): string {
   const y = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", year: "numeric" }).format(new Date());
@@ -29,6 +45,65 @@ export function BranchRefrigeratorLiveView({ user }: { user: User }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "done" | "pending" | "disabled" | "issues">("all");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportToast, setExportToast] = useState<string | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close export dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    }
+    if (exportMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [exportMenuOpen]);
+
+  const showToast = useCallback((msg: string) => {
+    setExportToast(msg);
+    setTimeout(() => {
+      setExportToast((current) => (current === msg ? null : current));
+    }, 3500);
+  }, []);
+
+  const handleExportExcel = useCallback(() => {
+    if (tasks.length === 0) {
+      showToast("ไม่มีข้อมูลตู้แช่ในวันที่เลือกเพื่อส่งออก");
+      setExportMenuOpen(false);
+      return;
+    }
+    try {
+      exportRefrigeratorDataAsExcel(tasks, branchName || user.branchName || "สาขาหลัก", selectedDate);
+      showToast(`ส่งออกไฟล์ Excel (${selectedDate}) สำเร็จ!`);
+    } catch (e: unknown) {
+      console.error("Export Excel error:", e);
+      showToast("ส่งออกไฟล์ Excel ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setExportMenuOpen(false);
+    }
+  }, [tasks, branchName, user.branchName, selectedDate, showToast]);
+
+  const handleExportCSV = useCallback(() => {
+    if (tasks.length === 0) {
+      showToast("ไม่มีข้อมูลตู้แช่ในวันที่เลือกเพื่อส่งออก");
+      setExportMenuOpen(false);
+      return;
+    }
+    try {
+      exportRefrigeratorDataAsCSV(tasks, branchName || user.branchName || "สาขาหลัก", selectedDate);
+      showToast(`ส่งออกไฟล์ CSV (${selectedDate}) สำเร็จ!`);
+    } catch (e: unknown) {
+      console.error("Export CSV error:", e);
+      showToast("ส่งออกไฟล์ CSV ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setExportMenuOpen(false);
+    }
+  }, [tasks, branchName, user.branchName, selectedDate, showToast]);
 
   const loadData = useCallback(async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
@@ -42,7 +117,7 @@ export function BranchRefrigeratorLiveView({ user }: { user: User }) {
         setError(res.error || "ไม่สามารถโหลดข้อมูลตู้แช่ได้");
       }
     } catch (err: unknown) {
-      if (!isSilent) setError((err as Error)?.message || "เกิดข้อผิดพลาดในการโหลดข้อมูล");
+      if (!isSilent) setError((err as Error)?.message || "โหลดข้อมูลตู้แช่ไม่สำเร็จ กรุณากดโหลดใหม่อีกครั้ง");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -62,7 +137,7 @@ export function BranchRefrigeratorLiveView({ user }: { user: User }) {
         }
       } catch (err: unknown) {
         if (!isMounted) return;
-        setError((err as Error)?.message || "เกิดข้อผิดพลาดในการโหลดข้อมูล");
+        setError((err as Error)?.message || "โหลดข้อมูลตู้แช่ไม่สำเร็จ กรุณากดโหลดใหม่อีกครั้ง");
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -170,8 +245,83 @@ export function BranchRefrigeratorLiveView({ user }: { user: User }) {
             <RefreshCw size={13} className={refreshing ? "animate-spin text-sky-600" : ""} />
             <span>รีเฟรช</span>
           </button>
+
+          {/* Export CSV / Excel Button & Dropdown */}
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              type="button"
+              onClick={() => setExportMenuOpen((prev) => !prev)}
+              disabled={loading || tasks.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-500/30 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              title={`ส่งออกข้อมูลตู้แช่วันที่ ${selectedDate} เป็น CSV หรือ Excel`}
+            >
+              <FileSpreadsheet size={14} className="text-emerald-600 dark:text-emerald-400" />
+              <span>ส่งออกไฟล์</span>
+              <ChevronDown size={12} className={`transition-transform duration-200 ${exportMenuOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {exportMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-64 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl z-50 p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-2.5 py-1.5 border-b border-[var(--color-border)]">
+                  <p className="text-[11px] font-bold text-[var(--color-text)]">
+                    ส่งออกข้อมูลตู้แช่ ({selectedDate})
+                  </p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">
+                    รวมทั้งหมด {tasks.length} รายการ
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl hover:bg-[var(--color-surface-2)] text-left cursor-pointer transition-colors group"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                    <FileSpreadsheet size={15} />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-bold text-[var(--color-text)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      ไฟล์ Microsoft Excel (.xls)
+                    </span>
+                    <span className="block text-[10px] text-[var(--color-text-muted)]">
+                      จัดรูปแบบตาราง สีสถานะ และเกณฑ์อุณหภูมิพร้อมใช้งาน
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl hover:bg-[var(--color-surface-2)] text-left cursor-pointer transition-colors group"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                    <FileText size={15} />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-bold text-[var(--color-text)] group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                      ไฟล์ CSV สำหรับ Excel (.csv)
+                    </span>
+                    <span className="block text-[10px] text-[var(--color-text-muted)]">
+                      UTF-8 BOM รองรับภาษาไทยสมบูรณ์แบบ
+                    </span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Toast Feedback */}
+      {exportToast && (
+        <div
+          role="status"
+          className="fixed top-6 right-6 z-50 bg-[var(--color-brown)] dark:bg-emerald-950 text-amber-100 dark:text-emerald-100 border border-amber-500/40 dark:border-emerald-500/40 text-xs font-bold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3"
+        >
+          <Check size={16} className="text-emerald-400 shrink-0" />
+          <span>{exportToast}</span>
+        </div>
+      )}
 
       {/* KPI Cards Cockpit */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">

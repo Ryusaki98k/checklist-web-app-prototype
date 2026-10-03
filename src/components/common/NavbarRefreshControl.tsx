@@ -218,7 +218,7 @@ export function NavbarRefreshControl({
                   )}
                 </div>
                 <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed mt-0.5">
-                  ล้างแคชและดึงข้อมูลสดจาก Supabase ทันที (Bypass Cache)
+                  ล้างข้อมูลแคชและดึงข้อมูลล่าสุดทันที
                 </p>
               </div>
             </button>

@@ -49,3 +49,11 @@ export async function assignTasksToBranchAction(
   const services = getServices();
   return await services.branch.assignTasksToBranch(branchId, taskIds);
 }
+
+export async function updateBranchLeaveQuotaAction(
+  branchId: string,
+  quota: number
+): Promise<{ success: boolean; error?: string }> {
+  const services = getServices();
+  return await services.branch.updateBranchLeaveQuota(branchId, quota);
+}

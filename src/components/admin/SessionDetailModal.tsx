@@ -3,7 +3,8 @@ import { ShiftSession } from "../../types";
 import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, Divider, getShiftBadge } from "../common/Badge";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
-import { AlertCircle, ShieldCheck } from "lucide-react";
+import { AlertCircle, AlertTriangle, ShieldCheck, CheckCircle2, ShieldAlert } from "lucide-react";
+import { reviewIncompleteShiftAction } from "../../actions/manager";
 
 export function SessionDetailModal({
   session,
@@ -12,6 +13,9 @@ export function SessionDetailModal({
   isApproved = false,
   onApprove,
   approveRoleTitle = "ผู้จัดการ",
+  reviewerId,
+  canReviewIncomplete = false,
+  onReviewSuccess,
 }: {
   session: ShiftSession | null;
   onClose: () => void;
@@ -19,14 +23,66 @@ export function SessionDetailModal({
   isApproved?: boolean;
   onApprove?: (sessionId: string, isException?: boolean) => void;
   approveRoleTitle?: string;
+  reviewerId?: string;
+  canReviewIncomplete?: boolean;
+  onReviewSuccess?: () => void;
 }) {
+  const [sessionOverride, setSessionOverride] = useState<Partial<ShiftSession> | null>(null);
   const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
+  const [incompleteAction, setIncompleteAction] = useState<"no_penalty" | "deduct_points" | "break_streak" | "deduct_leave_quota">("no_penalty");
+  const [pointsToDeduct, setPointsToDeduct] = useState<number>(5);
+  const [incompleteNote, setIncompleteNote] = useState<string>("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
+  const [reviewFeedback, setReviewFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const currentSession = session ? { ...session, ...sessionOverride } : null;
+
   const { dialogRef, handleKeyDown } = useModalFocusTrap(Boolean(session), onClose);
 
-  if (!session) return null;
+  if (!currentSession) return null;
 
-  const total = session.items.length;
-  const done = session.items.filter((i) => i.completedAt).length;
+  const total = currentSession.items.length;
+  const done = currentSession.items.filter((i) => i.completedAt).length;
+
+  const isIncomplete = Boolean(
+    currentSession.incompleteReason ||
+    currentSession.incompleteStatus === "pending_review" ||
+    currentSession.incompleteStatus === "reviewed"
+  );
+  const isReviewed = currentSession.incompleteStatus === "reviewed";
+
+  const handleReviewIncomplete = async () => {
+    if (!currentSession || !reviewerId) return;
+    try {
+      setIsSubmittingReview(true);
+      setReviewFeedback(null);
+      const res = await reviewIncompleteShiftAction({
+        shiftSessionId: currentSession.id,
+        reviewerId,
+        action: incompleteAction,
+        pointsToDeduct: incompleteAction === "deduct_points" ? pointsToDeduct : 0,
+        note: incompleteNote.trim() || undefined,
+      });
+
+      if (res.success) {
+        setReviewFeedback({ type: "success", message: "บันทึกผลการพิจารณามาตรการเรียบร้อยแล้ว" });
+        setSessionOverride({
+          incompleteStatus: "reviewed",
+          incompleteAction,
+          incompleteActionPoints: incompleteAction === "deduct_points" ? pointsToDeduct : 0,
+          incompleteActionNote: incompleteNote.trim() || null,
+          incompleteReviewedAt: new Date().toISOString(),
+        });
+        onReviewSuccess?.();
+      } else {
+        setReviewFeedback({ type: "error", message: res.error || "บันทึกผลการพิจารณาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" });
+      }
+    } catch {
+      setReviewFeedback({ type: "error", message: "ไม่สามารถบันทึกผลการพิจารณาได้" });
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   return (
     <div
@@ -47,12 +103,12 @@ export function SessionDetailModal({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 id="session-detail-title" className="text-base font-bold text-[var(--color-text)]">
-                {session.userName}
+                {currentSession.userName}
               </h2>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {session.userPosition && <Badge color="muted">{session.userPosition}</Badge>}
-                {getShiftBadge(session.shift)}
-                <span className="text-xs font-mono text-[var(--color-text-muted)]">{fmtDate(session.startedAt)}</span>
+                {currentSession.userPosition && <Badge color="muted">{currentSession.userPosition}</Badge>}
+                {getShiftBadge(currentSession.shift)}
+                <span className="text-xs font-mono text-[var(--color-text-muted)]">{fmtDate(currentSession.startedAt)}</span>
                 {isApproved ? (
                   <span className="text-xs font-bold text-emerald-900 bg-emerald-100 dark:bg-emerald-950/80 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 px-2.5 py-0.5 rounded-full">
                     ✓ รับรองผลเรียบร้อยแล้ว
@@ -81,16 +137,249 @@ export function SessionDetailModal({
             <span className="font-mono font-bold text-[var(--color-text)]">{total > 0 ? Math.round((done / total) * 100) : 0}%</span>
           </div>
 
+          {/* Incomplete Shift Alert & Review Decision Section */}
+          {isIncomplete && (
+            <>
+              {isReviewed ? (
+                <div className="p-3.5 mb-3 rounded-2xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span>ผลการพิจารณาจบกะงานไม่ครบ</span>
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-blue-100 dark:bg-blue-900/80 text-blue-900 dark:text-blue-100 border border-blue-300 dark:border-blue-700">
+                      {currentSession.incompleteAction === "no_penalty" && "🛡️ อนุโลม (ไม่ลงโทษ)"}
+                      {currentSession.incompleteAction === "deduct_points" && `🎯 หัก ${currentSession.incompleteActionPoints || 0} คะแนน`}
+                      {currentSession.incompleteAction === "break_streak" && "⚡ ตัดสตรีคสะสมเป็น 0"}
+                      {currentSession.incompleteAction === "deduct_leave_quota" && "📅 หักโควตาวันลา 1 วัน"}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[var(--color-text)] space-y-1 bg-[var(--color-surface)] p-2.5 rounded-xl border border-blue-200/60 dark:border-blue-900/60">
+                    <div>
+                      <span className="font-semibold text-[var(--color-text-muted)]">เหตุผลของพนักงาน:</span>{" "}
+                      <span className="italic font-medium text-[var(--color-text)]">&ldquo;{currentSession.incompleteReason}&rdquo;</span>
+                    </div>
+                    {currentSession.incompleteActionNote && (
+                      <div>
+                        <span className="font-semibold text-[var(--color-text-muted)]">หมายเหตุจากผู้ตรวจ:</span>{" "}
+                        <span className="font-medium text-[var(--color-text)]">{currentSession.incompleteActionNote}</span>
+                      </div>
+                    )}
+                    {currentSession.incompleteReviewedAt && (
+                      <div className="text-[10px] text-[var(--color-text-subtle)] font-mono pt-0.5">
+                        พิจารณาเมื่อ {fmtDate(currentSession.incompleteReviewedAt)} {fmtTime(currentSession.incompleteReviewedAt)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 sm:p-4 mb-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-800 text-xs space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 flex items-center justify-center shrink-0 mt-0.5">
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h3 className="font-bold text-amber-950 dark:text-amber-200 text-sm">
+                          พนักงานจบกะการทำงานโดยมีรายการค้างคา
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 border border-amber-300 dark:border-amber-700">
+                          รอพิจารณามาตรการ
+                        </span>
+                      </div>
+                      <div className="mt-2 p-2.5 rounded-xl bg-[var(--color-surface)] border border-amber-200 dark:border-amber-900/60 text-xs">
+                        <span className="font-bold text-amber-800 dark:text-amber-300 block mb-0.5">เหตุผลที่ระบุจากพนักงาน:</span>
+                        <p className="font-medium text-[var(--color-text)] italic break-words">
+                          &ldquo;{currentSession.incompleteReason || "ไม่ได้ระบุเหตุผล"}&rdquo;
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {canReviewIncomplete && reviewerId ? (
+                    <div className="pt-2 border-t border-amber-200/80 dark:border-amber-800/80 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-amber-950 dark:text-amber-100 text-xs flex items-center gap-1.5">
+                          <ShieldAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <span>เลือกมาตรการสำหรับกรณีนี้ ({approveRoleTitle}):</span>
+                        </span>
+                      </div>
+
+                      {/* 4 Options Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {/* 1. No Penalty */}
+                        <button
+                          type="button"
+                          onClick={() => setIncompleteAction("no_penalty")}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            incompleteAction === "no_penalty"
+                              ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs"
+                              : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-emerald-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🛡️</span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs text-[var(--color-text)] block">
+                                อนุโลม / ไม่ลงโทษ
+                              </span>
+                              <span className="text-[10px] text-[var(--color-text-muted)] line-clamp-1">
+                                มีเหตุจำเป็น รักษาสิทธิ์และสตรีค
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* 2. Deduct Points */}
+                        <button
+                          type="button"
+                          onClick={() => setIncompleteAction("deduct_points")}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            incompleteAction === "deduct_points"
+                              ? "bg-amber-50 dark:bg-amber-950/60 border-amber-500 ring-2 ring-amber-500/20 shadow-xs"
+                              : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-amber-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🎯</span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs text-[var(--color-text)] block">
+                                หักคะแนนประเมิน
+                              </span>
+                              <span className="text-[10px] text-[var(--color-text-muted)] line-clamp-1">
+                                ตัดคะแนนสะสมของพนักงาน
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* 3. Break Streak */}
+                        <button
+                          type="button"
+                          onClick={() => setIncompleteAction("break_streak")}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            incompleteAction === "break_streak"
+                              ? "bg-rose-50 dark:bg-rose-950/60 border-rose-500 ring-2 ring-rose-500/20 shadow-xs"
+                              : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-rose-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">⚡</span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs text-[var(--color-text)] block">
+                                ตัดสตรีคเป็น 0
+                              </span>
+                              <span className="text-[10px] text-[var(--color-text-muted)] line-clamp-1">
+                                รีเซ็ตสตรีคทำงานต่อเนื่อง
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* 4. Deduct Leave Quota */}
+                        <button
+                          type="button"
+                          onClick={() => setIncompleteAction("deduct_leave_quota")}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            incompleteAction === "deduct_leave_quota"
+                              ? "bg-purple-50 dark:bg-purple-950/60 border-purple-500 ring-2 ring-purple-500/20 shadow-xs"
+                              : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-purple-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">📅</span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs text-[var(--color-text)] block">
+                                หักโควตาวันลา 1 วัน
+                              </span>
+                              <span className="text-[10px] text-[var(--color-text-muted)] line-clamp-1">
+                                ตัดสิทธิ์วันลาพักร้อน/ลากิจ
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Deduct Points input if selected */}
+                      {incompleteAction === "deduct_points" && (
+                        <div className="flex items-center gap-2 bg-[var(--color-surface)] p-2.5 rounded-xl border border-[var(--color-border)]">
+                          <label className="text-xs font-semibold text-[var(--color-text)]">
+                            จำนวนคะแนนที่ต้องการหัก:
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={pointsToDeduct}
+                            onChange={(e) => setPointsToDeduct(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-20 px-2 py-1 border rounded-lg text-xs font-mono font-bold bg-[var(--color-surface-2)] text-[var(--color-text)] focus:ring-2 focus:ring-amber-400 outline-none"
+                          />
+                          <span className="text-xs text-[var(--color-text-muted)]">คะแนน</span>
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      <div>
+                        <label className="text-[11px] font-semibold text-[var(--color-text)] block mb-1">
+                          หมายเหตุหรือข้อความถึงพนักงาน (ไม่บังคับ):
+                        </label>
+                        <textarea
+                          value={incompleteNote}
+                          onChange={(e) => setIncompleteNote(e.target.value)}
+                          placeholder="ระบุเหตุผลในการตัดสินใจ หรือข้อตักเตือนเพิ่มเติม..."
+                          rows={2}
+                          className="w-full text-xs p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] placeholder:text-[var(--color-text-subtle)] resize-none focus:ring-2 focus:ring-amber-400 outline-none"
+                        />
+                      </div>
+
+                      {reviewFeedback && (
+                        <div
+                          className={`p-2.5 rounded-xl text-xs font-semibold ${
+                            reviewFeedback.type === "success"
+                              ? "bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800"
+                              : "bg-rose-100 dark:bg-rose-950/80 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-800"
+                          }`}
+                        >
+                          {reviewFeedback.message}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={isSubmittingReview}
+                        onClick={handleReviewIncomplete}
+                        className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-amber-950 font-bold text-xs rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+                      >
+                        {isSubmittingReview ? (
+                          <span>กำลังบันทึกผลการพิจารณา...</span>
+                        ) : (
+                          <>
+                            <span>ยืนยันผลการพิจารณามาตรการ</span>
+                            <ShieldCheck className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="pt-2 border-t border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 italic">
+                      (รอผู้จัดการร้านหรือผู้ช่วยผู้จัดการร้านดำเนินการพิจารณามาตรการ)
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
           {/* Late Tasks Alert Summary */}
           {(() => {
-            const lateItems = session.items.filter((item) => {
+            const lateItems = currentSession.items.filter((item) => {
               if (item.isLate || item.comment) return true;
               if (item.completedAt && item.category) {
                 const match = item.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
                 if (match) {
                   const [endHr, endMin] = match[2].split(':').map(Number);
                   const completedDate = new Date(item.completedAt);
-                  const deadlineDate = new Date(session.startedAt);
+                  const deadlineDate = new Date(currentSession.startedAt);
                   deadlineDate.setHours(endHr, endMin, 0, 0);
                   if (completedDate > deadlineDate) return true;
                 }
@@ -115,8 +404,8 @@ export function SessionDetailModal({
 
           <Divider />
           <div className="mt-4 space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
-            {session.items.map((item, idx) => {
-              const prevItem = idx > 0 ? session.items[idx - 1] : null;
+            {currentSession.items.map((item, idx) => {
+              const prevItem = idx > 0 ? currentSession.items[idx - 1] : null;
               const showCat = item.category && (!prevItem || prevItem.category !== item.category);
 
               let isLate = item.isLate ?? false;
@@ -126,7 +415,7 @@ export function SessionDetailModal({
                   const endStr = match[2];
                   const [endHr, endMin] = endStr.split(':').map(Number);
                   const completedDate = new Date(item.completedAt);
-                  const deadlineDate = new Date(session.startedAt);
+                  const deadlineDate = new Date(currentSession.startedAt);
                   deadlineDate.setHours(endHr, endMin, 0, 0);
                   if (completedDate > deadlineDate) {
                     isLate = true;
@@ -249,7 +538,7 @@ export function SessionDetailModal({
                   เลือกรูปแบบการอนุมัติกะงาน ({approveRoleTitle})
                 </h3>
                 <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  พนักงาน: <span className="font-semibold text-[var(--color-text)]">{session.userName}</span>
+                  พนักงาน: <span className="font-semibold text-[var(--color-text)]">{currentSession.userName}</span>
                 </p>
               </div>
             </div>
@@ -260,7 +549,7 @@ export function SessionDetailModal({
                 type="button"
                 onClick={() => {
                   setShowApprovalPrompt(false);
-                  onApprove?.(session.id, false);
+                  onApprove?.(currentSession.id, false);
                 }}
                 className="w-full text-left p-3.5 rounded-xl border border-[var(--color-border)] hover:border-amber-500 bg-[var(--color-surface-2)] hover:bg-amber-500/5 transition-all cursor-pointer group"
               >
@@ -280,20 +569,20 @@ export function SessionDetailModal({
                 type="button"
                 onClick={() => {
                   setShowApprovalPrompt(false);
-                  onApprove?.(session.id, true);
+                  onApprove?.(currentSession.id, true);
                 }}
                 className="w-full text-left p-3.5 rounded-xl border-2 border-amber-500/70 hover:border-amber-500 bg-amber-500/10 hover:bg-amber-500/15 transition-all cursor-pointer group shadow-xs"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-extrabold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
-                    <span>🛡️ อนุมัติแบบอนุโลม (Exception Approval)</span>
+                    <span>🛡️ อนุมัติแบบอนุโลม</span>
                   </span>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-amber-950">
                     รักษาสตรีค
                   </span>
                 </div>
                 <p className="text-[11px] text-amber-900 dark:text-amber-300 mt-1 leading-relaxed">
-                  ให้สิทธิประโยชน์รักษาสตรีคต่อเนื่อง โดยปรับสถานะเป็น <strong className="font-bold underline">Flawed (มีข้อบกพร่อง/อนุโลม)</strong> แทนที่จะถูกตัดสตรีคเป็น 0
+                  ให้สิทธิประโยชน์รักษาสตรีคต่อเนื่อง โดยปรับสถานะเป็น <strong className="font-bold underline">มีข้อบกพร่อง (อนุโลม)</strong> แทนที่จะถูกตัดสตรีคเป็น 0
                 </p>
               </button>
             </div>

@@ -15,7 +15,7 @@ export function ManagerAuthPage({
     onLogin: (user: User, shift?: ShiftType, redirectPath?: string) => void;
 }) {
     const [form, setForm] = useState({
-        email: "",
+        username: "",
         password: "",
     });
     const [error, setError] = useState("");
@@ -24,16 +24,16 @@ export function ManagerAuthPage({
 
     async function handleLogin(e?: React.FormEvent) {
         if (e) e.preventDefault();
-        if (!form.email.trim() || !form.password.trim()) {
-            setError("กรุณากรอกอีเมลและรหัสผ่าน");
+        if (!form.username.trim() || !form.password.trim()) {
+            setError("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
             return;
         }
         setLoading(true);
         setError("");
         try {
-            const res = await loginAction(form.email, form.password);
+            const res = await loginAction(form.username, form.password);
             if (!res.success || !res.user) {
-                setError(res.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+                setError(res.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
                 setLoading(false);
                 return;
             }
@@ -56,7 +56,7 @@ export function ManagerAuthPage({
             onLogin(res.user, undefined, "/manager/dashboard");
         } catch (err: unknown) {
             console.error("Login error:", err);
-            const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง";
+            const msg = err instanceof Error ? err.message : "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่";
             setError(msg);
             setLoading(false);
         }
@@ -84,17 +84,17 @@ export function ManagerAuthPage({
 
                 <form onSubmit={handleLogin} className="space-y-4 pt-1 focus-visible:outline-none">
                     <div>
-                        <label htmlFor="mgr-email" className="block text-xs font-semibold text-[var(--color-text)] mb-1.5">
-                            อีเมลผู้จัดการ / ผู้ช่วยผู้จัดการ
+                        <label htmlFor="mgr-username" className="block text-xs font-semibold text-[var(--color-text)] mb-1.5">
+                            ชื่อผู้ใช้ (Username)
                         </label>
                         <input
-                            id="mgr-email"
+                            id="mgr-username"
                             className={inp}
-                            placeholder="user@email.com"
-                            type="email"
-                            autoComplete="email"
-                            value={form.email}
-                            onChange={(e) => setForm({ ...form, email: e.target.value })}
+                            placeholder="เช่น manager หรือ assistant"
+                            type="text"
+                            autoComplete="username"
+                            value={form.username}
+                            onChange={(e) => setForm({ ...form, username: e.target.value })}
                         />
                     </div>
 

@@ -22,11 +22,10 @@ export function PortalMainSection() {
           role="tab"
           aria-selected={activeTab === "login"}
           onClick={() => setActiveTab("login")}
-          className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === "login"
-              ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-          }`}
+          className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${activeTab === "login"
+            ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
+            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            }`}
         >
           <Users size={16} />
           <span>เข้าสู่ระบบ (Login Gateways)</span>
@@ -37,11 +36,10 @@ export function PortalMainSection() {
           role="tab"
           aria-selected={activeTab === "register"}
           onClick={() => setActiveTab("register")}
-          className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === "register"
-              ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
-              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-          }`}
+          className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${activeTab === "register"
+            ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
+            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            }`}
         >
           <UserPlus size={16} />
           <span>ลงทะเบียนพนักงานใหม่ (Register Staff)</span>
@@ -75,7 +73,7 @@ export function PortalMainSection() {
                 </span>
 
                 <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                  สำหรับแคชเชียร์, สต็อก/จัดเรียง และพนักงานทั่วไป เข้าตรวจเช็คลิสต์ประจำกะ
+                  สำหรับแคชเชียและพนักงานทั่วไป เข้าตรวจเช็คลิสต์ประจำกะ
                 </p>
               </div>
 
@@ -103,7 +101,7 @@ export function PortalMainSection() {
                 </div>
 
                 <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] tracking-tight">
-                  ผู้จัดการ & ผู้ช่วยฯ
+                  ผู้จัดการ & ผู้ช่วยผู้จัดการ
                 </h2>
                 <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 block mb-2">
                   Store Management

@@ -200,7 +200,7 @@ export function ManagerDashboard({
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
       emp.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      emp.email.toLowerCase().includes(staffSearch.toLowerCase()) ||
+      (emp.username && emp.username.toLowerCase().includes(staffSearch.toLowerCase())) ||
       (emp.position && emp.position.toLowerCase().includes(staffSearch.toLowerCase()));
     if (!matchesSearch) return false;
     if (staffFilter === "unassigned") return !emp.position;
@@ -778,8 +778,8 @@ export function ManagerDashboard({
                               ส่งรายงานตรวจเช็คลิสต์ประจำกะ ครบ 100% เรียบร้อยแล้ว
                             </span>
                           </div>
-                          <span className="text-[10px] text-slate-500 mt-0.5 block font-mono">
-                            {fmtDate(notif.completedAt || notif.createdAt)} • {fmtTime(notif.completedAt || notif.createdAt)}
+                          <span className="text-[10px] text-slate-400 mt-0.5 block font-mono">
+                            แจ้งเตือนเมื่อ: {fmtDate(notif.completedAt || notif.createdAt)} เวลา {fmtTime(notif.completedAt || notif.createdAt)} น.
                           </span>
                         </div>
                       </div>
@@ -1044,7 +1044,7 @@ export function ManagerDashboard({
                 <div className="flex flex-1 gap-2 flex-wrap sm:flex-nowrap">
                   <input
                     type="text"
-                    placeholder="ค้นหาพนักงานด้วยชื่อ, อีเมล หรือตำแหน่ง..."
+                    placeholder="ค้นหาพนักงานด้วยชื่อ, ชื่อผู้ใช้ หรือตำแหน่ง..."
                     value={staffSearch}
                     onChange={(e) => setStaffSearch(e.target.value)}
                     className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-500 focus:border-slate-900 focus:bg-[var(--color-surface)] focus-visible:outline-2 focus-visible:outline-slate-900 transition-colors"
@@ -1126,7 +1126,7 @@ export function ManagerDashboard({
                                   <Badge color="muted">{emp.position}</Badge>
                                 )}
                               </div>
-                              <p className="text-xs text-slate-500 font-mono mt-0.5">{emp.email}</p>
+                              <p className="text-xs text-slate-500 font-mono mt-0.5">@{emp.username || emp.name}</p>
                               {lastSession && (
                                 <p className="text-[11px] text-slate-500 mt-1">
                                   เข้ากะล่าสุด: {getShiftName(lastSession.shift)} ({fmtDate(lastSession.startedAt)})
@@ -1393,6 +1393,8 @@ export function ManagerDashboard({
       <SessionDetailModal
         session={selectedSession}
         onClose={() => setSelectedSession(null)}
+        reviewerId={user.id}
+        canReviewIncomplete={user.role === "manager" || user.role === "admin"}
       />
     </div>
   );

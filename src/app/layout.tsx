@@ -6,6 +6,7 @@ import { AppProvider } from "../context/AppContext";
 import { LoadingProvider } from "../context/LoadingContext";
 import { PageTransitionWatcher } from "../components/common/PageTransitionWatcher";
 import { GlobalLoadingOverlay } from "../components/common/GlobalLoadingOverlay";
+import { WeeklyLeaderboardPopup } from "../components/common/WeeklyLeaderboardPopup";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -98,6 +99,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <main id="main-content" tabIndex={-1} className="min-h-full flex-1 focus-visible:outline-none">
               {children}
             </main>
+            <WeeklyLeaderboardPopup />
           </AppProvider>
         </LoadingProvider>
       </body>

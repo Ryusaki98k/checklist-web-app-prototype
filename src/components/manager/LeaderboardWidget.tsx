@@ -57,7 +57,7 @@ export function LeaderboardWidget({ branchId }: { branchId?: string }) {
             <Trophy className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-[var(--color-text)]">ตารางอันดับและผลงาน (Leaderboard)</h3>
+            <h3 className="text-sm font-bold text-[var(--color-text)]">ตารางอันดับและผลงาน</h3>
             <p className="text-xs text-[var(--color-text-muted)]">คะแนนสะสมและสตรีคการปฏิบัติงานของทีมงาน</p>
           </div>
         </div>

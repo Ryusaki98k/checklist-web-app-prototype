@@ -1,23 +1,25 @@
-import { Role, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry } from "../types";
+import { Role, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
 
 export interface IAuthService {
-  login(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }>;
+  login(username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }>;
   register(data: {
     name: string;
-    email: string;
+    username: string;
     password?: string;
     role?: Role;
     position?: string;
     branchId?: string;
+    leaveQuota?: number | null;
   }): Promise<{ success: boolean; user?: User; error?: string }>;
   getUserById(id: string): Promise<{ success: boolean; user?: User; error?: string }>;
   getAllUsers(): Promise<{ success: boolean; users?: User[]; error?: string }>;
   syncOAuthUser(userData: {
     id: string;
-    email: string;
+    username?: string;
     name?: string;
     role?: Role;
   }): Promise<{ success: boolean; user?: User; error?: string }>;
+  updateUserRole(userId: string, role: Role): Promise<{ success: boolean; error?: string }>;
   seedUsersIfEmpty(): Promise<void>;
 }
 
@@ -74,6 +76,18 @@ export interface IPointService {
     leaderboard: LeaderboardEntry[];
     error?: string;
   }>;
+
+  resetEmployeeScores(params?: {
+    resetRoles?: string[];
+    recordTransaction?: boolean;
+    notifyEmployees?: boolean;
+    resetStreaks?: boolean;
+  }): Promise<{
+    success: boolean;
+    affectedUsersCount: number;
+    totalPointsReset: number;
+    error?: string;
+  }>;
 }
 
 export interface IChecklistService {
@@ -90,9 +104,18 @@ export interface IChecklistService {
     taskId?: string;
     completed: boolean;
     comment?: string;
-  }): Promise<{ success: boolean; completedAt?: string | null; error?: string }>;
+  }): Promise<{ success: boolean; completedAt?: string | null; taskWorkId?: string; error?: string }>;
 
-  endShiftSession(shiftSessionId: string): Promise<{ success: boolean; error?: string }>;
+  validateShiftCompletion(shiftSessionId: string): Promise<{
+    success: boolean;
+    isComplete: boolean;
+    totalTasks: number;
+    doneTasks: number;
+    pendingTasks: Array<{ id: string; name: string }>;
+    error?: string;
+  }>;
+
+  endShiftSession(params: string | { shiftSessionId: string; reason?: string }): Promise<{ success: boolean; error?: string }>;
 
   getPositionShiftsStatus(position: string, userId?: string): Promise<{
     success: boolean;
@@ -117,7 +140,16 @@ export interface IChecklistService {
     error?: string;
   }>;
 
-  cleanupOldData(retentionDays?: number): Promise<{
+  cleanupOldData(
+    retentionDays?: number,
+    options?: {
+      cleanShiftSessions?: boolean;
+      cleanRefrigeratorTasks?: boolean;
+      cleanNotifications?: boolean;
+      cleanPointTransactions?: boolean;
+      cleanEmployeeLeaves?: boolean;
+    }
+  ): Promise<{
     success: boolean;
     cutoffDate?: string;
     deleted?: {
@@ -126,6 +158,7 @@ export interface IChecklistService {
       refrigeratorTasks: number;
       notifications: number;
       pointTransactions: number;
+      employeeLeaves: number;
     };
     error?: string;
   }>;
@@ -134,7 +167,7 @@ export interface IChecklistService {
 export interface BranchEmployeeStatus {
   id: string;
   name: string;
-  email: string;
+  username?: string;
   role: Role;
   position?: string;
   branchId?: string;
@@ -157,6 +190,16 @@ export interface BranchEmployeeStatus {
   point: number;
   pointStreak: number;
   pointStreakType: "none" | "flawed" | "perfect";
+  isOnLeave?: boolean;
+  activeLeave?: {
+    id: string;
+    leaveType: LeaveType;
+    startDate: string;
+    endDate: string;
+    reason: string;
+    preserveStreak?: boolean;
+    recordedByName?: string;
+  };
 }
 
 export interface IManagerService {
@@ -177,6 +220,14 @@ export interface IManagerService {
     shiftSessionId: string;
     role: "manager" | "manager_assistant" | "committee" | "general_manager" | Role;
     isException?: boolean;
+  }): Promise<{ success: boolean; error?: string }>;
+
+  reviewIncompleteShift(params: {
+    shiftSessionId: string;
+    reviewerId: string;
+    action: "no_penalty" | "deduct_points" | "break_streak" | "deduct_leave_quota";
+    pointsToDeduct?: number;
+    note?: string;
   }): Promise<{ success: boolean; error?: string }>;
 
   getBranchStaffStatus(branchId?: string): Promise<{
@@ -204,6 +255,81 @@ export interface IManagerService {
     }>;
     error?: string;
   }>;
+
+  markEmployeeLeave(params: {
+    userId: string;
+    branchId: string;
+    leaveType: LeaveType;
+    startDate: string;
+    endDate: string;
+    reason: string;
+    preserveStreak?: boolean;
+    recordedBy: string;
+  }): Promise<{ success: boolean; leave?: EmployeeLeave; error?: string }>;
+
+  getBranchLeaves(params: {
+    branchId: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{ success: boolean; leaves?: EmployeeLeave[]; error?: string }>;
+
+  cancelEmployeeLeave(params: {
+    leaveId: string;
+    cancelledBy: string;
+  }): Promise<{ success: boolean; error?: string }>;
+
+  cleanupOldLeaves(retentionDays?: number): Promise<{
+    success: boolean;
+    cutoffDate?: string;
+    deletedCount?: number;
+    error?: string;
+  }>;
+
+  getEmployeeLeaveQuota(params: {
+    userId: string;
+    branchId?: string;
+  }): Promise<{ success: boolean; quota?: LeaveQuotaInfo; error?: string }>;
+
+  requestEmployeeLeave(params: {
+    userId: string;
+    branchId: string;
+    leaveType: LeaveType;
+    startDate: string;
+    endDate: string;
+    reason: string;
+    requestedBy: string;
+    preserveStreak?: boolean;
+    isManagerRole?: boolean;
+  }): Promise<{ success: boolean; leave?: EmployeeLeave; autoApproved?: boolean; error?: string }>;
+
+  approveEmployeeLeave(params: {
+    leaveId: string;
+    approvedBy: string;
+    leaveType?: LeaveType;
+    preserveStreak?: boolean;
+  }): Promise<{ success: boolean; leave?: EmployeeLeave; error?: string }>;
+
+  rejectEmployeeLeave(params: {
+    leaveId: string;
+    rejectedBy: string;
+    reason?: string;
+  }): Promise<{ success: boolean; error?: string }>;
+
+  updateEmployeeLeaveQuota(params: {
+    userId: string;
+    quota: number | null;
+  }): Promise<{ success: boolean; error?: string }>;
+
+  updateBranchLeaveQuota(params: {
+    branchId: string;
+    quota: number;
+  }): Promise<{ success: boolean; error?: string }>;
+
+  getAllUsersLeaveQuotas(): Promise<{
+    success: boolean;
+    quotas?: Record<string, LeaveQuotaInfo>;
+    error?: string;
+  }>;
 }
 
 export interface IBranchService {
@@ -223,6 +349,7 @@ export interface IBranchService {
   createBranch(name: string): Promise<{ success: boolean; error?: string }>;
   assignStaffToBranch(branchId: string, userIds: string[]): Promise<{ success: boolean; error?: string }>;
   assignTasksToBranch(branchId: string, taskIds: string[]): Promise<{ success: boolean; error?: string }>;
+  updateBranchLeaveQuota(branchId: string, quota: number): Promise<{ success: boolean; error?: string }>;
   invalidateCache(): void;
 }
 
@@ -285,6 +412,8 @@ export interface IRefrigeratorService {
   processDailyRefrigeratorTasks(params?: {
     targetDate?: string;
     yesterdayDate?: string;
+    createDailyTasks?: boolean;
+    markMissedYesterdayTasks?: boolean;
   }): Promise<{
     success: boolean;
     processedBranches: number;
@@ -302,6 +431,65 @@ export interface IRefrigeratorService {
   }>;
 }
 
+export type CronJobId = "cleanup-data" | "end-shifts" | "daily-refrigerators" | "reset-scores";
+
+export interface CleanupDataConfig {
+  retentionDays: number;
+  cleanShiftSessions: boolean;
+  cleanRefrigeratorTasks: boolean;
+  cleanNotifications: boolean;
+  cleanPointTransactions: boolean;
+  cleanEmployeeLeaves: boolean;
+}
+
+export interface EndShiftsConfig {
+  sendAttendanceAlerts: boolean;
+  autoEndUnclosedShifts: boolean;
+}
+
+export interface DailyRefrigeratorsConfig {
+  createDailyTasks: boolean;
+  markMissedYesterdayTasks: boolean;
+}
+
+export interface ResetScoresConfig {
+  resetRoles: string[];
+  recordTransaction: boolean;
+  notifyEmployees: boolean;
+  resetStreaks: boolean;
+}
+
+export interface CronSetting {
+  id: string;
+  name: string;
+  description: string;
+  schedule_cron: string;
+  schedule_description: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  last_run_at: Date | string | null;
+  last_run_status: "success" | "failed" | "skipped" | null;
+  last_run_message: string | null;
+  updated_at?: Date | string | null;
+}
+
+export interface ICronService {
+  getAllSettings(): Promise<CronSetting[]>;
+  getSetting(id: string): Promise<CronSetting | null>;
+  updateSetting(
+    id: string,
+    updates: { enabled?: boolean; config?: Record<string, unknown> }
+  ): Promise<{ success: boolean; error?: string; setting?: CronSetting }>;
+  recordExecution(
+    id: string,
+    result: { status: "success" | "failed" | "skipped"; message?: string }
+  ): Promise<void>;
+  runCronJob(
+    id: string,
+    overrides?: Record<string, unknown>
+  ): Promise<{ success: boolean; skipped?: boolean; message?: string; result?: unknown; error?: string }>;
+}
+
 export interface IServiceContainer {
   auth: IAuthService;
   notifications: INotificationService;
@@ -310,4 +498,5 @@ export interface IServiceContainer {
   manager: IManagerService;
   branch: IBranchService;
   refrigerator: IRefrigeratorService;
+  cron: ICronService;
 }

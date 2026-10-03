@@ -19,27 +19,20 @@ export default function ManagerDashboardPage() {
   } = useApp();
   useEffect(() => {
     if (!isReady) return;
-    if (currentUser?.role === "admin") {
+    if (!currentUser) {
+      router.replace("/");
+    } else if (currentUser.role === "admin") {
       router.replace("/admin/dashboard");
     }
   }, [currentUser, isReady, router]);
 
-  if (!isReady) {
-    return <LoadingSpinner text="กำลังโหลดแดชบอร์ดผู้บริหาร..." />;
+  if (!isReady || !currentUser) {
+    return <LoadingSpinner text="กำลังโหลดแดชอบอร์ดผู้บริหาร..." />;
   }
-
-  // Use current logged in user or sample executive preview user
-  const activeUser = currentUser || {
-    id: "preview-exec-user",
-    name: "คุณวิภาดา สุขเจริญ",
-    email: "manager@factory.com",
-    role: "manager" as const,
-    position: "ผู้จัดการร้าน",
-  };
 
   return (
     <ExecutiveDashboard
-      user={activeUser}
+      user={currentUser}
       onLogout={() => logout("/")}
       activeSession={activeSession}
       onStartChecklist={selectShift}

@@ -67,7 +67,7 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
           <div className="flex items-start gap-2.5">
             <ShieldAlert size={16} className="text-amber-500 shrink-0 mt-0.5" />
             <p className="font-medium">
-              เพื่อความปลอดภัยของข้อมูลสาขาและบัญชีผู้ปฏิบัติงาน ระบบไม่อนุญาตให้รีเซ็ตรหัสผ่านผ่านอีเมลส่วนตัวโดยตรง
+              ระบบใช้งานเฉพาะชื่อผู้ใช้ (Username) และรหัสผ่าน (Password) เพื่อความปลอดภัยและความสะดวกของสาขา
             </p>
           </div>
 
@@ -78,13 +78,13 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
               <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold flex items-center justify-center shrink-0 text-[11px]">
                 1
               </span>
-              <span>กรุณาติดต่อ <strong>ผู้ดูแลระบบส่วนกลาง (Central Admin)</strong> หรือผู้จัดการสาขาของคุณโดยตรง</span>
+              <span>แจ้ง<strong>ชื่อผู้ใช้ (Username)</strong> ของคุณกับ <strong>ผู้ดูแลระบบส่วนกลาง (Central Admin)</strong> หรือผู้จัดการสาขา</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold flex items-center justify-center shrink-0 text-[11px]">
                 2
               </span>
-              <span>ผู้ดูแลระบบสามารถดูและบอกรหัสผ่านที่ท่านกำลังใช้อยู่ได้</span>
+              <span>ผู้ดูแลระบบสามารถตรวจสอบและตั้งรหัสผ่านใหม่ให้ท่านได้ทันที</span>
             </div>
           </div>
         </div>

@@ -29,7 +29,7 @@ export default function AwaitingAssignmentPage() {
             }
         } catch (err) {
             console.error("Refresh error:", err);
-            setErrorMsg("เกิดข้อผิดพลาดในการตรวจสอบ กรุณาลองใหม่อีกครั้ง");
+            setErrorMsg("ตรวจสอบข้อมูลการมอบหมายไม่สำเร็จ กรุณากดโหลดใหม่อีกครั้ง");
         } finally {
             setLoading(false);
         }

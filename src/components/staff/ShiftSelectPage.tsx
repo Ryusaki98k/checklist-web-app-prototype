@@ -19,7 +19,7 @@ export function ShiftSelectPage({
 }: {
   user: User;
   sessions?: ShiftSession[];
-  onSelect: (shift: ShiftType) => void;
+  onSelect: (shift: ShiftType) => void | Promise<void>;
   onBack?: () => void;
   onLogout: () => void;
 }) {
@@ -33,6 +33,15 @@ export function ShiftSelectPage({
   const [showConfetti, setShowConfetti] = useState(false);
   const [isLoadingStatuses, setIsLoadingStatuses] = useState(true);
   const [isStartingShift, setIsStartingShift] = useState(false);
+
+  // Safety timeout to prevent stuck loading button under any circumstances
+  useEffect(() => {
+    if (!isStartingShift) return;
+    const timer = setTimeout(() => {
+      setIsStartingShift(false);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [isStartingShift]);
 
   const loadStatuses = useCallback(() => {
     if (!user.position) {
@@ -70,6 +79,7 @@ export function ShiftSelectPage({
   }, [user.position, user.id]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStatuses();
 
     const handleRefresh = () => {
@@ -122,13 +132,19 @@ export function ShiftSelectPage({
       },
     ];
 
-  const handleStartWork = () => {
+  const handleStartWork = async () => {
     if (chosenShift && !isStartingShift && !isLoadingStatuses) {
       setIsStartingShift(true);
       if (typeof window !== "undefined") {
+        secureRemoveItem("app_selected_shift");
         secureRemoveItem("app_selected_shifts");
       }
-      onSelect(chosenShift);
+      try {
+        await onSelect(chosenShift);
+      } catch (err) {
+        console.error("Failed to start shift session:", err);
+        setIsStartingShift(false);
+      }
     }
   };
 
@@ -440,7 +456,7 @@ export function ShiftSelectPage({
             className={`w-full py-3.5 px-6 rounded-xl font-extrabold text-sm sm:text-base shadow-xs hover:shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer ${
               hasSelection
                 ? chosenShift === "morning"
-                  ? "bg-amber-500 hover:bg-amber-600 text-amber-950 border border-amber-600 shadow-xs"
+                  ? "bg-amber-600 hover:bg-amber-700 text-amber-950 border border-amber-700 shadow-xs"
                   : "bg-orange-600 hover:bg-orange-700 text-white border border-orange-700 shadow-xs"
                 : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] font-bold border border-[var(--color-border)] cursor-not-allowed"
             }`}

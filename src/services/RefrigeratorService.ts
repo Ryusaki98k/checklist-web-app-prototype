@@ -2,6 +2,7 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { refrigerators, branches, refrigeratorTasks, users } from "../db/schema";
 import { IRefrigeratorService, INotificationService, RefrigeratorTaskItem } from "./types";
 import { ShiftType } from "../types";
+import { isValidUuid } from "../utils/validation";
 
 export interface RefrigeratorConfig {
   id: string;
@@ -22,12 +23,17 @@ export class RefrigeratorService implements IRefrigeratorService {
   constructor(private db: any, private notificationService?: INotificationService) {}
 
   private async getBranchForUser(userId: string) {
-    let [branch] = await this.db
-      .select({ id: branches.id, name: branches.name, refrigerators: branches.refrigerators })
-      .from(branches)
-      .where(sql`${userId} = ANY(${branches.members})`)
-      .limit(1);
+    // member_ids is uuid[]; a placeholder id would raise 22P02.
+    let branch;
+    if (isValidUuid(userId)) {
+      [branch] = await this.db
+        .select({ id: branches.id, name: branches.name, refrigerators: branches.refrigerators })
+        .from(branches)
+        .where(sql`${userId} = ANY(${branches.members})`)
+        .limit(1);
+    }
 
+    // Fallback for managers/admins who are not in any branch's member list.
     if (!branch) {
       [branch] = await this.db
         .select({ id: branches.id, name: branches.name, refrigerators: branches.refrigerators })
@@ -517,6 +523,8 @@ export class RefrigeratorService implements IRefrigeratorService {
   async processDailyRefrigeratorTasks(params?: {
     targetDate?: string;
     yesterdayDate?: string;
+    createDailyTasks?: boolean;
+    markMissedYesterdayTasks?: boolean;
   }): Promise<{
     success: boolean;
     processedBranches: number;
@@ -537,6 +545,8 @@ export class RefrigeratorService implements IRefrigeratorService {
       const targetDate = params?.targetDate || getThaiDateString(now);
       const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const yesterdayDate = params?.yesterdayDate || getThaiDateString(yesterday);
+      const doMarkMissed = params?.markMissedYesterdayTasks !== false;
+      const doCreateDaily = params?.createDailyTasks !== false;
 
       // 1. Fetch all branches
       const allBranches = await this.db
@@ -574,95 +584,102 @@ export class RefrigeratorService implements IRefrigeratorService {
         const activeRefIdSet = new Set(activeBranchRefs.map((r) => r.id));
 
         // --- Step A: Process yesterday's tasks ---
-        const yesterdayTasks = await this.db
-          .select()
-          .from(refrigeratorTasks)
-          .where(
-            and(
-              eq(refrigeratorTasks.branch_id, branch.id),
-              eq(refrigeratorTasks.task_date, yesterdayDate)
-            )
-          );
-
-        type TaskRecord = typeof refrigeratorTasks.$inferSelect;
-        const existingRefIdsYesterday = new Set(yesterdayTasks.map((t: TaskRecord) => t.refrigerator_id));
-        const missingYesterdayRefs = activeBranchRefs.filter((r) => !existingRefIdsYesterday.has(r.id));
-
-        // Insert missing yesterday rows as marked unchecked
-        if (missingYesterdayRefs.length > 0) {
-          const insertMissing = missingYesterdayRefs.map((r) => ({
-            branch_id: branch.id,
-            refrigerator_id: r.id,
-            task_date: yesterdayDate,
-            is_okay: false,
-            comment: "ไม่ได้ตรวจเช็คเมื่อวาน (ขาดการตรวจสอบ)",
-          }));
-          await this.db.insert(refrigeratorTasks).values(insertMissing);
-          totalMissedTasksMarked += missingYesterdayRefs.length;
-        }
-
-        // Mark existing uncompleted tasks from yesterday as unchecked
-        const uncompletedYesterdayTasks = yesterdayTasks.filter(
-          (t: TaskRecord) => activeRefIdSet.has(t.refrigerator_id) && !t.completed_at
-        );
-
-        const uncompletedTaskIds = uncompletedYesterdayTasks.map((t: TaskRecord) => t.id);
-        if (uncompletedTaskIds.length > 0) {
-          await this.db
-            .update(refrigeratorTasks)
-            .set({
-              is_okay: false,
-              comment: sql`COALESCE(${refrigeratorTasks.comment}, 'ไม่ได้ตรวจเช็คเมื่อวาน (ขาดการตรวจสอบ)')`,
-            })
-            .where(inArray(refrigeratorTasks.id, uncompletedTaskIds));
-          totalMissedTasksMarked += uncompletedTaskIds.length;
-        }
-
-        const missedRefIds = new Set([
-          ...missingYesterdayRefs.map((r) => r.id),
-          ...uncompletedYesterdayTasks.map((t: TaskRecord) => t.refrigerator_id),
-        ]);
-
-        const missedRefNames = Array.from(missedRefIds)
-          .map((id) => refMap.get(id)?.name || "ตู้แช่")
-          .filter(Boolean);
-
-        // --- Step B: Ensure today's daily tasks exist ---
-        const existingTodayTasks = await this.db
-          .select({ id: refrigeratorTasks.id, refrigerator_id: refrigeratorTasks.refrigerator_id })
-          .from(refrigeratorTasks)
-          .where(
-            and(
-              eq(refrigeratorTasks.branch_id, branch.id),
-              eq(refrigeratorTasks.task_date, targetDate)
-            )
-          );
-
-        const existingRefIdsToday = new Set(existingTodayTasks.map((t: { id: string; refrigerator_id: string }) => t.refrigerator_id));
-        const missingTodayRefs = activeBranchRefs.filter((r) => !existingRefIdsToday.has(r.id));
-
-        if (missingTodayRefs.length > 0) {
-          const insertToday = missingTodayRefs.map((r) => ({
-            branch_id: branch.id,
-            refrigerator_id: r.id,
-            task_date: targetDate,
-            is_okay: true,
-          }));
-          await this.db.insert(refrigeratorTasks).values(insertToday);
-          totalNewTasksCreated += missingTodayRefs.length;
-        }
-
-        // Clean up any uncompleted tasks for disabled/removed refrigerators today
-        const staleTodayTasks = existingTodayTasks.filter((t: { id: string; refrigerator_id: string }) => !activeRefIdSet.has(t.refrigerator_id));
-        if (staleTodayTasks.length > 0) {
-          await this.db
-            .delete(refrigeratorTasks)
+        let missedRefNames: string[] = [];
+        if (doMarkMissed) {
+          const yesterdayTasks = await this.db
+            .select()
+            .from(refrigeratorTasks)
             .where(
               and(
-                inArray(refrigeratorTasks.id, staleTodayTasks.map((t: { id: string }) => t.id)),
-                sql`${refrigeratorTasks.completed_at} IS NULL`
+                eq(refrigeratorTasks.branch_id, branch.id),
+                eq(refrigeratorTasks.task_date, yesterdayDate)
               )
             );
+
+          type TaskRecord = typeof refrigeratorTasks.$inferSelect;
+          const existingRefIdsYesterday = new Set(yesterdayTasks.map((t: TaskRecord) => t.refrigerator_id));
+          const missingYesterdayRefs = activeBranchRefs.filter((r) => !existingRefIdsYesterday.has(r.id));
+
+          // Insert missing yesterday rows as marked unchecked
+          if (missingYesterdayRefs.length > 0) {
+            const insertMissing = missingYesterdayRefs.map((r) => ({
+              branch_id: branch.id,
+              refrigerator_id: r.id,
+              task_date: yesterdayDate,
+              is_okay: false,
+              comment: "ไม่ได้ตรวจเช็คเมื่อวาน (ขาดการตรวจสอบ)",
+            }));
+            await this.db.insert(refrigeratorTasks).values(insertMissing);
+            totalMissedTasksMarked += missingYesterdayRefs.length;
+          }
+
+          // Mark existing uncompleted tasks from yesterday as unchecked
+          const uncompletedYesterdayTasks = yesterdayTasks.filter(
+            (t: TaskRecord) => activeRefIdSet.has(t.refrigerator_id) && !t.completed_at
+          );
+
+          const uncompletedTaskIds = uncompletedYesterdayTasks.map((t: TaskRecord) => t.id);
+          if (uncompletedTaskIds.length > 0) {
+            await this.db
+              .update(refrigeratorTasks)
+              .set({
+                is_okay: false,
+                comment: sql`COALESCE(${refrigeratorTasks.comment}, 'ไม่ได้ตรวจเช็คเมื่อวาน (ขาดการตรวจสอบ)')`,
+              })
+              .where(inArray(refrigeratorTasks.id, uncompletedTaskIds));
+            totalMissedTasksMarked += uncompletedTaskIds.length;
+          }
+
+          const missedRefIds = new Set([
+            ...missingYesterdayRefs.map((r) => r.id),
+            ...uncompletedYesterdayTasks.map((t: TaskRecord) => t.refrigerator_id),
+          ]);
+
+          missedRefNames = Array.from(missedRefIds)
+            .map((id) => refMap.get(id)?.name || "ตู้แช่")
+            .filter(Boolean);
+        }
+
+        // --- Step B: Ensure today's daily tasks exist ---
+        let newBranchTasksCount = 0;
+        if (doCreateDaily) {
+          const existingTodayTasks = await this.db
+            .select({ id: refrigeratorTasks.id, refrigerator_id: refrigeratorTasks.refrigerator_id })
+            .from(refrigeratorTasks)
+            .where(
+              and(
+                eq(refrigeratorTasks.branch_id, branch.id),
+                eq(refrigeratorTasks.task_date, targetDate)
+              )
+            );
+
+          const existingRefIdsToday = new Set(existingTodayTasks.map((t: { id: string; refrigerator_id: string }) => t.refrigerator_id));
+          const missingTodayRefs = activeBranchRefs.filter((r) => !existingRefIdsToday.has(r.id));
+
+          if (missingTodayRefs.length > 0) {
+            const insertToday = missingTodayRefs.map((r) => ({
+              branch_id: branch.id,
+              refrigerator_id: r.id,
+              task_date: targetDate,
+              is_okay: true,
+            }));
+            await this.db.insert(refrigeratorTasks).values(insertToday);
+            totalNewTasksCreated += missingTodayRefs.length;
+            newBranchTasksCount = missingTodayRefs.length;
+          }
+
+          // Clean up any uncompleted tasks for disabled/removed refrigerators today
+          const staleTodayTasks = existingTodayTasks.filter((t: { id: string; refrigerator_id: string }) => !activeRefIdSet.has(t.refrigerator_id));
+          if (staleTodayTasks.length > 0) {
+            await this.db
+              .delete(refrigeratorTasks)
+              .where(
+                and(
+                  inArray(refrigeratorTasks.id, staleTodayTasks.map((t: { id: string }) => t.id)),
+                  sql`${refrigeratorTasks.completed_at} IS NULL`
+                )
+              );
+          }
         }
 
         details.push({
@@ -670,7 +687,7 @@ export class RefrigeratorService implements IRefrigeratorService {
           branchName: branch.name,
           missedCount: missedRefNames.length,
           missedRefrigerators: missedRefNames,
-          newTasksCount: missingTodayRefs.length,
+          newTasksCount: newBranchTasksCount,
         });
 
         // --- Step C: Send notification to Manager & Assistant Manager for this branch ---

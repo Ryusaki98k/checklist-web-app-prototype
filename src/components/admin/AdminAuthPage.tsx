@@ -8,7 +8,7 @@ import Link from "next/link";
 
 export function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [form, setForm] = useState({
-    email: "",
+    username: "",
     password: "",
   });
   const [error, setError] = useState("");
@@ -16,15 +16,15 @@ export function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [showForgotModal, setShowForgotModal] = useState(false);
 
   async function handleLogin() {
-    if (!form.email.trim() || !form.password.trim()) {
-      setError("กรุณากรอกอีเมลและรหัสผ่าน");
+    if (!form.username.trim() || !form.password.trim()) {
+      setError("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
       return;
     }
     setLoading(true);
     setError("");
 
     try {
-      const res = await loginAction(form.email, form.password);
+      const res = await loginAction(form.username, form.password);
 
       if (res.success && res.user) {
         if (res.user.role !== "admin") {
@@ -33,10 +33,10 @@ export function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
           onLogin(res.user);
         }
       } else {
-        setError(res.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง (เฉพาะผู้ดูแลระบบ)");
+        setError(res.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง (เฉพาะผู้ดูแลระบบ)");
       }
     } catch (err) {
-      setError("เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล");
+      setError("เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่");
     } finally {
       setLoading(false);
     }
@@ -64,19 +64,19 @@ export function AdminAuthPage({ onLogin }: { onLogin: (user: User) => void }) {
         <div className="space-y-3.5 pt-4 border-t border-[var(--color-border)] focus-visible:outline-none">
 
           <div>
-            <label htmlFor="admin-email" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-              อีเมลผู้ดูแลระบบ
+            <label htmlFor="admin-username" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
+              ชื่อผู้ใช้ (Username)
             </label>
             <input
-              id="admin-email"
+              id="admin-username"
               className={inputStyle}
-              placeholder="user@email.com"
-              type="email"
-              autoComplete="email"
+              placeholder="เช่น administrator หรือ admin"
+              type="text"
+              autoComplete="username"
               aria-invalid={Boolean(error)}
               aria-describedby={error ? "admin-auth-error" : undefined}
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
           </div>
 

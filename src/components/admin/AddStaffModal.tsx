@@ -18,7 +18,7 @@ export function AddStaffModal({
 }) {
   const [form, setForm] = useState({
     name: "",
-    email: "",
+    username: "",
     password: "",
     position: "",
   });
@@ -28,19 +28,19 @@ export function AddStaffModal({
   if (!isOpen) return null;
 
   function handleAddStaff() {
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+    if (!form.name.trim() || !form.username.trim() || !form.password.trim()) {
       setError("กรุณากรอกข้อมูลให้ครบถ้วน");
       return;
     }
     const users = getUsers();
-    if (users.find((u) => u.email.toLowerCase() === form.email.trim().toLowerCase())) {
-      setError("อีเมลนี้มีผู้ใช้งานแล้วในระบบ");
+    if (users.find((u) => (u.username || u.name).toLowerCase() === form.username.trim().toLowerCase())) {
+      setError("ชื่อผู้ใช้นี้มีผู้ใช้งานแล้วในระบบ");
       return;
     }
     const newUser: User = {
       id: uid(),
       name: form.name.trim(),
-      email: form.email.trim(),
+      username: form.username.trim().toLowerCase(),
       password: form.password.trim(),
       role: "employee",
       position: form.position || undefined,
@@ -103,15 +103,15 @@ export function AddStaffModal({
           </div>
 
           <div>
-            <label htmlFor="new-staff-email" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-              อีเมลพนักงาน
+            <label htmlFor="new-staff-username" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
+              ชื่อผู้ใช้ (Username)
             </label>
             <input
-              id="new-staff-email"
-              type="email"
-              placeholder="user@email.com"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              id="new-staff-username"
+              type="text"
+              placeholder="เช่น somjai หรือ emp01"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
               className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3.5 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-subtle)] focus:border-amber-400 focus:outline-none"
             />
           </div>

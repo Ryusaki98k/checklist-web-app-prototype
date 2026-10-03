@@ -12,26 +12,18 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!isReady) return;
-    if (currentUser && currentUser.role === "employee") {
+    if (!currentUser || currentUser.role === "employee") {
       router.replace("/");
     }
   }, [currentUser, isReady, router]);
 
-  if (!isReady) {
-    return <LoadingSpinner text="กำลังโหลดระบบดูแลส่วนกลาง..." />;
+  if (!isReady || !currentUser) {
+    return <LoadingSpinner text="กำลังโหลดระบบดูแลมส่วนกาง..." />;
   }
-
-  const activeUser = currentUser || {
-    id: "preview-admin-user",
-    name: "คุณสมเกียรติ บริหารกิจ",
-    email: "admin@factory.com",
-    role: "admin" as const,
-    position: "ผู้ดูแลระบบส่วนกลาง",
-  };
 
   return (
     <AdminDashboardView
-      user={activeUser}
+      user={currentUser}
       onLogout={logout}
     />
   );

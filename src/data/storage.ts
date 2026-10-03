@@ -1,4 +1,4 @@
-import { Notification, Position, ShiftSession, ShiftType, User } from "../types";
+import { Notification, Position, ShiftSession, ShiftType, User, EmployeeLeave } from "../types";
 import { DEFAULT_POSITIONS } from "../types";
 import { secureGetItem, secureSetItem, secureRemoveItem } from "../utils/crypto";
 import { getThaiDateString, isTodayThai } from "../utils/date";
@@ -113,18 +113,18 @@ export function seedSampleData(force = false) {
   let notifs = getNotifications();
 
   const hasDirtyUsers = users.some((u) => u.name === "sdsd" || u.name === "ผู้จัดการร้าน");
-  const needsUsers = force || hasDirtyUsers || users.length < 5 || !users.some((u) => u.email === "admin@factory.com");
+  const needsUsers = force || hasDirtyUsers || users.length < 5 || !users.some((u) => u.username === "admin");
 
   if (needsUsers) {
     users = [
-      { id: "u-admin", name: "คุณสมเกียรติ บริหารกิจ", email: "admin@factory.com", password: "admin123", role: "admin", position: "ผู้ดูแลระบบส่วนกลาง" },
-      { id: "u-manager", name: "คุณวิภาดา สุขเจริญ", email: "manager@factory.com", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
-      { id: "u-asst", name: "คุณธนากร เกียรติไพบูลย์", email: "assistant@factory.com", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
-      { id: "u-director", name: "คุณกิตติศักดิ์ พัฒนกิจ", email: "director@factory.com", password: "director123", role: "committee", position: "กรรมการ" },
-      { id: "u-cashier", name: "สมศรี ใจดี", email: "cashier@factory.com", password: "123", role: "employee", position: "แคชเชียร์" },
-      { id: "u-stock", name: "สมชาย มั่นคง", email: "stock@factory.com", password: "123", role: "employee", position: "พนักงานสต็อก/จัดเรียง" },
-      { id: "u-qc", name: "กัญญาภัทร พิมพา", email: "kanya@factory.com", password: "123", role: "employee", position: "แคชเชียร์" },
-      { id: "u-tech", name: "ศุภชัย มีสุข", email: "suphachai@factory.com", password: "123", role: "employee" },
+      { id: "u-admin", name: "คุณสมเกียรติ บริหารกิจ", username: "admin", password: "admin123", role: "admin", position: "ผู้ดูแลระบบส่วนกลาง" },
+      { id: "u-manager", name: "คุณวิภาดา สุขเจริญ", username: "manager", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
+      { id: "u-asst", name: "คุณธนากร เกียรติไพบูลย์", username: "assistant", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
+      { id: "u-director", name: "คุณกิตติศักดิ์ พัฒนกิจ", username: "director", password: "director123", role: "committee", position: "กรรมการ" },
+      { id: "u-cashier", name: "สมศรี ใจดี", username: "cashier", password: "123", role: "employee", position: "แคชเชียร์" },
+      { id: "u-stock", name: "สมชาย มั่นคง", username: "stock", password: "123", role: "employee", position: "พนักงานสต็อก/จัดเรียง" },
+      { id: "u-qc", name: "กัญญาภัทร พิมพา", username: "kanya", password: "123", role: "employee", position: "แคชเชียร์" },
+      { id: "u-tech", name: "ศุภชัย มีสุข", username: "suphachai", password: "123", role: "employee" },
     ];
     saveUsers(users);
   }
@@ -306,3 +306,20 @@ export function saveActiveSession(session: ShiftSession | null) {
     secureRemoveItem("app_active_session");
   }
 }
+
+export function getLocalLeaves(): EmployeeLeave[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = secureGetItem("app_leaves");
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalLeaves(leaves: EmployeeLeave[]) {
+  if (typeof window === "undefined") return;
+  secureSetItem("app_leaves", JSON.stringify(leaves));
+}
+

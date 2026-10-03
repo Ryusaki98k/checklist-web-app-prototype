@@ -1,12 +1,30 @@
 import { eq, and, or, gte, lte, lt, desc, asc, inArray, isNull, sql } from "drizzle-orm";
-import { tasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions } from "../db/schema";
+import { tasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions, employeeLeaves, storeClosingTasks } from "../db/schema";
 import { IChecklistService, INotificationService } from "./types";
 import { ShiftSession, ShiftType, ChecklistItem } from "../types";
+import { isValidUuid } from "../utils/validation";
+
+export function isSpecialZeroPointTask(taskName: string): boolean {
+  const lower = (taskName || "").toLowerCase();
+  return (
+    lower.includes("turn off light") ||
+    lower.includes("turn off refriderator") ||
+    lower.includes("turn off refrigerator") ||
+    lower.includes("turn off air conditioning") ||
+    lower.includes("lock the store") ||
+    lower.includes("ปิดไฟส่องสว่าง") ||
+    lower.includes("ปิดไฟตู้แช่") ||
+    lower.includes("ปิดเครื่องปรับอากาศ") ||
+    lower.includes("ปิดแอร์") ||
+    lower.includes("ล็อคประตูร้าน") ||
+    lower.includes("ล็อคร้าน")
+  );
+}
 
 function mapPositionToTaskRole(pos: string): "cashier" | "stock" | "manager_assistant" {
   if (pos.includes("แคชเชียร์") || pos.includes("cashier")) return "cashier";
   if (pos.includes("สต็อก") || pos.includes("stock")) return "stock";
-  if (pos.includes("ผู้ช่วย") || pos.includes("assistant")) return "manager_assistant";
+  if (pos.includes("ผู้ช่วย") || pos.includes("assistant") || pos.includes("ผู้จัดการ") || pos.includes("manager")) return "manager_assistant";
   return "cashier";
 }
 
@@ -14,10 +32,6 @@ function mapShiftToDbShift(shift: ShiftType): "morning" | "afternoon" | "morning
   if (shift === "morning") return "morning";
   if (shift === "afternoon") return "afternoon";
   return "morning_afternoon";
-}
-
-function isValidUuid(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 
 function getThaiStartAndEndOfDay(baseDate = new Date()) {
@@ -51,11 +65,11 @@ export class ChecklistService implements IChecklistService {
 
       let validUserId = userId;
       if (!isValidUuid(userId)) {
-        const targetRole = taskRole === "manager_assistant" ? "manager_assistant" : "employee";
+        const targetRoles = taskRole === "manager_assistant" ? ["manager", "manager_assistant"] : ["employee"];
         const [foundUser] = await this.db
           .select({ id: users.id })
           .from(users)
-          .where(eq(users.role, targetRole))
+          .where(inArray(users.role, targetRoles as any))
           .limit(1);
         if (foundUser) {
           validUserId = foundUser.id;
@@ -117,6 +131,24 @@ export class ChecklistService implements IChecklistService {
         dbTasks = dbTasks.filter((t: any) => branchTaskIds.includes(t.id));
       } else {
         dbTasks = [];
+      }
+
+      // Manager role policy: Managers do NOT do regular assistant manager tasks,
+      // ONLY the special store closing tasks (4 safety items).
+      const [userRow] = await this.db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, validUserId))
+        .limit(1);
+
+      const isManager =
+        userRow?.role === "manager" ||
+        ((position.includes("ผู้จัดการ") || position.includes("manager")) &&
+          !position.includes("ผู้ช่วย") &&
+          !position.includes("assistant"));
+
+      if (isManager) {
+        dbTasks = dbTasks.filter((t: any) => isSpecialZeroPointTask(t.name));
       }
 
       const [existingSession] = await this.db
@@ -252,12 +284,106 @@ export class ChecklistService implements IChecklistService {
         }
       }
 
+      // Query shared store closing tasks for this branch today
+      const specialTaskIds = dbTasks.filter((t: any) => isSpecialZeroPointTask(t.name)).map((t: any) => t.id);
+      const branchClosingMap = new Map<
+        string,
+        {
+          completedAt: string;
+          completedBy: string | null;
+          completedByName: string | null;
+          comment: string | null;
+        }
+      >();
+
+      if (specialTaskIds.length > 0 && branchId) {
+        try {
+          const closingRows = await this.db
+            .select({
+              taskId: storeClosingTasks.task_id,
+              completedAt: storeClosingTasks.completed_at,
+              completedBy: storeClosingTasks.completed_by,
+              comment: storeClosingTasks.comment,
+              userName: users.name,
+              userRole: users.role,
+            })
+            .from(storeClosingTasks)
+            .leftJoin(users, eq(users.id, storeClosingTasks.completed_by))
+            .where(
+              and(
+                eq(storeClosingTasks.branch_id, branchId),
+                eq(storeClosingTasks.task_date, dateStr),
+                inArray(storeClosingTasks.task_id, specialTaskIds)
+              )
+            );
+
+          for (const row of closingRows) {
+            if (row.completedAt) {
+              const roleTitle =
+                row.userRole === "manager"
+                  ? "ผู้จัดการร้าน"
+                  : row.userRole === "manager_assistant"
+                  ? "ผู้ช่วยผู้จัดการร้าน"
+                  : "";
+              const posSuffix = roleTitle ? ` (${roleTitle})` : "";
+              const completedByName = row.userName ? `${row.userName}${posSuffix}` : null;
+              branchClosingMap.set(row.taskId, {
+                completedAt: new Date(row.completedAt).toISOString(),
+                completedBy: row.completedBy ?? null,
+                completedByName,
+                comment: row.comment ?? null,
+              });
+            }
+          }
+        } catch (closingErr) {
+          console.error("Failed to query storeClosingTasks in getOrCreateShiftSession:", closingErr);
+        }
+      }
+
       const items: ChecklistItem[] = dbTasks.map((t: any) => {
         const work = workRows.find((w: any) => w.task === t.id);
         const timeRange = t.start && t.end ? `${t.start.slice(0, 5)} - ${t.end.slice(0, 5)}` : undefined;
+
+        const isSpecial = isSpecialZeroPointTask(t.name);
+        const sharedClosing = isSpecial ? branchClosingMap.get(t.id) : undefined;
+
+        let completedAt: string | null = null;
+        let completedBy: string | null = null;
+        let completedByName: string | null = null;
+        let taskComment: string | null = work?.comment ?? null;
+
+        if (isSpecial) {
+          if (sharedClosing) {
+            completedAt = sharedClosing.completedAt;
+            completedBy = sharedClosing.completedBy;
+            completedByName = sharedClosing.completedByName;
+            taskComment = sharedClosing.comment ?? taskComment;
+
+            // Sync this session's work row in DB if not already set
+            if (work && !work.timestamp) {
+              void this.db
+                .update(taskWork)
+                .set({ timestamp: new Date(sharedClosing.completedAt), comment: taskComment })
+                .where(eq(taskWork.id, work.id));
+            }
+          } else {
+            // Not completed in shared branch tasks
+            completedAt = null;
+            if (work?.timestamp) {
+              // Stale timestamp in this session's work row, clear it
+              void this.db
+                .update(taskWork)
+                .set({ timestamp: null, comment: null })
+                .where(eq(taskWork.id, work.id));
+            }
+          }
+        } else {
+          completedAt = work?.timestamp ? new Date(work.timestamp).toISOString() : null;
+        }
+
         let isLate = false;
-        if (work?.timestamp && t.end) {
-          const completedDate = new Date(work.timestamp);
+        if (completedAt && t.end) {
+          const completedDate = new Date(completedAt);
           const [endHour, endMinute] = t.end.split(":").map(Number);
           const deadlineDate = new Date(activeDbSession!.start);
           deadlineDate.setHours(endHour, endMinute, 0, 0);
@@ -270,10 +396,14 @@ export class ChecklistService implements IChecklistService {
           id: t.id,
           label: t.name,
           category: timeRange ? `ช่วงเวลา ${timeRange}` : undefined,
-          completedAt: work?.timestamp ? new Date(work.timestamp).toISOString() : null,
+          completedAt,
+          completedBy,
+          completedByName,
           taskWorkId: work?.id,
           isLate,
-          comment: work?.comment ?? null,
+          comment: taskComment,
+          isSpecial,
+          zeroPoints: isSpecial,
         };
       });
 
@@ -290,6 +420,13 @@ export class ChecklistService implements IChecklistService {
         items,
         notified: isAllComplete,
         branchName: branchNameForSession,
+        incompleteReason: activeDbSession.incomplete_reason || null,
+        incompleteStatus: (activeDbSession.incomplete_status as any) || "none",
+        incompleteAction: activeDbSession.incomplete_action || null,
+        incompleteActionPoints: activeDbSession.incomplete_action_points || 0,
+        incompleteActionNote: activeDbSession.incomplete_action_note || null,
+        incompleteReviewedBy: activeDbSession.incomplete_reviewed_by || null,
+        incompleteReviewedAt: activeDbSession.incomplete_reviewed_at ? new Date(activeDbSession.incomplete_reviewed_at).toISOString() : null,
       };
 
       return { success: true, session: sessionObj };
@@ -305,30 +442,57 @@ export class ChecklistService implements IChecklistService {
     taskId?: string;
     completed: boolean;
     comment?: string;
-  }): Promise<{ success: boolean; completedAt?: string | null; error?: string }> {
+  }): Promise<{ success: boolean; completedAt?: string | null; taskWorkId?: string; error?: string }> {
     try {
       const { taskWorkId, shiftSessionId, taskId, completed, comment } = params;
       const completedAt = completed ? new Date() : null;
 
       let targetShiftSessionId = shiftSessionId;
+      let resolvedTaskWorkId = taskWorkId;
 
       if (taskWorkId && isValidUuid(taskWorkId)) {
-        await this.db
+        const updatedRows = await this.db
           .update(taskWork)
           .set({
             timestamp: completedAt,
             comment: completed ? (comment ?? null) : null,
           })
-          .where(eq(taskWork.id, taskWorkId));
+          .where(eq(taskWork.id, taskWorkId))
+          .returning({ id: taskWork.id, shift_session: taskWork.shift_session });
 
-        if (!targetShiftSessionId) {
-          const [work] = await this.db
-            .select({ shift_session: taskWork.shift_session })
+        if (updatedRows && updatedRows.length > 0) {
+          if (!targetShiftSessionId) {
+            targetShiftSessionId = updatedRows[0].shift_session;
+          }
+          resolvedTaskWorkId = updatedRows[0].id;
+        } else if (shiftSessionId && taskId && isValidUuid(shiftSessionId) && isValidUuid(taskId)) {
+          // If taskWorkId didn't match an existing row, fallback to (shift_session, task)
+          const [existing] = await this.db
+            .select({ id: taskWork.id })
             .from(taskWork)
-            .where(eq(taskWork.id, taskWorkId))
+            .where(and(eq(taskWork.shift_session, shiftSessionId), eq(taskWork.task, taskId)))
             .limit(1);
-          if (work) {
-            targetShiftSessionId = work.shift_session;
+
+          if (existing) {
+            await this.db
+              .update(taskWork)
+              .set({
+                timestamp: completedAt,
+                comment: completed ? (comment ?? null) : null,
+              })
+              .where(eq(taskWork.id, existing.id));
+            resolvedTaskWorkId = existing.id;
+          } else {
+            const [inserted] = await this.db
+              .insert(taskWork)
+              .values({
+                shift_session: shiftSessionId,
+                task: taskId,
+                timestamp: completedAt,
+                comment: completed ? (comment ?? null) : null,
+              })
+              .returning({ id: taskWork.id });
+            resolvedTaskWorkId = inserted?.id;
           }
         }
       } else if (shiftSessionId && taskId && isValidUuid(shiftSessionId) && isValidUuid(taskId)) {
@@ -346,13 +510,18 @@ export class ChecklistService implements IChecklistService {
               comment: completed ? (comment ?? null) : null,
             })
             .where(eq(taskWork.id, existing.id));
+          resolvedTaskWorkId = existing.id;
         } else {
-          await this.db.insert(taskWork).values({
-            shift_session: shiftSessionId,
-            task: taskId,
-            timestamp: completedAt,
-            comment: completed ? (comment ?? null) : null,
-          });
+          const [inserted] = await this.db
+            .insert(taskWork)
+            .values({
+              shift_session: shiftSessionId,
+              task: taskId,
+              timestamp: completedAt,
+              comment: completed ? (comment ?? null) : null,
+            })
+            .returning({ id: taskWork.id });
+          resolvedTaskWorkId = inserted?.id;
         }
       } else {
         return { success: false, error: "ข้อมูลระบุรายการไม่ถูกต้อง" };
@@ -366,6 +535,107 @@ export class ChecklistService implements IChecklistService {
           .limit(1);
 
         if (sess && sess.branch) {
+          // Special store closing task shared branch sync
+          let resolvedTaskId = taskId;
+          if (!resolvedTaskId && taskWorkId && isValidUuid(taskWorkId)) {
+            const [w] = await this.db
+              .select({ task: taskWork.task })
+              .from(taskWork)
+              .where(eq(taskWork.id, taskWorkId))
+              .limit(1);
+            if (w) resolvedTaskId = w.task;
+          }
+
+          if (resolvedTaskId && isValidUuid(resolvedTaskId)) {
+            const [tRow] = await this.db
+              .select({ name: tasks.name })
+              .from(tasks)
+              .where(eq(tasks.id, resolvedTaskId))
+              .limit(1);
+
+            if (tRow && isSpecialZeroPointTask(tRow.name)) {
+              const { dateStr, startOfDay, endOfDay } = getThaiStartAndEndOfDay();
+              try {
+                const [existingShared] = await this.db
+                  .select()
+                  .from(storeClosingTasks)
+                  .where(
+                    and(
+                      eq(storeClosingTasks.branch_id, sess.branch),
+                      eq(storeClosingTasks.task_id, resolvedTaskId),
+                      eq(storeClosingTasks.task_date, dateStr)
+                    )
+                  )
+                  .limit(1);
+
+                if (completed) {
+                  if (existingShared) {
+                    await this.db
+                      .update(storeClosingTasks)
+                      .set({
+                        completed_by: sess.user,
+                        completed_at: completedAt,
+                        comment: completed ? (comment ?? existingShared.comment) : null,
+                        shift_session_id: targetShiftSessionId,
+                      })
+                      .where(eq(storeClosingTasks.id, existingShared.id));
+                  } else {
+                    await this.db.insert(storeClosingTasks).values({
+                      branch_id: sess.branch,
+                      task_id: resolvedTaskId,
+                      task_date: dateStr,
+                      completed_by: sess.user,
+                      completed_at: completedAt,
+                      comment: comment ?? null,
+                      shift_session_id: targetShiftSessionId,
+                    });
+                  }
+                } else {
+                  if (existingShared) {
+                    await this.db
+                      .update(storeClosingTasks)
+                      .set({
+                        completed_by: null,
+                        completed_at: null,
+                        comment: null,
+                        shift_session_id: null,
+                      })
+                      .where(eq(storeClosingTasks.id, existingShared.id));
+                  }
+                }
+
+                // Sync all today's sessions in this branch for this special task
+                const branchTodaySessions = await this.db
+                  .select({ id: shiftSession.id })
+                  .from(shiftSession)
+                  .where(
+                    and(
+                      eq(shiftSession.branch, sess.branch),
+                      gte(shiftSession.start, startOfDay),
+                      lte(shiftSession.start, endOfDay)
+                    )
+                  );
+                const branchSessIds = branchTodaySessions.map((s: any) => s.id);
+                if (branchSessIds.length > 0) {
+                  await this.db
+                    .update(taskWork)
+                    .set({
+                      timestamp: completedAt,
+                      comment: completed ? (comment ?? null) : null,
+                    })
+                    .where(
+                      and(
+                        inArray(taskWork.shift_session, branchSessIds),
+                        eq(taskWork.task, resolvedTaskId)
+                      )
+                    );
+                }
+              } catch (sharedErr) {
+                console.error("Failed to sync shared storeClosingTasks:", sharedErr);
+              }
+            }
+          }
+
           await this.db
             .update(branches)
             .set({ last_update: new Date() })
@@ -417,23 +687,147 @@ export class ChecklistService implements IChecklistService {
         }
       }
 
-      return { success: true, completedAt: completedAt ? completedAt.toISOString() : null };
+      return {
+        success: true,
+        completedAt: completedAt ? completedAt.toISOString() : null,
+        taskWorkId: resolvedTaskWorkId,
+      };
     } catch (err: any) {
       console.error("ChecklistService.toggleTaskWork error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการบันทึกสถานะงาน" };
     }
   }
 
-  async endShiftSession(shiftSessionId: string): Promise<{ success: boolean; error?: string }> {
+  async validateShiftCompletion(shiftSessionId: string): Promise<{
+    success: boolean;
+    isComplete: boolean;
+    totalTasks: number;
+    doneTasks: number;
+    pendingTasks: Array<{ id: string; name: string }>;
+    error?: string;
+  }> {
     try {
+      if (!isValidUuid(shiftSessionId)) {
+        return { success: false, isComplete: false, totalTasks: 0, doneTasks: 0, pendingTasks: [], error: "ID ของกะไม่ถูกต้อง" };
+      }
+
+      const [sess] = await this.db
+        .select()
+        .from(shiftSession)
+        .where(eq(shiftSession.id, shiftSessionId))
+        .limit(1);
+
+      if (!sess) {
+        return { success: false, isComplete: false, totalTasks: 0, doneTasks: 0, pendingTasks: [], error: "ไม่พบข้อมูลกะในระบบ" };
+      }
+
+      // Branch task filtering
+      const [branch] = await this.db
+        .select({ tasks: branches.tasks })
+        .from(branches)
+        .where(eq(branches.id, sess.branch))
+        .limit(1);
+
+      const branchTaskIds = branch?.tasks || [];
+
+      const allowedShifts: ("morning" | "afternoon" | "morning_afternoon")[] =
+        sess.shift === "morning_afternoon"
+          ? ["morning", "afternoon", "morning_afternoon"]
+          : [sess.shift, "morning_afternoon"];
+
+      const dbTasks = await this.db
+        .select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.task_role, sess.task_role),
+            inArray(tasks.shift, allowedShifts),
+            eq(tasks.disabled, false)
+          )
+        );
+
+      const [sessUser] = await this.db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, sess.user))
+        .limit(1);
+
+      const isManagerUser = sessUser?.role === "manager";
+
+      let activeTasks = branchTaskIds.length > 0
+        ? dbTasks.filter((t: any) => branchTaskIds.includes(t.id))
+        : dbTasks;
+
+      if (isManagerUser && sess.task_role === "manager_assistant") {
+        activeTasks = activeTasks.filter((t: any) => isSpecialZeroPointTask(t.name));
+      }
+
+      const works = await this.db
+        .select({
+          taskId: taskWork.task,
+          timestamp: taskWork.timestamp,
+        })
+        .from(taskWork)
+        .where(eq(taskWork.shift_session, shiftSessionId));
+
+      const doneTaskIds = new Set(
+        works.filter((w: any) => w.timestamp !== null).map((w: any) => w.taskId)
+      );
+
+      const pendingTasks: Array<{ id: string; name: string }> = [];
+      for (const t of activeTasks) {
+        if (!doneTaskIds.has(t.id)) {
+          pendingTasks.push({ id: t.id, name: t.name });
+        }
+      }
+
+      const totalTasks = activeTasks.length;
+      const doneTasks = totalTasks - pendingTasks.length;
+      const isComplete = totalTasks > 0 && pendingTasks.length === 0;
+
+      return {
+        success: true,
+        isComplete,
+        totalTasks,
+        doneTasks,
+        pendingTasks,
+      };
+    } catch (err: any) {
+      console.error("ChecklistService.validateShiftCompletion error:", err);
+      return { success: false, isComplete: false, totalTasks: 0, doneTasks: 0, pendingTasks: [], error: err?.message || "ตรวจสอบสถานะงานไม่สำเร็จ" };
+    }
+  }
+
+  async endShiftSession(params: string | { shiftSessionId: string; reason?: string }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const shiftSessionId = typeof params === "string" ? params : params.shiftSessionId;
+      const rawReason = typeof params === "string" ? undefined : params.reason?.trim();
+
       if (!isValidUuid(shiftSessionId)) {
         return { success: false, error: "ID ของกะไม่ถูกต้อง" };
       }
 
+      // Check online validation from DB directly
+      const validation = await this.validateShiftCompletion(shiftSessionId);
+      if (!validation.success) {
+        return { success: false, error: validation.error || "ไม่สามารถตรวจสอบสถานะงานในฐานข้อมูลได้" };
+      }
+
+      const isIncomplete = !validation.isComplete;
+      if (isIncomplete && !rawReason) {
+        return {
+          success: false,
+          error: `ตรวจพบงานค้าง ${validation.pendingTasks.length} ข้อในระบบ กรุณาระบุเหตุผลที่ไม่สามารถทำงานให้ครบถ้วนก่อนจบกะ`,
+        };
+      }
+
+      const now = new Date();
       const [endedSession] = await this.db
         .update(shiftSession)
         .set({
-          end: new Date(),
+          end: now,
+          incomplete_reason: isIncomplete ? rawReason : null,
+          incomplete_status: isIncomplete ? "pending_review" : "none",
         })
         .where(eq(shiftSession.id, shiftSessionId))
         .returning();
@@ -445,27 +839,65 @@ export class ChecklistService implements IChecklistService {
           .where(eq(users.id, endedSession.user))
           .limit(1);
 
-        const shiftName = endedSession.shift === "morning" ? "กะเช้า" : endedSession.shift === "afternoon" ? "กะบ่าย" : "กะเช้า-บ่าย";
+        const shiftName =
+          endedSession.shift === "morning"
+            ? "กะเช้า"
+            : endedSession.shift === "afternoon"
+            ? "กะบ่าย"
+            : "กะเช้า-บ่าย";
 
-        // Notify employee
-        await this.notificationService.createNotification({
-          recipientId: endedSession.user,
-          title: `🏁 บันทึกการจบกะงานสำเร็จ`,
-          message: `คุณได้ส่งมอบกะงาน ${shiftName} เรียบร้อยแล้ว รายงานถูกส่งไปยังผู้จัดการร้านเพื่อตรวจรับรองและให้แต้มรางวัล`,
-          type: "shift_submitted",
-          shiftSessionId: endedSession.id,
-          branchId: endedSession.branch,
-        });
+        if (isIncomplete) {
+          // Notify both manager and assistant manager of the branch
+          const pendingCount = validation.pendingTasks.length;
+          const notifMsg = `พนักงาน ${u?.name || "พนักงาน"} ได้จบกะ ${shiftName} โดยเหลืองานค้าง ${pendingCount} ข้อ เหตุผล: "${rawReason}" กรุณาตรวจสอบและพิจารณาการดำเนินการ (หักคะแนน, ตัดสตรีค หรือตัดโควตา)`;
 
-        // Notify branch managers
-        await this.notificationService.createNotification({
-          branchId: endedSession.branch,
-          recipientRole: "manager",
-          title: `🏁 พนักงานจบกะงาน: ${u?.name || "พนักงาน"}`,
-          message: `${u?.name || "พนักงาน"} ได้ส่งมอบและจบกะงาน ${shiftName} ประจำสาขาเรียบร้อยแล้ว พร้อมให้เข้าตรวจรับรอง`,
-          type: "shift_submitted",
-          shiftSessionId: endedSession.id,
-        });
+          await this.notificationService.createNotification({
+            branchId: endedSession.branch,
+            recipientRole: "manager",
+            title: `⚠️ จบกะงานไม่ครบ: ${u?.name || "พนักงาน"} (${shiftName})`,
+            message: notifMsg,
+            type: "incomplete_shift",
+            shiftSessionId: endedSession.id,
+          });
+
+          await this.notificationService.createNotification({
+            branchId: endedSession.branch,
+            recipientRole: "manager_assistant",
+            title: `⚠️ จบกะงานไม่ครบ: ${u?.name || "พนักงาน"} (${shiftName})`,
+            message: notifMsg,
+            type: "incomplete_shift",
+            shiftSessionId: endedSession.id,
+          });
+
+          // Notify employee
+          await this.notificationService.createNotification({
+            recipientId: endedSession.user,
+            title: `⚠️ บันทึกการจบกะ (มีงานค้าง ${pendingCount} ข้อ)`,
+            message: `คุณได้จบกะงาน ${shiftName} เรียบร้อยแล้ว เหตุผลของคุณถูกส่งไปยังผู้จัดการและผู้ช่วยผู้จัดการเพื่อพิจารณาการดำเนินการต่อไป`,
+            type: "incomplete_shift",
+            shiftSessionId: endedSession.id,
+            branchId: endedSession.branch,
+          });
+        } else {
+          // Standard full completion notifications
+          await this.notificationService.createNotification({
+            recipientId: endedSession.user,
+            title: `🏁 บันทึกการจบกะงานสำเร็จ`,
+            message: `คุณได้ส่งมอบกะงาน ${shiftName} ครบถ้วน 100% เรียบร้อยแล้ว รายงานถูกส่งไปยังผู้จัดการร้านเพื่อตรวจรับรอง`,
+            type: "shift_submitted",
+            shiftSessionId: endedSession.id,
+            branchId: endedSession.branch,
+          });
+
+          await this.notificationService.createNotification({
+            branchId: endedSession.branch,
+            recipientRole: "manager",
+            title: `🏁 พนักงานจบกะงาน: ${u?.name || "พนักงาน"}`,
+            message: `${u?.name || "พนักงาน"} ได้ส่งมอบและจบกะงาน ${shiftName} ครบ 100% เรียบร้อยแล้ว พร้อมให้เข้าตรวจรับรอง`,
+            type: "shift_submitted",
+            shiftSessionId: endedSession.id,
+          });
+        }
       }
 
       return { success: true };
@@ -568,6 +1000,11 @@ export class ChecklistService implements IChecklistService {
       if (sessionIds.length > 0) {
         await this.db.delete(taskWork).where(inArray(taskWork.shift_session, sessionIds));
         await this.db.delete(shiftSession).where(inArray(shiftSession.id, sessionIds));
+      }
+
+      if (!position || mapPositionToTaskRole(position) === "manager_assistant") {
+        const { dateStr } = getThaiStartAndEndOfDay();
+        await this.db.delete(storeClosingTasks).where(eq(storeClosingTasks.task_date, dateStr));
       }
 
       return { success: true };
@@ -729,7 +1166,16 @@ export class ChecklistService implements IChecklistService {
     }
   }
 
-  async cleanupOldData(retentionDays: number = 14): Promise<{
+  async cleanupOldData(
+    retentionDays: number = 14,
+    options?: {
+      cleanShiftSessions?: boolean;
+      cleanRefrigeratorTasks?: boolean;
+      cleanNotifications?: boolean;
+      cleanPointTransactions?: boolean;
+      cleanEmployeeLeaves?: boolean;
+    }
+  ): Promise<{
     success: boolean;
     cutoffDate?: string;
     deleted?: {
@@ -738,6 +1184,7 @@ export class ChecklistService implements IChecklistService {
       refrigeratorTasks: number;
       notifications: number;
       pointTransactions: number;
+      employeeLeaves: number;
     };
     error?: string;
   }> {
@@ -748,16 +1195,22 @@ export class ChecklistService implements IChecklistService {
       const d = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", day: "2-digit" }).format(cutoffDate);
       const cutoffDateStr = `${y}-${m}-${d}`;
 
+      const doCleanSessions = options?.cleanShiftSessions !== false;
+      const doCleanRefs = options?.cleanRefrigeratorTasks !== false;
+      const doCleanPoints = options?.cleanPointTransactions !== false;
+      const doCleanNotifs = options?.cleanNotifications !== false;
+      const doCleanLeaves = options?.cleanEmployeeLeaves !== false;
+
       // 1. Identify old shift sessions
       const oldSessions = await this.db
         .select({ id: shiftSession.id })
         .from(shiftSession)
         .where(lt(shiftSession.start, cutoffDate));
 
-      const oldSessionIds: string[] = oldSessions.map((s: any) => s.id);
+      const oldSessionIds: string[] = oldSessions.map((s: { id: string }) => s.id);
       let deletedTaskWorks = 0;
 
-      if (oldSessionIds.length > 0) {
+      if (doCleanSessions && oldSessionIds.length > 0) {
         // Delete taskWork referencing these old sessions
         const deletedWorks = await this.db
           .delete(taskWork)
@@ -767,49 +1220,80 @@ export class ChecklistService implements IChecklistService {
       }
 
       // 2. Delete old refrigerator tasks (by created_at, task_date, or session_id)
-      const refConditions = [
-        lt(refrigeratorTasks.created_at, cutoffDate),
-        lte(refrigeratorTasks.task_date, cutoffDateStr),
-      ];
-      if (oldSessionIds.length > 0) {
-        refConditions.push(inArray(refrigeratorTasks.shift_session_id, oldSessionIds));
-      }
+      let deletedRefsCount = 0;
+      if (doCleanRefs) {
+        const refConditions = [
+          lt(refrigeratorTasks.created_at, cutoffDate),
+          lte(refrigeratorTasks.task_date, cutoffDateStr),
+        ];
+        if (oldSessionIds.length > 0) {
+          refConditions.push(inArray(refrigeratorTasks.shift_session_id, oldSessionIds));
+        }
 
-      const deletedRefs = await this.db
-        .delete(refrigeratorTasks)
-        .where(or(...refConditions))
-        .returning({ id: refrigeratorTasks.id });
+        const deletedRefs = await this.db
+          .delete(refrigeratorTasks)
+          .where(or(...refConditions))
+          .returning({ id: refrigeratorTasks.id });
+        deletedRefsCount = deletedRefs.length;
+      }
 
       // 3. Delete old point transactions referencing old sessions or created before cutoff
-      const pointConditions = [lt(pointTransactions.created_at, cutoffDate)];
-      if (oldSessionIds.length > 0) {
-        pointConditions.push(inArray(pointTransactions.shift_session_id, oldSessionIds));
-      }
+      let deletedPointsCount = 0;
+      if (doCleanPoints) {
+        const pointConditions = [lt(pointTransactions.created_at, cutoffDate)];
+        if (oldSessionIds.length > 0) {
+          pointConditions.push(inArray(pointTransactions.shift_session_id, oldSessionIds));
+        }
 
-      const deletedPoints = await this.db
-        .delete(pointTransactions)
-        .where(or(...pointConditions))
-        .returning({ id: pointTransactions.id });
+        const deletedPoints = await this.db
+          .delete(pointTransactions)
+          .where(or(...pointConditions))
+          .returning({ id: pointTransactions.id });
+        deletedPointsCount = deletedPoints.length;
+      }
 
       // 4. Delete old notifications referencing old sessions or created before cutoff
-      const notifConditions = [lt(notifications.created_at, cutoffDate)];
-      if (oldSessionIds.length > 0) {
-        notifConditions.push(inArray(notifications.shift_session_id, oldSessionIds));
-      }
+      let deletedNotifsCount = 0;
+      if (doCleanNotifs) {
+        const notifConditions = [lt(notifications.created_at, cutoffDate)];
+        if (oldSessionIds.length > 0) {
+          notifConditions.push(inArray(notifications.shift_session_id, oldSessionIds));
+        }
 
-      const deletedNotifs = await this.db
-        .delete(notifications)
-        .where(or(...notifConditions))
-        .returning({ id: notifications.id });
+        const deletedNotifs = await this.db
+          .delete(notifications)
+          .where(or(...notifConditions))
+          .returning({ id: notifications.id });
+        deletedNotifsCount = deletedNotifs.length;
+      }
 
       // 5. Delete old shift sessions
       let deletedSessions = 0;
-      if (oldSessionIds.length > 0) {
+      if (doCleanSessions && oldSessionIds.length > 0) {
         const deletedSess = await this.db
           .delete(shiftSession)
           .where(inArray(shiftSession.id, oldSessionIds))
           .returning({ id: shiftSession.id });
         deletedSessions = deletedSess.length;
+      }
+
+      // 6. Delete old employee leaves (where leave period ended <= cutoffDateStr AND record created < cutoffDate)
+      let deletedLeaves = 0;
+      if (doCleanLeaves) {
+        try {
+          const deletedLeavesRes = await this.db
+            .delete(employeeLeaves)
+            .where(
+              and(
+                lte(employeeLeaves.end_date, cutoffDateStr),
+                lt(employeeLeaves.created_at, cutoffDate)
+              )
+            )
+            .returning({ id: employeeLeaves.id });
+          deletedLeaves = deletedLeavesRes.length;
+        } catch (leaveErr) {
+          console.warn("ChecklistService.cleanupOldData: could not clean employeeLeaves:", leaveErr);
+        }
       }
 
       return {
@@ -818,9 +1302,10 @@ export class ChecklistService implements IChecklistService {
         deleted: {
           shiftSessions: deletedSessions,
           taskWorks: deletedTaskWorks,
-          refrigeratorTasks: deletedRefs.length,
-          notifications: deletedNotifs.length,
-          pointTransactions: deletedPoints.length,
+          refrigeratorTasks: deletedRefsCount,
+          notifications: deletedNotifsCount,
+          pointTransactions: deletedPointsCount,
+          employeeLeaves: deletedLeaves,
         },
       };
     } catch (err: any) {

@@ -14,10 +14,21 @@ export async function GET(request: NextRequest) {
     }
 
     const services = getServices();
-    const result = await services.checklist.cleanupOldData(14);
+    const result = await services.cron.runCronJob("cleanup-data");
+
+    if (result.skipped) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: result.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return NextResponse.json({
-      ...result,
+      success: result.success,
+      message: result.message,
+      data: result.result,
       timestamp: new Date().toISOString(),
     });
   } catch (error: unknown) {
