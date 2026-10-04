@@ -2,12 +2,12 @@ import { LeaveType } from "../types";
 
 export function isPaidLeave(type?: string | null): boolean {
   if (!type) return false;
-  return type === "paid" || type === "ลาเเบบได้เงิน" || type === "ลาแบบได้เงิน" || type === "sick";
+  return type === "paid" || type === "ลาเเบบได้เงิน" || type === "ลาแบบได้เงิน";
 }
 
 export function isUnpaidLeave(type?: string | null): boolean {
   if (!type) return false;
-  return type === "unpaid" || type === "ลาเเบบไม่ได้รับเงิน" || type === "ลาแบบไม่ได้รับเงิน" || type === "personal" || type === "other";
+  return type === "unpaid" || type === "ลาเเบบไม่ได้รับเงิน" || type === "ลาแบบไม่ได้รับเงิน";
 }
 
 export function getLeaveTypeLabel(type?: string | null): string {

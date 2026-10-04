@@ -2,9 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ManagerAuthPage } from "../../components/manager/ManagerAuthPage";
 import { useApp } from "../../context/AppContext";
-import { User } from "../../types";
 
 export default function ManagerLoginPage() {
   const router = useRouter();

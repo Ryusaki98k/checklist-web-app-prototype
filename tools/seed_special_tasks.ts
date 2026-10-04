@@ -58,30 +58,21 @@ async function seedSpecialTasks() {
         start: st.start,
         end: st.end,
         disabled: false,
+        is_special: true,
       }).returning({ id: tasks.id });
       console.log(`Created new task: ${inserted.id} - ${st.name}`);
       createdOrFoundTaskIds.push(inserted.id);
     }
   }
 
-  // Add tasks to branches
-  const allBranches = await db.select().from(branches);
-  for (const branch of allBranches) {
-    const existingBranchTasks: string[] = branch.tasks || [];
-    const missingTaskIds = createdOrFoundTaskIds.filter((id) => !existingBranchTasks.includes(id));
-    if (missingTaskIds.length > 0) {
-      const updatedTasks = [...existingBranchTasks, ...missingTaskIds];
-      await db.update(branches)
-        .set({
-          tasks: updatedTasks,
-          last_update: new Date(),
-        })
-        .where(sql`${branches.id} = ${branch.id}`);
-      console.log(`Updated branch ${branch.name} (${branch.id}) with ${missingTaskIds.length} new special tasks.`);
-    } else {
-      console.log(`Branch ${branch.name} already has all special tasks.`);
-    }
+  // Update all special tasks in DB to ensure is_special = true
+  for (const id of createdOrFoundTaskIds) {
+    await db.update(tasks).set({ is_special: true }).where(sql`${tasks.id} = ${id}`);
   }
+
+  // Touch branches last_update
+  await db.update(branches).set({ last_update: new Date() });
+  console.log("Updated branches last_update.");
 
   console.log("Seeding complete! Special Task IDs:", createdOrFoundTaskIds);
 }

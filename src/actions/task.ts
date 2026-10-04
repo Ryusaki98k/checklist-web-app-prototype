@@ -50,11 +50,10 @@ export async function toggleTaskDisabledAction(
             .set({ disabled })
             .where(eq(tasks.id, taskId));
 
-        // Touch last_update for all branches that have this task
+        // Touch last_update for all branches
         await db
             .update(branches)
-            .set({ last_update: new Date() })
-            .where(sql`${taskId} = ANY(${branches.tasks})`);
+            .set({ last_update: new Date() });
 
         return { success: true };
     } catch (err: any) {

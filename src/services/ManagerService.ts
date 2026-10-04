@@ -601,7 +601,7 @@ export class ManagerService implements IManagerService {
     try {
       // 1. Fetch all branches
       const allBranches = await this.db
-        .select({ id: branches.id, name: branches.name, members: branches.members })
+        .select({ id: branches.id, name: branches.name })
         .from(branches);
 
       if (allBranches.length === 0) {
@@ -613,16 +613,14 @@ export class ManagerService implements IManagerService {
         : allBranches[0];
 
       const activeBranchId = activeBranch.id;
-      const branchMemberIds: string[] = activeBranch.members || [];
 
-      // 2. Fetch users who belong to this branch, or if members array is empty, all staff
-      let candidateUsers: any[] = [];
-      if (branchMemberIds.length > 0) {
-        candidateUsers = await this.db
-          .select()
-          .from(users)
-          .where(inArray(users.id, branchMemberIds));
-      } else {
+      // 2. Fetch users who belong to this branch, or fallback to all staff
+      let candidateUsers = await this.db
+        .select()
+        .from(users)
+        .where(eq(users.branch_id, activeBranchId));
+
+      if (candidateUsers.length === 0) {
         candidateUsers = await this.db
           .select()
           .from(users)
@@ -639,7 +637,7 @@ export class ManagerService implements IManagerService {
             .from(shiftSession)
             .where(
               and(
-                inArray(shiftSession.user, candidateUsers.map(u => u.id)),
+                inArray(shiftSession.user, candidateUsers.map((u: any) => u.id)),
                 gte(shiftSession.start, startOfDay),
                 lte(shiftSession.start, endOfDay)
               )
@@ -656,7 +654,7 @@ export class ManagerService implements IManagerService {
               lastShift: sql<Date | string>`max(${shiftSession.start})`,
             })
             .from(shiftSession)
-            .where(inArray(shiftSession.user, candidateUsers.map(u => u.id)))
+            .where(inArray(shiftSession.user, candidateUsers.map((u: any) => u.id)))
             .groupBy(shiftSession.user)
         : [];
 
@@ -672,7 +670,7 @@ export class ManagerService implements IManagerService {
             .where(
               and(
                 eq(employeeLeaves.branch_id, activeBranchId),
-                inArray(employeeLeaves.user_id, candidateUsers.map(u => u.id)),
+                inArray(employeeLeaves.user_id, candidateUsers.map((u: any) => u.id)),
                 lte(employeeLeaves.start_date, thaiTodayStr),
                 gte(employeeLeaves.end_date, thaiTodayStr)
               )
@@ -834,7 +832,7 @@ export class ManagerService implements IManagerService {
 
       // 1. Fetch all branches
       const allBranches = await this.db
-        .select({ id: branches.id, name: branches.name, members: branches.members })
+        .select({ id: branches.id, name: branches.name })
         .from(branches);
 
       let totalUnendedShifts = 0;
@@ -849,16 +847,13 @@ export class ManagerService implements IManagerService {
       }> = [];
 
       for (const branch of allBranches) {
-        const memberIds: string[] = Array.isArray(branch.members) ? branch.members : [];
-        if (memberIds.length === 0) continue;
-
-        // Fetch candidate staff users
+        // Fetch candidate staff users belonging to this branch
         const candidateUsers = await this.db
           .select({ id: users.id, name: users.name, role: users.role })
           .from(users)
           .where(
             and(
-              inArray(users.id, memberIds),
+              eq(users.branch_id, branch.id),
               inArray(users.role, ["employee", "manager_assistant"])
             )
           );
@@ -1333,15 +1328,11 @@ export class ManagerService implements IManagerService {
       if (!targetUser) return { success: false, error: "ไม่พบข้อมูลผู้ใช้" };
 
       let branchRecord: any = null;
-      let branchId = params.branchId;
+      const branchId = params.branchId || targetUser.branch_id;
 
       if (branchId) {
         const [b] = await this.db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
         branchRecord = b;
-      } else {
-        const allBranches = await this.db.select().from(branches);
-        branchRecord = allBranches.find((b: any) => b.members?.includes(userId));
-        branchId = branchRecord?.id;
       }
 
       const branchDefaultQuota = typeof branchRecord?.leave_quota === "number" ? branchRecord.leave_quota : 3;
@@ -1745,7 +1736,7 @@ export class ManagerService implements IManagerService {
       const quotaMap: Record<string, LeaveQuotaInfo> = {};
 
       for (const u of allUsers) {
-        const userBranch = allBranches.find((b: any) => Array.isArray(b.members) && b.members.includes(u.id));
+        const userBranch = u.branch_id ? allBranches.find((b: any) => b.id === u.branch_id) : null;
         const branchDefaultQuota = typeof userBranch?.leave_quota === "number" ? userBranch.leave_quota : 3;
         const customQuota = typeof u.leave_quota === "number" ? u.leave_quota : null;
         const allocatedQuota = customQuota !== null ? customQuota : branchDefaultQuota;

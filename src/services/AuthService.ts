@@ -53,8 +53,6 @@ export class AuthService implements IAuthService {
     }
 
     try {
-      await this.seedUsersIfEmpty();
-
       // Support login by username
       const result = await this.db
         .select()
@@ -84,11 +82,13 @@ export class AuthService implements IAuthService {
       else if (foundUser.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
       else if (foundUser.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
 
-      const branchQuery = await this.db
-        .select({ id: branches.id, name: branches.name })
-        .from(branches)
-        .where(sql`${foundUser.id} = ANY(${branches.members})`)
-        .limit(1);
+      const branchQuery = foundUser.branch_id
+        ? await this.db
+            .select({ id: branches.id, name: branches.name })
+            .from(branches)
+            .where(eq(branches.id, foundUser.branch_id))
+            .limit(1)
+        : [];
 
       const branchName = branchQuery.length > 0 ? branchQuery[0].name : undefined;
       const branchId = branchQuery.length > 0 ? branchQuery[0].id : undefined;
@@ -158,6 +158,7 @@ export class AuthService implements IAuthService {
           username: cleanUsername,
           password: cleanPassword,
           role: dbRole as any,
+          branch_id: data.branchId || null,
           leave_quota: typeof data.leaveQuota === "number" ? Math.max(0, Math.floor(data.leaveQuota)) : null,
           last_login: new Date(),
         })
@@ -166,21 +167,13 @@ export class AuthService implements IAuthService {
       let assignedBranchName: string | undefined = undefined;
       if (data.branchId) {
         const targetBranch = await this.db
-          .select()
+          .select({ name: branches.name })
           .from(branches)
           .where(eq(branches.id, data.branchId))
           .limit(1);
 
         if (targetBranch.length > 0) {
           assignedBranchName = targetBranch[0].name;
-          const currentMembers = targetBranch[0].members || [];
-          await this.db
-            .update(branches)
-            .set({
-              members: [...currentMembers, created.id],
-              last_update: new Date(),
-            })
-            .where(eq(branches.id, data.branchId));
         }
       }
 
@@ -232,11 +225,13 @@ export class AuthService implements IAuthService {
       else if (foundUser.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
       else if (foundUser.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
 
-      const branchQuery = await this.db
-        .select({ id: branches.id, name: branches.name })
-        .from(branches)
-        .where(sql`${foundUser.id} = ANY(${branches.members})`)
-        .limit(1);
+      const branchQuery = foundUser.branch_id
+        ? await this.db
+            .select({ id: branches.id, name: branches.name })
+            .from(branches)
+            .where(eq(branches.id, foundUser.branch_id))
+            .limit(1)
+        : [];
 
       const branchName = branchQuery.length > 0 ? branchQuery[0].name : undefined;
       const branchId = branchQuery.length > 0 ? branchQuery[0].id : undefined;
@@ -274,9 +269,7 @@ export class AuthService implements IAuthService {
         else if (u.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
         else if (u.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
 
-        const userBranch = allBranches.find(
-          (b: any) => Array.isArray(b.members) && b.members.includes(u.id)
-        );
+        const userBranch = allBranches.find((b: any) => b.id === u.branch_id);
 
         return {
           id: u.id,

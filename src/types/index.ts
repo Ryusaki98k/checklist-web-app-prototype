@@ -1,6 +1,6 @@
 export type Role = "employee" | "manager" | "manager_assistant" | "committee" | "general_manager" | "admin";
 export type ShiftType = "morning" | "afternoon" | "both";
-export type LeaveType = "paid" | "unpaid" | "ลาเเบบได้เงิน" | "ลาเเบบไม่ได้รับเงิน" | "ลาแบบได้เงิน" | "ลาแบบไม่ได้รับเงิน" | "sick" | "personal" | "other";
+export type LeaveType = "paid" | "unpaid" | "ลาเเบบได้เงิน" | "ลาเเบบไม่ได้รับเงิน" | "ลาแบบได้เงิน" | "ลาแบบไม่ได้รับเงิน";
 
 export interface EmployeeLeave {
   id: string;

@@ -1,0 +1,1180 @@
+{
+  "tasks": [
+    {
+      "id": "0ae52438-33a0-49aa-8770-ab3c6049b5ed",
+      "shift": "afternoon",
+      "name": "ทักทายลูกค้า คิดเงิน และทอนเงินอย่างถูกต้องรวดเร็ว",
+      "task_role": "cashier",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "0d3e93f1-9223-48c9-8ce2-c2e7659668c8",
+      "shift": "morning",
+      "name": "ตรวจนับเงินทอน (Float) ก้นลิ้นชักให้ครบถ้วนและถูกต้องตรงตามระเบียบ",
+      "task_role": "cashier",
+      "start_time": "06:00:00",
+      "end_time": "07:30:00",
+      "disabled": false
+    },
+    {
+      "id": "101240ab-a557-40cd-b7d9-322bec77ee3b",
+      "shift": "morning",
+      "name": "(หน้าที่หลัก) นำไก่สดและหมูสด ออกมาจัดเรียงใส่ถาดและนำเข้าตู้แช่แสดงสินค้าให้สวยงาม พร้อมสำหรับการขาย",
+      "task_role": "stock",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "126207da-e980-4347-a9f4-436a587f4922",
+      "shift": "afternoon",
+      "name": "สแกนนิ้วเข้างาน แต่งกายและติดป้ายชื่อเรียบร้อย",
+      "task_role": "cashier",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "1b07d7c1-5886-4c42-9342-001aeffbf21f",
+      "shift": "afternoon",
+      "name": "จัดทำรายงานสรุปยอดขายประจำวัน (Daily Sales Report) พร้อมทั้งแนบข้อเสนอแนะเรื่องโปรโมชั่นหรือแผนจัดการของเสีย เพื่อส่งรายงานให้ผู้บริหาร",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "1f41946d-3e90-4483-aeb7-bfe6294dec80",
+      "shift": "morning",
+      "name": "จัดเรียงสินค้าอื่นๆ ให้เต็มชั้นวาง เช่น เติมสต็อกไข่ปลอดสาร และสินค้าแช่แข็งต่างๆ",
+      "task_role": "stock",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "251e1f0c-bc0e-4b0e-85df-c95fad5d9760",
+      "shift": "afternoon",
+      "name": "ปิดเครื่องปรับอากาศ (Turn off air conditioning)",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "21:30:00",
+      "disabled": false
+    },
+    {
+      "id": "26f2fcde-dd08-45de-b9f2-55d8714b72af",
+      "shift": "morning",
+      "name": "คอยซับน้ำหรือเลือดที่อาจซึมออกมาจากถาดเนื้อสัตว์ในตู้โชว์ เพื่อความสะอาดสะอ้าน",
+      "task_role": "stock",
+      "start_time": "06:30:00",
+      "end_time": "16:30:00",
+      "disabled": false
+    },
+    {
+      "id": "2904451f-103a-4562-9042-a99ee0a58edc",
+      "shift": "afternoon",
+      "name": "รับมอบลิ้นชักเงินทอนจากกะเช้า และตรวจนับยอดเงินทอนให้ถูกต้องก่อนเริ่มงาน",
+      "task_role": "cashier",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "2ef836d4-c990-4ab6-a6e8-cd0e79305bbe",
+      "shift": "afternoon",
+      "name": "คัดแยกธนบัตรและเหรียญในลิ้นชักให้เป็นระเบียบ เพื่อป้องกันความผิดพลาดในช่วงเวลาที่ลูกค้าเยอะ (Peak Hours)",
+      "task_role": "cashier",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "3248aa3c-2864-428a-a078-2e6215d18d5f",
+      "shift": "afternoon",
+      "name": "ตรวจสอบความเรียบร้อยรอบสุดท้าย ปิดไฟตู้โชว์ (ถ้ามีระเบียบให้ปิด) ก่อนเลิกงาน",
+      "task_role": "stock",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "3816fba4-de1a-4168-9653-1858c7ee95d1",
+      "shift": "morning",
+      "name": "แจ้งลูกค้าอย่างสุภาพเรื่องข้อปฏิบัติของร้าน (เช่น การงดรับธนบัตร 1,000 บาท สำหรับยอดซื้อที่ต่ำกว่า 300 บาทในช่วงเช้า)",
+      "task_role": "cashier",
+      "start_time": "08:00:00",
+      "end_time": "10:00:00",
+      "disabled": false
+    },
+    {
+      "id": "3a52e2f1-9517-453c-b278-d5373a547d7c",
+      "shift": "afternoon",
+      "name": "สั่งซื้อสินค้าเข้ามาจำหน่ายในร้าน ",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "3a5d0af0-cd26-4eef-b8c6-c6e7648b3865",
+      "shift": "morning",
+      "name": "ดูแลความเรียบร้อยหน้าเคาน์เตอร์แคชเชียร์ พร้อมกำชับเรื่องกฎการงดรับแบงก์ 1,000 บาทสำหรับยอดซื้อที่ต่ำกว่า 300 บาทในช่วงเช้า",
+      "task_role": "manager_assistant",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "3aa828c6-eb41-47d4-861b-6c9815ca4aeb",
+      "shift": "afternoon",
+      "name": "ควบคุมการปิดกะแคชเชียร์ ตรวจสอบยอดเงินให้ตรงกับระบบ POS",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "3f1d8dac-32dd-424c-b13d-b2e31001bd38",
+      "shift": "morning",
+      "name": "สแกนนิ้วเข้างาน แต่งกายและติดป้ายชื่อเรียบร้อย",
+      "task_role": "cashier",
+      "start_time": "06:00:00",
+      "end_time": "07:30:00",
+      "disabled": false
+    },
+    {
+      "id": "4159b451-9e59-419c-b044-09920d23f638",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก) ทำความสะอาดภายในตู้แช่เนื้อสด เช็ดคราบน้ำ คราบเลือด และฆ่าเชื้อบริเวณชั้นวางและกระจกตู้",
+      "task_role": "stock",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "456bfde9-1be1-46a0-a172-cfcdcbbe2bef",
+      "shift": "afternoon",
+      "name": "ตรวจสอบความเรียบร้อยของถุงพลาสติกและกระดาษใบเสร็จ หากพร่องให้เติมทันที",
+      "task_role": "cashier",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "48dc047c-e047-47c3-8e26-3c382d2aaab5",
+      "shift": "afternoon",
+      "name": "ควบคุมดูแลพนักงานสต็อกในการเก็บเนื้อสดเข้าตู้แช่หลังร้านและล้างทำความสะอาดอุปกรณ์ให้ถูกสุขลักษณะ",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "531d83be-6bcd-4034-9e7d-f84b785f1e0b",
+      "shift": "morning",
+      "name": "เก็บขยะบริเวณเคาน์เตอร์ไปทิ้ง",
+      "task_role": "cashier",
+      "start_time": "10:15:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "55e2e86d-f76b-4ac0-bb07-eba2048f641a",
+      "shift": "morning",
+      "name": "คอยรักษาความสะอาดบริเวณเคาน์เตอร์คิดเงิน เครื่องสแกน และเครื่องชั่ง (ถ้ามี) ให้สะอาดอยู่เสมอ โดยเฉพาะเมื่อมีคราบน้ำจากสินค้ากลุ่มเนื้อสด",
+      "task_role": "cashier",
+      "start_time": "08:00:00",
+      "end_time": "10:00:00",
+      "disabled": false
+    },
+    {
+      "id": "5abae614-b649-4216-87cd-b542cdf849a9",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก: ดูภาพรวม) เดินตรวจตราความเรียบร้อยรอบร้าน Eater Egg Fresh Mart ทั้งในส่วนของพื้นที่ขาย สต็อกหลังร้าน และการให้บริการของพนักงาน",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "5af7d8ea-3cb9-4732-ac42-3123937f5ee2",
+      "shift": "morning",
+      "name": "เตรียมเอกสาร ใบนำฝาก (Pay-in Slip) และจัดเก็บเงินสดใส่กระเป๋าให้ปลอดภัย",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "61b06516-cf3a-400a-9596-29d7e2ba0b2e",
+      "shift": "morning",
+      "name": "สแกนนิ้วเข้างาน แต่งกายรัดกุม สวมผ้ากันเปื้อน หมวกคลุมผม และถุงมือให้เรียบร้อย (เน้นสุขอนามัยเนื่องจากต้องสัมผัสเนื้อสด)",
+      "task_role": "stock",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "62c2d007-05e1-4530-b0a0-3f58fec663ce",
+      "shift": "morning",
+      "name": "(หน้าที่หลัก) เดินทางไปธนาคารเพื่อนำเงินค่าขายสินค้าของเมื่อวานเข้าบัญชีให้เสร็จสิ้นก่อน 12:00 น.",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "635580b2-b7c7-4aa3-bcc2-d6875a5aef8c",
+      "shift": "afternoon",
+      "name": "รับมอบงานจาก ผช.ผู้จัดการกะเช้า และตรวจสอบหลักฐานการนำเงินเข้าธนาคาร",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "76151dad-58cc-4965-bad8-688cc0a30cd7",
+      "shift": "morning",
+      "name": "ตรวจเช็กและเติมอุปกรณ์อำนวยความสะดวกที่เคาน์เตอร์(ถุงหูหิ้วสำหรับแยกของสด/เนื้อสัตว์, ม้วนกระดาษใบเสร็จ)",
+      "task_role": "cashier",
+      "start_time": "06:00:00",
+      "end_time": "07:30:00",
+      "disabled": false
+    },
+    {
+      "id": "7aa793e7-3dfc-4965-a397-883a20c3806e",
+      "shift": "morning",
+      "name": "ส่งมอบกะ (Handover) แจ้งข้อมูลสำคัญ โปรโมชันที่ต้องเน้น หรือปัญหาที่พบในช่วงเช้าให้แคชเชียร์กะบ่ายทราบ",
+      "task_role": "cashier",
+      "start_time": "10:15:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "8004cb75-ee71-4bcb-894e-c27d7e0dd483",
+      "shift": "morning",
+      "name": "นำสลิปหรือหลักฐานการฝากเงินเข้าธนาคารมาจัดเก็บเข้าแฟ้มเอกสารของร้านให้เรียบร้อย",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "823b549b-af0c-4d5f-9681-cf97a0d5d440",
+      "shift": "afternoon",
+      "name": "นับเงินสดทั้งหมด นำเงินรายได้ส่ง ผจก.ร้าน หรือเตรียมนำฝากตามระเบียบที่ร้านกำหนด",
+      "task_role": "cashier",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "82e032e9-1f0d-488c-97f8-fd153dfae7d9",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก) นำถุงเนื้อสัตว์ที่แพ็คแล้ว ไปจัดเก็บในตู้แช่เย็น/ตู้สต็อกหลังร้าน โดยควบคุมอุณหภูมิให้เหมาะสมเพื่อรักษาความสด",
+      "task_role": "stock",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "842303d9-c798-44d2-8067-bf91ca004719",
+      "shift": "morning",
+      "name": "เช็ดทำความสะอาดกระจกตู้แช่ไม่ให้มีคราบรอยนิ้วมือหรือฝ้าฝุ่น",
+      "task_role": "stock",
+      "start_time": "06:30:00",
+      "end_time": "16:30:00",
+      "disabled": false
+    },
+    {
+      "id": "8859f304-d091-41ef-b843-1df66b3c275b",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก: ช่องทางโปรโมท) คิดคอนเทนต์หรือวางแผนทำกราฟิกโปรโมชั่น เพื่อนำไปโพสต์โปรโมทร้านผ่านช่องทาง Facebook และ TikTok ฯลฯ",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "886cdbaf-4187-4b91-8f63-7e80032f76c0",
+      "shift": "morning",
+      "name": "ดูแลความสะอาดบริเวณพื้นที่จัดเตรียมเนื้อสัตว์และอาหารสด",
+      "task_role": "stock",
+      "start_time": "06:30:00",
+      "end_time": "16:30:00",
+      "disabled": false
+    },
+    {
+      "id": "8984a588-9b09-4960-8a10-c12e83acc16f",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก: จัดการของเสีย) ตรวจสอบสต็อกสินค้าอาหารสด เช่น เนื้อหมูและไก่สด ที่ใกล้หมดอายุการขาย",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "90377af0-9a7a-4396-a492-43ef58993f45",
+      "shift": "afternoon",
+      "name": "ปิดเครื่อง POS และปิดสวิตช์อุปกรณ์ไฟฟ้าบริเวณเคาน์เตอร์",
+      "task_role": "cashier",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "916adc15-553c-4f20-88b9-ba9922ec7fef",
+      "shift": "afternoon",
+      "name": "รับช่วงต่อจากกะเช้า ตรวจสอบปริมาณสินค้าในตู้แช่และบนชั้นวาง หากใกล้หมดให้เติมสต็อก",
+      "task_role": "stock",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "94c188ee-c955-4dd0-ae73-8ee681ffbdbf",
+      "shift": "afternoon",
+      "name": "ล็อคประตูร้านและตรวจสอบความปลอดภัย (Lock the store)",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "21:30:00",
+      "disabled": false
+    },
+    {
+      "id": "9dae90dc-cd88-4540-922b-5403e889a384",
+      "shift": "afternoon",
+      "name": "จัดเก็บอุปกรณ์ เครื่องชั่ง และเคลียร์ขยะ/กล่องเปล่าไปทิ้งหลังร้าน",
+      "task_role": "stock",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "9e3f1bef-46a7-4023-a297-4f8934cb7905",
+      "shift": "morning",
+      "name": "ตรวจสอบและจัดเตรียมเงินทอนให้เพียงพอสำหรับกะบ่าย",
+      "task_role": "cashier",
+      "start_time": "10:15:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "a394c6e1-bdcd-456c-b4d2-0fb1512e4480",
+      "shift": "morning",
+      "name": "เปิดเครื่อง POS ล็อกอินด้วยรหัสของตนเอง และทดสอบอุปกรณ์ (เครื่องสแกนบาร์โค้ด, ลิ้นชักเก็บเงิน, เครื่องพิมพ์ใบเสร็จ)",
+      "task_role": "cashier",
+      "start_time": "06:00:00",
+      "end_time": "07:30:00",
+      "disabled": false
+    },
+    {
+      "id": "a3f85a38-011a-4360-bad3-461b1c56b138",
+      "shift": "morning",
+      "name": "ตรวจนับเงินสดค่าขายสินค้าของเมื่อวานในเซฟหรือจากระบบให้ถูกต้องตรงกับรายงานสรุปยอดขาย",
+      "task_role": "manager_assistant",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "a8816436-adc8-4a4a-93a0-d7b18b3f1075",
+      "shift": "afternoon",
+      "name": "หมั่นเช็ดทำความสะอาดสายพานหรือโต๊ะเคาน์เตอร์หลังคิดเงินเสร็จ เพื่อสุขอนามัยที่ดีของสินค้าสด",
+      "task_role": "cashier",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": true
+    },
+    {
+      "id": "aa24e6e9-cfb7-4453-b1a3-8347b13cf366",
+      "shift": "morning",
+      "name": "เดินตรวจความเรียบร้อยของพื้นที่ขาย ตู้แช่หมูอนามัย ชิ้นส่วนไก่ อาหารแช่แข็ง และจุดวางไข่ปลอดสาร",
+      "task_role": "manager_assistant",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "ad68f189-43f9-4be3-9126-af595095086e",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก) นำถาดใส่เนื้อสัตว์ที่ว่างเปล่าทั้งหมดไปล้างทำความสะอาด ขัดคราบไขมัน และผึ่ง/เช็ดให้แห้งสนิท",
+      "task_role": "stock",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "ae47eac9-f7d9-4a51-9535-e5aa9958578d",
+      "shift": "afternoon",
+      "name": "ทำความสะอาดบริเวณห้องหั่น/เตรียมสินค้า ให้สะอาดตามมาตรฐานความปลอดภัยทางอาหาร",
+      "task_role": "stock",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "ae8c12d1-9ed9-4c8b-9f15-4ca1f7e8cd00",
+      "shift": "morning",
+      "name": "ติดป้ายราคาและตรวจสอบความถูกต้องของป้ายโปรโมชันบริเวณตู้แช่",
+      "task_role": "stock",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "aeb48995-b18b-44d4-ac59-c880129821d6",
+      "shift": "afternoon",
+      "name": "ปิดไฟส่องสว่างในร้าน (Turn off light)",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "21:30:00",
+      "disabled": false
+    },
+    {
+      "id": "b51daeb4-9747-4861-9ec4-0feedd2ed06d",
+      "shift": "afternoon",
+      "name": "สแกนนิ้วเข้างาน แต่งกายรัดกุม สวมผ้ากันเปื้อน หมวกคลุมผม และถุงมือ",
+      "task_role": "stock",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "bf0756d2-1c56-457c-8ad8-5a99bd42dee3",
+      "shift": "afternoon",
+      "name": "ตรวจสอบความเรียบร้อยรอบสุดท้ายก่อนสแกนนิ้วเลิกงาน",
+      "task_role": "cashier",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "c0313505-bff6-4831-b03c-fc779e6819d6",
+      "shift": "morning",
+      "name": "ตรวจสอบการเข้างาน การแต่งกาย และความพร้อมของพนักงานแคชเชียร์และพนักงานสต็อก",
+      "task_role": "manager_assistant",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "c0c21ee6-0736-443a-bb91-4e1c3dcf2ec1",
+      "shift": "morning",
+      "name": "หมั่นตรวจสอบปริมาณหมูสดและไก่สดในตู้แช่ หากพร่องให้รีบเติมให้ดูเต็มและน่าซื้ออยู่เสมอ",
+      "task_role": "stock",
+      "start_time": "06:30:00",
+      "end_time": "16:30:00",
+      "disabled": false
+    },
+    {
+      "id": "c2edc195-3935-4c5e-8366-2767f40f5bf6",
+      "shift": "morning",
+      "name": "ก่อนกลับเติมของหรือเก็บของ ล้างวัสดุอุปกรณ์ที่ใช้ให้เรียบเสมอ",
+      "task_role": "stock",
+      "start_time": "06:30:00",
+      "end_time": "16:30:00",
+      "disabled": false
+    },
+    {
+      "id": "c31f902e-1146-4102-abf3-b1bc504e0cab",
+      "shift": "afternoon",
+      "name": "ทำความสะอาดเคาน์เตอร์คิดเงินทั้งหมด เช็ดเครื่อง POS และอุปกรณ์ต่างๆ ด้วยน้ำยาทำความสะอาด",
+      "task_role": "cashier",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "cd8a6ddf-32ad-4c9b-bb0e-d19192a9f059",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก: สรุปยอดขาย) รวบรวมข้อมูลยอดขายจากเครื่อง POS ทั้งหมด ตรวจสอบความถูกต้องของบัญชีรายรับ-รายจ่าย",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "cebb8fbd-3315-4c5f-af45-a51d72fd9c7b",
+      "shift": "morning",
+      "name": "ตรวจสอบอุณหภูมิตู้แช่เนื้อสด ตู้แช่แข็ง และตู้แช่เย็นอื่นๆ ให้อยู่ในเกณฑ์มาตรฐาน",
+      "task_role": "stock",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "cebee2d9-1ed9-4b2f-9193-1c010943471a",
+      "shift": "afternoon",
+      "name": "นำเสนอแผนการจัดการของเสีย (Waste) เช่น การจัดโปรโมชั่นลดราคา (Clearance) สำหรับสินค้าสดในช่วงเย็น",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "e0e91537-55e8-4d24-b273-425efa401af8",
+      "shift": "afternoon",
+      "name": "ปิดไฟตู้แช่สินค้า (Turn off refriderator's light)",
+      "task_role": "manager_assistant",
+      "start_time": "19:30:00",
+      "end_time": "21:30:00",
+      "disabled": false
+    },
+    {
+      "id": "e1ff8aea-6a97-49f4-9ea5-8fc93b26b308",
+      "shift": "afternoon",
+      "name": "ปิดยอดขายประจำวัน ของเครื่อง POS ตนเอง",
+      "task_role": "cashier",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "e540d4ef-a69d-48ee-91a5-8244dd11a60c",
+      "shift": "morning",
+      "name": "เคลียร์บิล สรุปยอดขายส่วนตัวในกะเช้า และนับเงินสดส่งมอบตามระบบ",
+      "task_role": "cashier",
+      "start_time": "10:15:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "e5816e5f-cf35-4896-9469-d94bccb5a457",
+      "shift": "afternoon",
+      "name": "รับฟังสรุปงานจากกะเช้า (เช่น สินค้าตัวไหนจัดโปรโมชัน, สินค้ากลุ่มไข่ปลอดสารหรือเนื้อสัตว์รายการไหนที่ต้องเน้นขาย)",
+      "task_role": "cashier",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "e898e7de-b172-450f-aae5-29d17189d25c",
+      "shift": "afternoon",
+      "name": "(หน้าที่หลัก) นำหมูสดและไก่สดที่เหลือจากการขายในถาด มาบรรจุใส่ถุงให้มิดชิด",
+      "task_role": "stock",
+      "start_time": "19:30:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "e8f6ad37-04e0-446f-935f-69567777918f",
+      "shift": "morning",
+      "name": "ทักทายลูกค้า คิดเงิน และทอนเงินอย่างถูกต้องรวดเร็ว",
+      "task_role": "cashier",
+      "start_time": "07:30:00",
+      "end_time": "08:00:00",
+      "disabled": false
+    },
+    {
+      "id": "ec9391e6-2a66-4142-a9f9-d663ae30473f",
+      "shift": "afternoon",
+      "name": "รับเข้าสินค้า ",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "ee17198d-1e9e-4a6d-900b-eb1de0a17665",
+      "shift": "morning",
+      "name": "รับเข้าสินค้า ",
+      "task_role": "manager_assistant",
+      "start_time": "06:00:00",
+      "end_time": "06:30:00",
+      "disabled": false
+    },
+    {
+      "id": "f9574450-3c03-47fd-972e-45dad928d1bb",
+      "shift": "afternoon",
+      "name": "ดูแลความสะอาดบริเวณตู้แช่และพื้นที่ขายอย่างต่อเนื่อง",
+      "task_role": "stock",
+      "start_time": "10:00:00",
+      "end_time": "20:30:00",
+      "disabled": false
+    },
+    {
+      "id": "fb0622de-35e9-41fd-bea8-da9e71c01e39",
+      "shift": "morning",
+      "name": "เปลี่ยนป้ายเปลี่ยนบาร์โค้ด กรณี ปรับราคาสินค้า",
+      "task_role": "cashier",
+      "start_time": "08:00:00",
+      "end_time": "10:00:00",
+      "disabled": false
+    },
+    {
+      "id": "fe651976-fd91-4573-b6c2-20cf08870855",
+      "shift": "morning",
+      "name": "สรุปสถานการณ์ช่วงเช้า ปัญหาที่พบ หรืออัปเดตงาน เพื่อส่งมอบกะ ให้ผู้จัดการกะบ่าย",
+      "task_role": "manager_assistant",
+      "start_time": "10:00:00",
+      "end_time": "11:00:00",
+      "disabled": false
+    },
+    {
+      "id": "fee3a545-07dd-435f-a5af-a0585bd3bcd9",
+      "shift": "morning",
+      "name": "จัดเรียงสินค้าบริเวณหน้าเคาน์เตอร์ให้เต็มและดูน่าซื้อเสมอ",
+      "task_role": "cashier",
+      "start_time": "08:00:00",
+      "end_time": "10:00:00",
+      "disabled": false
+    }
+  ],
+  "refrigerators": [
+    {
+      "id": "021a33d0-52db-47d3-99c8-e34346a5ed5d",
+      "name": "F007",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "0a4854a4-6c5b-4679-a14e-2bcf0be914a4",
+      "name": "F008",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "10978704-ad47-42ec-a3cd-97ce3d442094",
+      "name": "F011",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "12334fa6-6abe-4a98-95ba-bc065ff4e28e",
+      "name": "F012",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "1349f95f-df44-4395-8064-7e2332912d2c",
+      "name": "F004",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "137c6092-8080-4c70-a8e6-c68a61d13ea8",
+      "name": "C006",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "16bf71e6-1ec2-4765-91c8-0f79dad25b0d",
+      "name": "F016",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "21b196cb-03ae-495a-a0db-731c36553c2e",
+      "name": "F006",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "2819f848-8523-45bc-a2e4-d7cab355b52a",
+      "name": "C005",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "2ba661ea-34de-4998-afc2-24bd3e5af726",
+      "name": "C010",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "35a7b5fd-403e-412b-b506-fb371e8d52a9",
+      "name": "C001",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "3b5aee33-fc9b-4c72-998f-bf4ec32d0d84",
+      "name": "C002",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "4087fcc9-bf9c-4abc-9646-4f1eed4e4573",
+      "name": "ตู้แช่",
+      "min_temperature": -4,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "4ff41ed9-bd1d-4dbd-8062-3cfd438596d4",
+      "name": "F017",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "573e976e-3287-4002-afea-5e58c3dad498",
+      "name": "F001",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "5ab8e2a7-1c77-4b9d-afce-31d9e64a32fd",
+      "name": "F018",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "5d135794-abef-421e-8a8b-02eeca337656",
+      "name": "C007",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "60c41a9a-07b9-4e2c-a46d-f11f3bf558da",
+      "name": "ตู้แช่",
+      "min_temperature": -4,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "6e3883a9-5d88-4bd6-b72b-62b2e635711e",
+      "name": "C003",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "741bb044-4141-48d9-a1cf-67c6fcce30bd",
+      "name": "ตู้แช่",
+      "min_temperature": 0,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "7643bd27-2f0e-42c4-accc-85b4301d4d9b",
+      "name": "ตู้แช่",
+      "min_temperature": 0,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "81187cc4-45e8-4388-a120-c6c2eba2841b",
+      "name": "F019",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": true
+    },
+    {
+      "id": "834caba7-1e0c-4a55-8ce1-c1c9a0a69f02",
+      "name": "ตู้แช่",
+      "min_temperature": -4,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "864db632-24b6-48e2-8d12-b9aedd18f2c3",
+      "name": "F014",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "9fc921ca-2f28-4b8e-902f-17c96ea77cd3",
+      "name": "ตู้แช่",
+      "min_temperature": -4,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "a5d96ee3-4c65-4016-9f84-d94c25b39380",
+      "name": "ตู้แช่ 123",
+      "min_temperature": -4,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "abcc77cd-c2bd-43f2-8390-15903e996a3d",
+      "name": "F013",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "b1629139-ea2d-4e46-99a9-ed95eae8d998",
+      "name": "F002",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "b3d1ef59-57ec-410f-9055-fba9ae199617",
+      "name": "F010",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "c88851a4-165f-4751-8179-93a60a5febde",
+      "name": "F005",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "ca910ba7-17de-4735-bd06-4997cf3bc2bc",
+      "name": "C004",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "cdcc0501-582e-4761-b4fc-3e3007c6473a",
+      "name": "C009",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    },
+    {
+      "id": "cea3b730-b3e4-4b83-8efe-b46c0170b4b7",
+      "name": "F003",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "e7051de9-b973-4d52-b1c5-ffa0dc282c45",
+      "name": "ตู้แช่121212",
+      "min_temperature": 0,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "e8f2c518-2c65-4c4f-af7d-362e06f09b1b",
+      "name": "ตู้แช่",
+      "min_temperature": -3,
+      "max_temperature": 4,
+      "disable_check": false
+    },
+    {
+      "id": "ed000df3-1261-4c3c-a344-d2df7f9a4190",
+      "name": "F009",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "f0a1292e-1e6c-4f63-97a1-69e9135238b8",
+      "name": "F015",
+      "min_temperature": -20,
+      "max_temperature": -15,
+      "disable_check": false
+    },
+    {
+      "id": "f9cc4bb7-21dc-4494-b585-5f2d52070742",
+      "name": "C008",
+      "min_temperature": -2,
+      "max_temperature": 5,
+      "disable_check": false
+    }
+  ],
+  "cron_settings": [
+    {
+      "id": "cleanup-data",
+      "name": "ล้างข้อมูลประวัติและบันทึกเก่า (Data Retention Cleanup)",
+      "description": "ลบประวัติงาน กะ และข้อมูลการดำเนินงานที่เก่ากว่ากำหนดโดยอัตโนมัติ เพื่อรักษาประสิทธิภาพของระบบ",
+      "schedule_cron": "50 16 * * 0",
+      "schedule_description": "ทุกวันอาทิตย์ เวลา 23:50 น.",
+      "enabled": true,
+      "config": {
+        "retentionDays": 14,
+        "cleanNotifications": true,
+        "cleanShiftSessions": true,
+        "cleanEmployeeLeaves": true,
+        "cleanPointTransactions": true,
+        "cleanRefrigeratorTasks": true
+      },
+      "last_run_at": "2026-10-03 09:41:29.849+00",
+      "last_run_status": "success",
+      "last_run_message": "ล้างข้อมูลเก่ากว่า 14 วัน สำเร็จ: ปิดกะ/ลบประวัติกะ 0 กะ, งานย่อย 0 รายการ, บันทึกตู้แช่ 0 รายการ, แจ้งเตือน 0 รายการ, คะแนน 0 รายการ, ข้อมูลลา 0 รายการ",
+      "updated_at": "2026-09-30 08:18:05.037989+00"
+    },
+    {
+      "id": "daily-refrigerators",
+      "name": "ระบบตู้แช่ประจำวัน (Daily Refrigerator Routine)",
+      "description": "สร้างตารางตรวจเช็คตู้แช่สำหรับวันใหม่ และทำเครื่องหมายตู้แช่ที่ขาดการตรวจเช็คจากเมื่อวาน",
+      "schedule_cron": "5 17 * * *",
+      "schedule_description": "ทุกวัน เวลา 00:05 น.",
+      "enabled": true,
+      "config": {
+        "createDailyTasks": true,
+        "markMissedYesterdayTasks": true
+      },
+      "last_run_at": "2026-10-03 17:21:47.407+00",
+      "last_run_status": "success",
+      "last_run_message": "ประมวลผลงานตู้แช่สำเร็จ: สร้างงานตรวจใหม่ 37 งาน, ทำเครื่องหมายตู้ขาดตรวจ 37 ตู้ (ครอบคลุม 1 สาขา)",
+      "updated_at": "2026-09-30 08:59:14.741+00"
+    },
+    {
+      "id": "end-shifts",
+      "name": "ระบบปิดกะอัตโนมัติและแจ้งเตือนพนักงาน (Auto End Shifts & Alerts)",
+      "description": "ตรวจสอบและแจ้งเตือนผู้จัดการเมื่อมีพนักงานไม่ปิดกะหรือขาดงาน พร้อมบังคับปิดกะที่ค้างอยู่เมื่อสิ้นวัน",
+      "schedule_cron": "55 16 * * *",
+      "schedule_description": "ทุกวัน เวลา 23:55 น.",
+      "enabled": true,
+      "config": {
+        "sendAttendanceAlerts": true,
+        "autoEndUnclosedShifts": true
+      },
+      "last_run_at": "2026-10-03 17:28:28.34+00",
+      "last_run_status": "success",
+      "last_run_message": "ประมวลผลสิ้นวันสำเร็จ: บังคับปิดกะค้าง 0 กะ, ตรวจพบกะค้างเตือน 0 กะ, พนักงานขาดงาน 4 คน (ส่งแจ้งเตือน: เปิด, บังคับปิดกะ: เปิด)",
+      "updated_at": "2026-09-30 08:59:18.481+00"
+    },
+    {
+      "id": "reset-scores",
+      "name": "รีเซ็ตคะแนนพนักงานประจำเดือน (Monthly Employee Score Reset)",
+      "description": "รีเซ็ตคะแนนสะสมของพนักงานให้เริ่มต้นใหม่ทุกวันแรกของเดือน เพื่อเริ่มรอบคะแนนและแข่งขันในตารางคะแนน (Leaderboard) ประจำเดือนใหม่",
+      "schedule_cron": "0 0 1 * *",
+      "schedule_description": "วันที่ 1 ของทุกเดือน เวลา 07:00 น.",
+      "enabled": true,
+      "config": {
+        "resetRoles": [
+          "employee",
+          "manager_assistant"
+        ],
+        "resetStreaks": true,
+        "notifyEmployees": true,
+        "recordTransaction": true
+      },
+      "last_run_at": "2026-10-03 09:42:04.016+00",
+      "last_run_status": "success",
+      "last_run_message": "รีเซ็ตคะแนนประจำเดือนสำเร็จ: พนักงานที่ได้รับผลกระทบ 0 คน (ล้างคะแนนสะสมรวม 0 แต้ม, สตรีค: รีเซ็ต)",
+      "updated_at": "2026-10-02 06:41:36.617+00"
+    }
+  ],
+  "branches": [
+    {
+      "id": "8d7d1214-ba5c-41b3-a09a-ebf3fe366f6c",
+      "name": "สาขาหลัก",
+      "member_ids": [
+        "0298d015-c3b4-4e93-8ca8-24d23e198a6c",
+        "6a6ef3fb-cfa6-47db-a6ef-d85b6452a9db",
+        "f7d2f647-0ab8-4118-a232-d4da97ce38e0",
+        "46fc0251-a281-4560-89ed-a71707b9dce4",
+        "5af46098-ba35-4e03-8c1e-69a56edb59cb"
+      ],
+      "task_ids": [
+        "531d83be-6bcd-4034-9e7d-f84b785f1e0b",
+        "55e2e86d-f76b-4ac0-bb07-eba2048f641a",
+        "2ef836d4-c990-4ab6-a6e8-cd0e79305bbe",
+        "e540d4ef-a69d-48ee-91a5-8244dd11a60c",
+        "fee3a545-07dd-435f-a5af-a0585bd3bcd9",
+        "3816fba4-de1a-4168-9653-1858c7ee95d1",
+        "76151dad-58cc-4965-bad8-688cc0a30cd7",
+        "0d3e93f1-9223-48c9-8ce2-c2e7659668c8",
+        "456bfde9-1be1-46a0-a172-cfcdcbbe2bef",
+        "bf0756d2-1c56-457c-8ad8-5a99bd42dee3",
+        "9e3f1bef-46a7-4023-a297-4f8934cb7905",
+        "e8f6ad37-04e0-446f-935f-69567777918f",
+        "0ae52438-33a0-49aa-8770-ab3c6049b5ed",
+        "c31f902e-1146-4102-abf3-b1bc504e0cab",
+        "823b549b-af0c-4d5f-9681-cf97a0d5d440",
+        "90377af0-9a7a-4396-a492-43ef58993f45",
+        "e1ff8aea-6a97-49f4-9ea5-8fc93b26b308",
+        "fb0622de-35e9-41fd-bea8-da9e71c01e39",
+        "a394c6e1-bdcd-456c-b4d2-0fb1512e4480",
+        "e5816e5f-cf35-4896-9469-d94bccb5a457",
+        "2904451f-103a-4562-9042-a99ee0a58edc",
+        "3f1d8dac-32dd-424c-b13d-b2e31001bd38",
+        "126207da-e980-4347-a9f4-436a587f4922",
+        "7aa793e7-3dfc-4965-a397-883a20c3806e",
+        "a8816436-adc8-4a4a-93a0-d7b18b3f1075",
+        "8984a588-9b09-4960-8a10-c12e83acc16f",
+        "8859f304-d091-41ef-b843-1df66b3c275b",
+        "5abae614-b649-4216-87cd-b542cdf849a9",
+        "cd8a6ddf-32ad-4c9b-bb0e-d19192a9f059",
+        "62c2d007-05e1-4530-b0a0-3f58fec663ce",
+        "3aa828c6-eb41-47d4-861b-6c9815ca4aeb",
+        "48dc047c-e047-47c3-8e26-3c382d2aaab5",
+        "1b07d7c1-5886-4c42-9342-001aeffbf21f",
+        "3a5d0af0-cd26-4eef-b8c6-c6e7648b3865",
+        "aa24e6e9-cfb7-4453-b1a3-8347b13cf366",
+        "a3f85a38-011a-4360-bad3-461b1c56b138",
+        "c0313505-bff6-4831-b03c-fc779e6819d6",
+        "5af7d8ea-3cb9-4732-ac42-3123937f5ee2",
+        "8004cb75-ee71-4bcb-894e-c27d7e0dd483",
+        "cebee2d9-1ed9-4b2f-9193-1c010943471a",
+        "251e1f0c-bc0e-4b0e-85df-c95fad5d9760",
+        "e0e91537-55e8-4d24-b273-425efa401af8",
+        "aeb48995-b18b-44d4-ac59-c880129821d6",
+        "ee17198d-1e9e-4a6d-900b-eb1de0a17665",
+        "ec9391e6-2a66-4142-a9f9-d663ae30473f",
+        "635580b2-b7c7-4aa3-bcc2-d6875a5aef8c",
+        "94c188ee-c955-4dd0-ae73-8ee681ffbdbf",
+        "fe651976-fd91-4573-b6c2-20cf08870855",
+        "3a52e2f1-9517-453c-b278-d5373a547d7c",
+        "4159b451-9e59-419c-b044-09920d23f638",
+        "101240ab-a557-40cd-b7d9-322bec77ee3b",
+        "ad68f189-43f9-4be3-9126-af595095086e",
+        "82e032e9-1f0d-488c-97f8-fd153dfae7d9",
+        "e898e7de-b172-450f-aae5-29d17189d25c",
+        "c2edc195-3935-4c5e-8366-2767f40f5bf6",
+        "26f2fcde-dd08-45de-b9f2-55d8714b72af",
+        "9dae90dc-cd88-4540-922b-5403e889a384",
+        "1f41946d-3e90-4483-aeb7-bfe6294dec80",
+        "842303d9-c798-44d2-8067-bf91ca004719",
+        "f9574450-3c03-47fd-972e-45dad928d1bb",
+        "886cdbaf-4187-4b91-8f63-7e80032f76c0",
+        "3248aa3c-2864-428a-a078-2e6215d18d5f",
+        "cebb8fbd-3315-4c5f-af45-a51d72fd9c7b",
+        "ae8c12d1-9ed9-4c8b-9f15-4ca1f7e8cd00",
+        "ae47eac9-f7d9-4a51-9535-e5aa9958578d",
+        "916adc15-553c-4f20-88b9-ba9922ec7fef",
+        "b51daeb4-9747-4861-9ec4-0feedd2ed06d",
+        "61b06516-cf3a-400a-9596-29d7e2ba0b2e",
+        "c0c21ee6-0736-443a-bb91-4e1c3dcf2ec1"
+      ],
+      "refrigerators": [
+        "021a33d0-52db-47d3-99c8-e34346a5ed5d",
+        "0a4854a4-6c5b-4679-a14e-2bcf0be914a4",
+        "10978704-ad47-42ec-a3cd-97ce3d442094",
+        "12334fa6-6abe-4a98-95ba-bc065ff4e28e",
+        "1349f95f-df44-4395-8064-7e2332912d2c",
+        "137c6092-8080-4c70-a8e6-c68a61d13ea8",
+        "16bf71e6-1ec2-4765-91c8-0f79dad25b0d",
+        "21b196cb-03ae-495a-a0db-731c36553c2e",
+        "2819f848-8523-45bc-a2e4-d7cab355b52a",
+        "2ba661ea-34de-4998-afc2-24bd3e5af726",
+        "35a7b5fd-403e-412b-b506-fb371e8d52a9",
+        "3b5aee33-fc9b-4c72-998f-bf4ec32d0d84",
+        "4ff41ed9-bd1d-4dbd-8062-3cfd438596d4",
+        "573e976e-3287-4002-afea-5e58c3dad498",
+        "5ab8e2a7-1c77-4b9d-afce-31d9e64a32fd",
+        "5d135794-abef-421e-8a8b-02eeca337656",
+        "6e3883a9-5d88-4bd6-b72b-62b2e635711e",
+        "81187cc4-45e8-4388-a120-c6c2eba2841b",
+        "864db632-24b6-48e2-8d12-b9aedd18f2c3",
+        "abcc77cd-c2bd-43f2-8390-15903e996a3d",
+        "b1629139-ea2d-4e46-99a9-ed95eae8d998",
+        "b3d1ef59-57ec-410f-9055-fba9ae199617",
+        "c88851a4-165f-4751-8179-93a60a5febde",
+        "ca910ba7-17de-4735-bd06-4997cf3bc2bc",
+        "cdcc0501-582e-4761-b4fc-3e3007c6473a",
+        "cea3b730-b3e4-4b83-8efe-b46c0170b4b7",
+        "ed000df3-1261-4c3c-a344-d2df7f9a4190",
+        "f0a1292e-1e6c-4f63-97a1-69e9135238b8",
+        "f9cc4bb7-21dc-4494-b585-5f2d52070742",
+        "7643bd27-2f0e-42c4-accc-85b4301d4d9b",
+        "e8f2c518-2c65-4c4f-af7d-362e06f09b1b",
+        "60c41a9a-07b9-4e2c-a46d-f11f3bf558da",
+        "a5d96ee3-4c65-4016-9f84-d94c25b39380",
+        "e7051de9-b973-4d52-b1c5-ffa0dc282c45",
+        "834caba7-1e0c-4a55-8ce1-c1c9a0a69f02",
+        "4087fcc9-bf9c-4abc-9646-4f1eed4e4573",
+        "9fc921ca-2f28-4b8e-902f-17c96ea77cd3",
+        "741bb044-4141-48d9-a1cf-67c6fcce30bd"
+      ],
+      "last_update": "2026-10-03 10:13:34.78",
+      "leave_quota": 3
+    }
+  ],
+  "users": [
+    {
+      "id": "0298d015-c3b4-4e93-8ca8-24d23e198a6c",
+      "name": "john Yakuza",
+      "password": "123",
+      "role": "employee",
+      "point_streak_type": "none",
+      "point_streak": 0,
+      "longest_streak": 1,
+      "point": 0,
+      "last_login": "2026-10-02 08:21:29.031",
+      "created_at": "2026-10-02 07:00:01.219452",
+      "leave_quota": null,
+      "username": "johnryu"
+    },
+    {
+      "id": "3cc32722-271b-419b-8da9-64e054236676",
+      "name": "Admin",
+      "password": "password",
+      "role": "admin",
+      "point_streak_type": "none",
+      "point_streak": 0,
+      "longest_streak": 0,
+      "point": 0,
+      "last_login": "2026-10-03 07:19:37.446",
+      "created_at": "2026-10-02 06:58:03.970385",
+      "leave_quota": null,
+      "username": "administrator"
+    },
+    {
+      "id": "46fc0251-a281-4560-89ed-a71707b9dce4",
+      "name": "rizzyjohn",
+      "password": "1234",
+      "role": "employee",
+      "point_streak_type": "flawed",
+      "point_streak": 0,
+      "longest_streak": 1,
+      "point": 1,
+      "last_login": "2026-10-03 09:43:30.844",
+      "created_at": "2026-10-02 09:44:16.875931",
+      "leave_quota": null,
+      "username": "john cleck"
+    },
+    {
+      "id": "5af46098-ba35-4e03-8c1e-69a56edb59cb",
+      "name": "safqdasdfsd",
+      "password": "1234",
+      "role": "employee",
+      "point_streak_type": "none",
+      "point_streak": 0,
+      "longest_streak": 0,
+      "point": 0,
+      "last_login": "2026-10-02 14:29:19.691",
+      "created_at": "2026-10-02 14:29:19.928243",
+      "leave_quota": 3,
+      "username": "waddadad"
+    },
+    {
+      "id": "6a6ef3fb-cfa6-47db-a6ef-d85b6452a9db",
+      "name": "สมหมาย มาลาออก",
+      "password": "1234",
+      "role": "employee",
+      "point_streak_type": "none",
+      "point_streak": 0,
+      "longest_streak": 1,
+      "point": 0,
+      "last_login": "2026-10-02 08:29:47.207",
+      "created_at": "2026-10-02 07:03:30.849425",
+      "leave_quota": null,
+      "username": "sawadee49"
+    },
+    {
+      "id": "f7d2f647-0ab8-4118-a232-d4da97ce38e0",
+      "name": "john manager",
+      "password": "1234",
+      "role": "manager",
+      "point_streak_type": "flawed",
+      "point_streak": 0,
+      "longest_streak": 0,
+      "point": 2,
+      "last_login": "2026-10-03 10:02:46.862",
+      "created_at": "2026-10-02 07:07:39.346",
+      "leave_quota": null,
+      "username": "manager"
+    }
+  ]
+}

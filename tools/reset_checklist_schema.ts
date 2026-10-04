@@ -26,9 +26,8 @@ import * as readline from "readline";
  *
  *   [Operational / Transactional Data - Frequently Reset]
  *   - "shift_session"       : Active and historical employee shifts
- *   - "task_work"           : Completed task logs and employee comments
+ *   - "task_work"           : Completed task logs, special closing tasks, and employee comments
  *   - "refrigerator_tasks"  : Daily refrigerator temperature checks
- *   - "store_closing_tasks" : Daily branch closing checklist records
  *   - "notifications"       : System and shift notifications
  *   - "point_transactions"  : Points history ledger
  *   - "employee_leaves"     : Leave requests and leave records

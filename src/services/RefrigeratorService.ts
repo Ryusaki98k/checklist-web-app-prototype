@@ -22,20 +22,27 @@ export class RefrigeratorService implements IRefrigeratorService {
   constructor(private db: any, private notificationService?: INotificationService) {}
 
   private async getBranchForUser(userId: string) {
-    let [branch] = await this.db
-      .select({ id: branches.id, name: branches.name, refrigerators: branches.refrigerators })
-      .from(branches)
-      .where(sql`${userId} = ANY(${branches.members})`)
+    const [u] = await this.db
+      .select({ branchId: users.branch_id })
+      .from(users)
+      .where(eq(users.id, userId))
       .limit(1);
 
-    if (!branch) {
-      [branch] = await this.db
-        .select({ id: branches.id, name: branches.name, refrigerators: branches.refrigerators })
+    if (u?.branchId) {
+      const [b] = await this.db
+        .select({ id: branches.id, name: branches.name })
         .from(branches)
+        .where(eq(branches.id, u.branchId))
         .limit(1);
+      if (b) return b;
     }
 
-    return branch;
+    const [fallbackBranch] = await this.db
+      .select({ id: branches.id, name: branches.name })
+      .from(branches)
+      .limit(1);
+
+    return fallbackBranch;
   }
 
   async getRefrigerators(userId: string): Promise<{ success: boolean; data?: RefrigeratorConfig[]; error?: string }> {
@@ -46,34 +53,11 @@ export class RefrigeratorService implements IRefrigeratorService {
         return { success: true, data: [] };
       }
 
-      // Fetch all refrigerators in the database
-      const allDbRefs = await this.db.select().from(refrigerators);
-      if (allDbRefs.length === 0) {
-        return { success: true, data: [] };
-      }
+      const refs = await this.db
+        .select()
+        .from(refrigerators)
+        .where(eq(refrigerators.branch_id, branch.id));
 
-      // Automatically sync any newly added refrigerators to the branch's refrigerator list
-      const branchRefIds: string[] = Array.isArray(branch.refrigerators) ? branch.refrigerators : [];
-      const branchRefSet = new Set(branchRefIds);
-      const allDbRefIds = allDbRefs.map((r: any) => r.id);
-      const missingFromBranch = allDbRefIds.filter((id: string) => !branchRefSet.has(id));
-
-      if (missingFromBranch.length > 0) {
-        const merged = Array.from(new Set([...branchRefIds, ...allDbRefIds]));
-        await this.db
-          .update(branches)
-          .set({
-            refrigerators: merged,
-            last_update: new Date(),
-          })
-          .where(eq(branches.id, branch.id));
-
-        branch.refrigerators = merged;
-        await this.ensureDailyRefrigeratorTasks(branch.id);
-      }
-
-      const activeRefSet = new Set(branch.refrigerators);
-      const refs = allDbRefs.filter((r: any) => activeRefSet.has(r.id));
       refs.sort((a: any, b: any) => a.name.localeCompare(b.name, "th", { numeric: true }));
 
       return { success: true, data: refs.map((r: any) => ({ ...r, disable_check: !!r.disable_check })) };
@@ -101,6 +85,7 @@ export class RefrigeratorService implements IRefrigeratorService {
       const [newRef] = await this.db
         .insert(refrigerators)
         .values({
+          branch_id: branch.id,
           name,
           min_temperature: minTemperature,
           max_temperature: maxTemperature,
@@ -108,11 +93,9 @@ export class RefrigeratorService implements IRefrigeratorService {
         })
         .returning();
 
-      const currentRefs = branch.refrigerators || [];
       await this.db
         .update(branches)
         .set({
-          refrigerators: [...currentRefs, newRef.id],
           last_update: new Date(),
         })
         .where(eq(branches.id, branch.id));
@@ -138,7 +121,7 @@ export class RefrigeratorService implements IRefrigeratorService {
     try {
       const { id, name, minTemperature, maxTemperature, disableCheck } = params;
 
-      await this.db
+      const [updatedRef] = await this.db
         .update(refrigerators)
         .set({
           name,
@@ -146,15 +129,10 @@ export class RefrigeratorService implements IRefrigeratorService {
           max_temperature: maxTemperature,
           disable_check: disableCheck,
         })
-        .where(eq(refrigerators.id, id));
+        .where(eq(refrigerators.id, id))
+        .returning({ id: refrigerators.id, branch_id: refrigerators.branch_id });
 
-      // Find branch containing this refrigerator and sync today's tasks
-      const [branch] = await this.db
-        .select({ id: branches.id })
-        .from(branches)
-        .where(sql`${id} = ANY(${branches.refrigerators})`)
-        .limit(1);
-
+      const targetBranchId = updatedRef?.branch_id;
       const targetDate = getThaiDateString();
 
       if (disableCheck) {
@@ -168,16 +146,16 @@ export class RefrigeratorService implements IRefrigeratorService {
               sql`${refrigeratorTasks.completed_at} IS NULL`
             )
           );
-      } else if (branch) {
+      } else if (targetBranchId) {
         // If re-enabled, ensure daily task is created right now
-        await this.ensureDailyRefrigeratorTasks(branch.id, targetDate);
+        await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
       }
 
-      if (branch) {
+      if (targetBranchId) {
         await this.db
           .update(branches)
           .set({ last_update: new Date() })
-          .where(eq(branches.id, branch.id));
+          .where(eq(branches.id, targetBranchId));
       }
 
       return { success: true };
@@ -191,23 +169,12 @@ export class RefrigeratorService implements IRefrigeratorService {
     try {
       const targetDate = dateStr || getThaiDateString();
 
-      const [branch] = await this.db
-        .select({ id: branches.id, refrigerators: branches.refrigerators })
-        .from(branches)
-        .where(eq(branches.id, branchId))
-        .limit(1);
-
-      if (!branch || !branch.refrigerators || branch.refrigerators.length === 0) {
-        return { success: true };
-      }
-
-      const refIds = branch.refrigerators as string[];
       const activeRefs = await this.db
         .select({ id: refrigerators.id })
         .from(refrigerators)
         .where(
           and(
-            inArray(refrigerators.id, refIds),
+            eq(refrigerators.branch_id, branchId),
             eq(refrigerators.disable_check, false)
           )
         );
@@ -337,20 +304,10 @@ export class RefrigeratorService implements IRefrigeratorService {
       }
 
       // Fetch branch's assigned refrigerators to know all units including disabled ones
-      const [branchRow] = await this.db
-        .select({ refrigerators: branches.refrigerators })
-        .from(branches)
-        .where(eq(branches.id, targetBranchId))
-        .limit(1);
-
-      const branchRefIds: string[] = Array.isArray(branchRow?.refrigerators) ? branchRow.refrigerators : [];
-      let allBranchRefs: any[] = [];
-      if (branchRefIds.length > 0) {
-        allBranchRefs = await this.db
-          .select()
-          .from(refrigerators)
-          .where(inArray(refrigerators.id, branchRefIds));
-      }
+      const allBranchRefs = await this.db
+        .select()
+        .from(refrigerators)
+        .where(eq(refrigerators.branch_id, targetBranchId));
 
       const refMap = new Map<string, any>(allBranchRefs.map((r: any) => [r.id, r]));
 
@@ -544,13 +501,8 @@ export class RefrigeratorService implements IRefrigeratorService {
 
       // 1. Fetch all branches
       const allBranches = await this.db
-        .select({ id: branches.id, name: branches.name, refrigerators: branches.refrigerators })
+        .select({ id: branches.id, name: branches.name })
         .from(branches);
-
-      const activeBranches = allBranches.filter(
-        (b: { id: string; name: string; refrigerators: string[] | null }) =>
-          Array.isArray(b.refrigerators) && b.refrigerators.length > 0
-      );
 
       // 2. Fetch all refrigerators metadata
       const allDbRefs = await this.db.select().from(refrigerators);
@@ -567,15 +519,14 @@ export class RefrigeratorService implements IRefrigeratorService {
         newTasksCount: number;
       }> = [];
 
-      for (const branch of activeBranches) {
-        const branchRefIds: string[] = branch.refrigerators || [];
-        const activeBranchRefs = branchRefIds
-          .map((id) => refMap.get(id))
-          .filter((r): r is RefRecord => Boolean(r && !r.disable_check));
+      for (const branch of allBranches) {
+        const activeBranchRefs = allDbRefs.filter(
+          (r: RefRecord) => r.branch_id === branch.id && !r.disable_check
+        );
 
         if (activeBranchRefs.length === 0) continue;
 
-        const activeRefIdSet = new Set(activeBranchRefs.map((r) => r.id));
+        const activeRefIdSet = new Set(activeBranchRefs.map((r: RefRecord) => r.id));
 
         // --- Step A: Process yesterday's tasks ---
         let missedRefNames: string[] = [];
@@ -592,11 +543,11 @@ export class RefrigeratorService implements IRefrigeratorService {
 
           type TaskRecord = typeof refrigeratorTasks.$inferSelect;
           const existingRefIdsYesterday = new Set(yesterdayTasks.map((t: TaskRecord) => t.refrigerator_id));
-          const missingYesterdayRefs = activeBranchRefs.filter((r) => !existingRefIdsYesterday.has(r.id));
+          const missingYesterdayRefs = activeBranchRefs.filter((r: RefRecord) => !existingRefIdsYesterday.has(r.id));
 
           // Insert missing yesterday rows as marked unchecked
           if (missingYesterdayRefs.length > 0) {
-            const insertMissing = missingYesterdayRefs.map((r) => ({
+            const insertMissing = missingYesterdayRefs.map((r: RefRecord) => ({
               branch_id: branch.id,
               refrigerator_id: r.id,
               task_date: yesterdayDate,
@@ -625,7 +576,7 @@ export class RefrigeratorService implements IRefrigeratorService {
           }
 
           const missedRefIds = new Set([
-            ...missingYesterdayRefs.map((r) => r.id),
+            ...missingYesterdayRefs.map((r: RefRecord) => r.id),
             ...uncompletedYesterdayTasks.map((t: TaskRecord) => t.refrigerator_id),
           ]);
 
@@ -648,10 +599,10 @@ export class RefrigeratorService implements IRefrigeratorService {
             );
 
           const existingRefIdsToday = new Set(existingTodayTasks.map((t: { id: string; refrigerator_id: string }) => t.refrigerator_id));
-          const missingTodayRefs = activeBranchRefs.filter((r) => !existingRefIdsToday.has(r.id));
+          const missingTodayRefs = activeBranchRefs.filter((r: RefRecord) => !existingRefIdsToday.has(r.id));
 
           if (missingTodayRefs.length > 0) {
-            const insertToday = missingTodayRefs.map((r) => ({
+            const insertToday = missingTodayRefs.map((r: RefRecord) => ({
               branch_id: branch.id,
               refrigerator_id: r.id,
               task_date: targetDate,
@@ -744,7 +695,7 @@ export class RefrigeratorService implements IRefrigeratorService {
 
       return {
         success: true,
-        processedBranches: activeBranches.length,
+        processedBranches: allBranches.length,
         totalNewTasksCreated,
         totalMissedTasksMarked,
         missedBranchesCount: details.filter((d) => d.missedCount > 0).length,

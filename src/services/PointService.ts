@@ -297,18 +297,12 @@ export class PointService implements IPointService {
       let allUsers: any[] = [];
 
       if (branchId) {
-        const targetBranch = allBranches.find((b: any) => b.id === branchId);
-        const memberIds: string[] = Array.isArray(targetBranch?.members) ? targetBranch.members : [];
-        if (memberIds.length > 0) {
-          allUsers = await this.db
-            .select()
-            .from(users)
-            .where(inArray(users.id, memberIds))
-            .orderBy(desc(users.point))
-            .limit(30);
-        } else {
-          allUsers = [];
-        }
+        allUsers = await this.db
+          .select()
+          .from(users)
+          .where(eq(users.branch_id, branchId))
+          .orderBy(desc(users.point))
+          .limit(30);
       } else {
         allUsers = await this.db
           .select()
@@ -318,9 +312,7 @@ export class PointService implements IPointService {
       }
 
       const mapped: LeaderboardEntry[] = allUsers.map((u: any) => {
-        const userBranch = allBranches.find(
-          (b: any) => Array.isArray(b.members) && b.members.includes(u.id)
-        );
+        const userBranch = allBranches.find((b: any) => b.id === u.branch_id);
 
         let defaultPosition: string | undefined = undefined;
         if (u.role === "manager") defaultPosition = "ผู้จัดการร้าน";

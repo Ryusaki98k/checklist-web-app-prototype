@@ -2,26 +2,17 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { EmployeeAuthPage } from "../../../../components/auth/EmployeeAuthPage";
-import { useApp } from "../../../../context/AppContext";
 
-export default function StaffLoginPage() {
-    const router = useRouter();
-    const { currentUser, isReady, login } = useApp();
+export default function StaffLoginRedirect() {
+  const router = useRouter();
 
-    useEffect(() => {
-        if (!isReady) return;
-        if (currentUser) {
-            const requiresBranch = currentUser.role === "employee" || currentUser.role === "manager_assistant" || currentUser.role === "manager";
-            if (requiresBranch && !currentUser.branchName) {
-                router.replace("/awaiting-assignment");
-            } else if (currentUser.role === "manager" || currentUser.role === "manager_assistant" || currentUser.role === "committee" || currentUser.role === "general_manager") {
-                router.replace("/manager/dashboard");
-            } else {
-                router.replace("/position");
-            }
-        }
-    }, [currentUser, isReady, router]);
+  useEffect(() => {
+    router.replace("/login/employee");
+  }, [router]);
 
-    return <EmployeeAuthPage onLogin={login} />;
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50/70">
+      <div className="h-8 w-8 animate-spin rounded-full border-3 border-slate-900 border-t-transparent" />
+    </div>
+  );
 }

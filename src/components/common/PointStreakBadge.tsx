@@ -44,10 +44,11 @@ export function PointStreakBadge() {
     }
   };
 
+  const currentBranchId = currentUser?.branchId;
   const fetchLeaderboard = useCallback(async (scope: "branch" | "all" = leaderboardScope) => {
     setIsLoadingLeaderboard(true);
     try {
-      const bId = scope === "branch" ? currentUser?.branchId : undefined;
+      const bId = scope === "branch" ? currentBranchId : undefined;
       const res = await getLeaderboardAction(bId);
       if (res.success && res.leaderboard) {
         setLeaderboard(res.leaderboard);
@@ -57,7 +58,7 @@ export function PointStreakBadge() {
     } finally {
       setIsLoadingLeaderboard(false);
     }
-  }, [currentUser?.branchId, leaderboardScope]);
+  }, [currentBranchId, leaderboardScope]);
 
   useEffect(() => {
     fetchPointDetails();

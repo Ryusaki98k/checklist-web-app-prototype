@@ -146,7 +146,7 @@ export class BranchService implements IBranchService {
           }
         }
 
-        const branchUsers = allUsers.filter((u: any) => b.members.includes(u.id));
+        const branchUsers = allUsers.filter((u: any) => u.branch_id === b.id);
         const manager = branchUsers.find((u: any) => u.role === "manager" || u.role === "general_manager");
         const managerName = manager ? manager.name : "กำลังสรรหา";
 
@@ -164,8 +164,8 @@ export class BranchService implements IBranchService {
           staffCount: branchUsers.length,
           status: "active",
           todayCompletionRate: 0,
-          members: b.members || [],
-          tasks: b.tasks || [],
+          members: branchUsers.map((u: any) => u.id),
+          tasks: [],
           leaveQuota: typeof b.leave_quota === "number" ? b.leave_quota : 3,
         };
       });
@@ -192,8 +192,6 @@ export class BranchService implements IBranchService {
 
       await this.db.insert(branches).values({
         name: name.trim(),
-        members: [],
-        tasks: [],
         last_update: new Date(),
       });
 
@@ -207,12 +205,18 @@ export class BranchService implements IBranchService {
 
   async assignStaffToBranch(branchId: string, userIds: string[]): Promise<{ success: boolean; error?: string }> {
     try {
+      // 1. Assign selected users to this branch
+      if (userIds.length > 0) {
+        await this.db
+          .update(users)
+          .set({ branch_id: branchId })
+          .where(sql`${users.id} = ANY(${userIds})`);
+      }
+
+      // 2. Touch branch last_update
       await this.db
         .update(branches)
-        .set({
-          members: userIds,
-          last_update: new Date(),
-        })
+        .set({ last_update: new Date() })
         .where(eq(branches.id, branchId));
 
       this.invalidateCache();
@@ -223,7 +227,7 @@ export class BranchService implements IBranchService {
     }
   }
 
-  async assignTasksToBranch(branchId: string, taskIds: string[]): Promise<{ success: boolean; error?: string }> {
+  async assignTasksToBranch(branchId: string, _taskIds: string[]): Promise<{ success: boolean; error?: string }> {
     try {
       if (!branchId || typeof branchId !== "string") {
         return { success: false, error: "ID ของสาขาไม่ถูกต้อง" };
@@ -231,10 +235,7 @@ export class BranchService implements IBranchService {
 
       await this.db
         .update(branches)
-        .set({
-          tasks: taskIds,
-          last_update: new Date(),
-        })
+        .set({ last_update: new Date() })
         .where(eq(branches.id, branchId));
 
       this.invalidateCache();

@@ -1387,27 +1387,14 @@ export function BranchLeaveManagementView({
                   <label className="text-xs font-bold text-[var(--color-text)]">
                     เหตุผลในการลา (Comment / Reason) <span className="text-rose-500">*</span>
                   </label>
-                  {formLeaveType === "other" && (
-                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">
-                      ⚠️ จำเป็นต้องระบุรายละเอียด
-                    </span>
-                  )}
                 </div>
                 <textarea
                   required
                   rows={3}
                   value={formReason}
                   onChange={(e) => setFormReason(e.target.value)}
-                  placeholder={
-                    formLeaveType === "other"
-                      ? "โปรดระบุรายละเอียดและเหตุผลอย่างชัดเจนสำหรับกรณีอื่นๆ เช่น อบรมกิจกรรมภายนอก, ปัญหาเหตุสุดวิสัยเร่งด่วน ฯลฯ"
-                      : "ระบุเหตุผล เช่น มีไข้สูง อาเจียน ไปพบแพทย์ที่โรงพยาบาล, มีธุระติดต่อราชการจำเป็นเร่งด่วน ฯลฯ"
-                  }
-                  className={`w-full p-3 bg-[var(--color-surface-2)] border rounded-xl text-xs sm:text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-2 leading-relaxed resize-none ${
-                    formLeaveType === "other" && !formReason.trim()
-                      ? "border-amber-400 focus:outline-amber-500"
-                      : "border-[var(--color-border)] focus:outline-rose-500"
-                  }`}
+                  placeholder="ระบุเหตุผล เช่น มีไข้สูง อาเจียน ไปพบแพทย์ที่โรงพยาบาล, มีธุระติดต่อราชการจำเป็นเร่งด่วน ฯลฯ"
+                  className="w-full p-3 bg-[var(--color-surface-2)] border rounded-xl text-xs sm:text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-2 leading-relaxed resize-none border-[var(--color-border)] focus:outline-rose-500"
                 />
               </div>
 
