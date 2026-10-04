@@ -134,7 +134,7 @@ export function AdminDashboardView({
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
   const [newTaskRole, setNewTaskRole] = useState<"manager_assistant" | "cashier" | "stock">("cashier");
-  const [newTaskShift, setNewTaskShift] = useState<"morning" | "afternoon" | "morning_afternoon">("morning");
+  const [newTaskShift, setNewTaskShift] = useState<"morning" | "afternoon" | "night" | "morning_afternoon">("morning");
   const [newTaskStart, setNewTaskStart] = useState("");
   const [newTaskEnd, setNewTaskEnd] = useState("");
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -1616,6 +1616,7 @@ export function AdminDashboardView({
                       >
                         <option value="morning">กะเช้า</option>
                         <option value="afternoon">กะบ่าย</option>
+                        <option value="night">กะดึก (Night)</option>
                         <option value="morning_afternoon">ควบกะ (เช้า-บ่าย)</option>
                       </select>
                     </div>

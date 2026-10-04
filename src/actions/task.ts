@@ -17,10 +17,11 @@ export async function getAllTasksAction(): Promise<{ success: boolean; tasks?: a
 export interface CreateTaskParams {
     name: string;
     task_role: "manager_assistant" | "cashier" | "stock";
-    shift: "morning" | "afternoon" | "morning_afternoon";
+    shift: "morning" | "afternoon" | "night" | "morning_afternoon";
     start: string;
     end: string;
     disabled?: boolean;
+    for_managers?: boolean;
 }
 
 export async function createTaskAction(params: CreateTaskParams): Promise<{ success: boolean; error?: string }> {
@@ -32,6 +33,7 @@ export async function createTaskAction(params: CreateTaskParams): Promise<{ succ
             start: params.start || "00:00:00",
             end: params.end || "00:00:00",
             disabled: params.disabled ?? false,
+            for_managers: params.for_managers ?? false,
         });
         return { success: true };
     } catch (err: any) {

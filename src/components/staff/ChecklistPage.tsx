@@ -701,10 +701,10 @@ export function ChecklistPage({
                           {item.label}
                         </p>
                       </div>
-                      {(item.isSpecial || item.zeroPoints) && (
+                      {(item.forManagers || item.isSpecial || item.zeroPoints) && (
                         <div className="pl-0 sm:pl-6">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-900 dark:text-amber-300 border border-amber-400/40">
-                            🛡️ ชุดงานพิเศษปิดร้าน (0 แต้ม • แชร์ร่วมระดับสาขา)
+                            🛡️ ชุดงานกะดึก/ปิดร้าน (0 แต้ม • แชร์ร่วมระดับสาขา)
                           </span>
                         </div>
                       )}

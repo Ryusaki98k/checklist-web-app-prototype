@@ -41,9 +41,10 @@ export interface ManagerShiftSummary {
   incompleteReviewedAt?: string | null;
 }
 
-function mapDbShiftToUi(dbShift: "morning" | "afternoon" | "morning_afternoon"): ShiftType {
+function mapDbShiftToUi(dbShift: "morning" | "afternoon" | "night" | "morning_afternoon"): ShiftType {
   if (dbShift === "morning") return "morning";
   if (dbShift === "afternoon") return "afternoon";
+  if (dbShift === "night") return "night";
   return "both";
 }
 

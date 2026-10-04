@@ -68,7 +68,7 @@ async function main() {
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
     DO $$ BEGIN
-      CREATE TYPE checklist_web_app.shift AS ENUM ('morning', 'afternoon', 'morning_afternoon');
+      CREATE TYPE checklist_web_app.shift AS ENUM ('morning', 'afternoon', 'night', 'morning_afternoon');
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
     DO $$ BEGIN
@@ -120,11 +120,11 @@ async function main() {
       start_time TIME NOT NULL,
       end_time TIME NOT NULL,
       disabled BOOLEAN NOT NULL DEFAULT false,
-      is_special BOOLEAN NOT NULL DEFAULT false,
+      for_managers BOOLEAN NOT NULL DEFAULT false,
       category TEXT
     );
     CREATE INDEX idx_tasks_role_shift ON checklist_web_app.tasks(task_role, shift);
-    CREATE INDEX idx_tasks_special ON checklist_web_app.tasks(is_special);
+    CREATE INDEX idx_tasks_for_managers ON checklist_web_app.tasks(for_managers);
 
     -- 4. Shift Session
     CREATE TABLE checklist_web_app.shift_session (
@@ -320,19 +320,20 @@ async function main() {
   let specialCount = 0;
   for (const t of backup.tasks) {
     const isSpecial = isSpecialClosingTask(t.name);
+    const taskShift = isSpecial ? 'night' : t.shift;
     if (isSpecial) specialCount++;
 
     await db.execute(sql`
       INSERT INTO checklist_web_app.tasks (
-        id, shift, name, task_role, start_time, end_time, disabled, is_special
+        id, shift, name, task_role, start_time, end_time, disabled, for_managers
       ) VALUES (
-        ${t.id}, ${t.shift}, ${t.name}, ${t.task_role}, ${t.start_time || t.start}, ${t.end_time || t.end},
+        ${t.id}, ${taskShift}, ${t.name}, ${t.task_role}, ${t.start_time || t.start}, ${t.end_time || t.end},
         ${t.disabled || false}, ${isSpecial}
       )
       ON CONFLICT (id) DO NOTHING;
     `);
   }
-  console.log(`  ✓ Remigrated ${backup.tasks.length} tasks (${specialCount} flagged as special closing tasks).`);
+  console.log(`  ✓ Remigrated ${backup.tasks.length} tasks (${specialCount} flagged as night / for_managers closing tasks).`);
 
   // D. Remigrate Refrigerators (Attach branch_id)
   for (const r of backup.refrigerators) {

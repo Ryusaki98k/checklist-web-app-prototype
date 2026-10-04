@@ -4,7 +4,7 @@ export const checklistSchema = pgSchema("checklist_web_app");
 
 export const roleEnum = checklistSchema.enum('role', ['admin', 'committee', 'general_manager', 'manager', 'manager_assistant', 'employee']);
 export const taskRoleEnum = checklistSchema.enum('task_role', ['manager_assistant', 'cashier', 'stock']);
-export const shiftEnum = checklistSchema.enum('shift', ['morning', 'afternoon', 'morning_afternoon']);
+export const shiftEnum = checklistSchema.enum('shift', ['morning', 'afternoon', 'night', 'morning_afternoon']);
 export const pointStreakEnum = checklistSchema.enum('point_streak', ['none', 'flawed', 'perfect']);
 export const leaveTypeEnum = checklistSchema.enum('leave_type', [
     'paid',
@@ -50,11 +50,11 @@ export const tasks = checklistSchema.table.withRLS("tasks", {
     end: time("end_time").notNull(),
 
     disabled: boolean("disabled").notNull().default(false),
-    is_special: boolean("is_special").notNull().default(false),
+    for_managers: boolean("for_managers").notNull().default(false),
     category: text("category"),
 }, (table) => [
     index("idx_tasks_role_shift").on(table.task_role, table.shift),
-    index("idx_tasks_special").on(table.is_special),
+    index("idx_tasks_for_managers").on(table.for_managers),
 ]);
 
 export const shiftSession = checklistSchema.table.withRLS("shift_session", {

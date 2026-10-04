@@ -27,9 +27,10 @@ function mapPositionToTaskRole(pos: string): "cashier" | "stock" | "manager_assi
   return "cashier";
 }
 
-function mapShiftToDbShift(shift: ShiftType): "morning" | "afternoon" | "morning_afternoon" {
+function mapShiftToDbShift(shift: ShiftType): "morning" | "afternoon" | "night" | "morning_afternoon" {
   if (shift === "morning") return "morning";
   if (shift === "afternoon") return "afternoon";
+  if (shift === "night") return "night";
   return "morning_afternoon";
 }
 
@@ -119,9 +120,9 @@ export class ChecklistService implements IChecklistService {
         }
       }
 
-      const allowedShifts: ("morning" | "afternoon" | "morning_afternoon")[] =
+      const allowedShifts: ("morning" | "afternoon" | "night" | "morning_afternoon")[] =
         dbShift === "morning_afternoon"
-          ? ["morning", "afternoon", "morning_afternoon"]
+          ? ["morning", "afternoon", "night", "morning_afternoon"]
           : [dbShift, "morning_afternoon"];
 
       let dbTasks = await this.db
@@ -137,7 +138,7 @@ export class ChecklistService implements IChecklistService {
         .orderBy(asc(tasks.start));
 
       // Manager role policy: Managers do NOT do regular assistant manager tasks,
-      // ONLY the special store closing tasks (4 safety items).
+      // ONLY the for_managers tasks (closing/night safety items).
       const isManager =
         currentUserRecord?.role === "manager" ||
         ((position.includes("ผู้จัดการ") || position.includes("manager")) &&
@@ -145,7 +146,7 @@ export class ChecklistService implements IChecklistService {
           !position.includes("assistant"));
 
       if (isManager) {
-        dbTasks = dbTasks.filter((t: any) => t.is_special || isSpecialZeroPointTask(t.name));
+        dbTasks = dbTasks.filter((t: any) => t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name));
       }
 
       const [existingSession] = await this.db
@@ -277,8 +278,8 @@ export class ChecklistService implements IChecklistService {
         }
       }
 
-      // Query shared store closing tasks for this branch today from taskWork
-      const specialTaskIds = dbTasks.filter((t: any) => t.is_special || isSpecialZeroPointTask(t.name)).map((t: any) => t.id);
+      // Query shared store closing / manager tasks for this branch today from taskWork
+      const specialTaskIds = dbTasks.filter((t: any) => t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name)).map((t: any) => t.id);
       const branchClosingMap = new Map<
         string,
         {
@@ -338,7 +339,7 @@ export class ChecklistService implements IChecklistService {
         const work = workRows.find((w: any) => w.task === t.id);
         const timeRange = t.start && t.end ? `${t.start.slice(0, 5)} - ${t.end.slice(0, 5)}` : undefined;
 
-        const isSpecial = isSpecialZeroPointTask(t.name);
+        const isSpecial = Boolean(t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name));
         const sharedClosing = isSpecial ? branchClosingMap.get(t.id) : undefined;
 
         let completedAt: string | null = null;
@@ -397,6 +398,7 @@ export class ChecklistService implements IChecklistService {
           isLate,
           comment: taskComment,
           isSpecial,
+          forManagers: isSpecial,
           zeroPoints: isSpecial,
         };
       });
@@ -542,12 +544,12 @@ export class ChecklistService implements IChecklistService {
 
           if (resolvedTaskId && isValidUuid(resolvedTaskId)) {
             const [tRow] = await this.db
-              .select({ name: tasks.name, is_special: tasks.is_special })
+              .select({ name: tasks.name, for_managers: tasks.for_managers, shift: tasks.shift })
               .from(tasks)
               .where(eq(tasks.id, resolvedTaskId))
               .limit(1);
 
-            if (tRow && (tRow.is_special || isSpecialZeroPointTask(tRow.name))) {
+            if (tRow && (tRow.for_managers || tRow.shift === "night" || isSpecialZeroPointTask(tRow.name))) {
               const { dateStr, startOfDay, endOfDay } = getThaiStartAndEndOfDay();
               try {
                 // Sync all today's sessions in this branch for this special task
@@ -670,9 +672,9 @@ export class ChecklistService implements IChecklistService {
         return { success: false, isComplete: false, totalTasks: 0, doneTasks: 0, pendingTasks: [], error: "ไม่พบข้อมูลกะในระบบ" };
       }
 
-      const allowedShifts: ("morning" | "afternoon" | "morning_afternoon")[] =
+      const allowedShifts: ("morning" | "afternoon" | "night" | "morning_afternoon")[] =
         sess.shift === "morning_afternoon"
-          ? ["morning", "afternoon", "morning_afternoon"]
+          ? ["morning", "afternoon", "night", "morning_afternoon"]
           : [sess.shift, "morning_afternoon"];
 
       const dbTasks = await this.db
@@ -697,7 +699,7 @@ export class ChecklistService implements IChecklistService {
       let activeTasks = dbTasks;
 
       if (isManagerUser && sess.task_role === "manager_assistant") {
-        activeTasks = activeTasks.filter((t: any) => t.is_special || isSpecialZeroPointTask(t.name));
+        activeTasks = activeTasks.filter((t: any) => t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name));
       }
 
       const works = await this.db
@@ -873,12 +875,14 @@ export class ChecklistService implements IChecklistService {
       const result: Record<ShiftType, { status: "completed" | "incomplete" | "none"; total: number; done: number }> = {
         morning: { status: "none", total: 0, done: 0 },
         afternoon: { status: "none", total: 0, done: 0 },
+        night: { status: "none", total: 0, done: 0 },
         both: { status: "none", total: 0, done: 0 },
       };
 
-      const shiftMap: Record<"morning" | "afternoon" | "morning_afternoon", ShiftType> = {
+      const shiftMap: Record<"morning" | "afternoon" | "night" | "morning_afternoon", ShiftType> = {
         morning: "morning",
         afternoon: "afternoon",
+        night: "night",
         morning_afternoon: "both",
       };
 
@@ -892,7 +896,7 @@ export class ChecklistService implements IChecklistService {
       }
 
       for (const [dbShift, uiShift] of Object.entries(shiftMap) as Array<
-        ["morning" | "afternoon" | "morning_afternoon", ShiftType]
+        ["morning" | "afternoon" | "night" | "morning_afternoon", ShiftType]
       >) {
         const sess = todaySessions.find((s: any) => s.shift === dbShift);
         if (!sess) continue;

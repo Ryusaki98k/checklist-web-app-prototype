@@ -6,35 +6,35 @@ const SPECIAL_TASKS = [
   {
     name: "ปิดไฟส่องสว่างในร้าน (Turn off light)",
     task_role: "manager_assistant" as const,
-    shift: "afternoon" as const,
+    shift: "night" as const,
     start: "19:30:00",
     end: "21:30:00",
   },
   {
     name: "ปิดไฟตู้แช่สินค้า (Turn off refriderator's light)",
     task_role: "manager_assistant" as const,
-    shift: "afternoon" as const,
+    shift: "night" as const,
     start: "19:30:00",
     end: "21:30:00",
   },
   {
     name: "ปิดเครื่องปรับอากาศ (Turn off air conditioning)",
     task_role: "manager_assistant" as const,
-    shift: "afternoon" as const,
+    shift: "night" as const,
     start: "19:30:00",
     end: "21:30:00",
   },
   {
     name: "ล็อคประตูร้านและตรวจสอบความปลอดภัย (Lock the store)",
     task_role: "manager_assistant" as const,
-    shift: "afternoon" as const,
+    shift: "night" as const,
     start: "19:30:00",
     end: "21:30:00",
   },
 ];
 
 async function seedSpecialTasks() {
-  console.log("Checking special closing tasks...");
+  console.log("Checking manager night closing tasks...");
   const allExistingTasks = await db.select().from(tasks);
   const createdOrFoundTaskIds: string[] = [];
 
@@ -58,16 +58,16 @@ async function seedSpecialTasks() {
         start: st.start,
         end: st.end,
         disabled: false,
-        is_special: true,
+        for_managers: true,
       }).returning({ id: tasks.id });
       console.log(`Created new task: ${inserted.id} - ${st.name}`);
       createdOrFoundTaskIds.push(inserted.id);
     }
   }
 
-  // Update all special tasks in DB to ensure is_special = true
+  // Update all manager night tasks in DB to ensure shift = 'night' and for_managers = true
   for (const id of createdOrFoundTaskIds) {
-    await db.update(tasks).set({ is_special: true }).where(sql`${tasks.id} = ${id}`);
+    await db.update(tasks).set({ shift: "night", for_managers: true }).where(sql`${tasks.id} = ${id}`);
   }
 
   // Touch branches last_update

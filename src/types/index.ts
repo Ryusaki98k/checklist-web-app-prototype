@@ -1,5 +1,5 @@
 export type Role = "employee" | "manager" | "manager_assistant" | "committee" | "general_manager" | "admin";
-export type ShiftType = "morning" | "afternoon" | "both";
+export type ShiftType = "morning" | "afternoon" | "night" | "both";
 export type LeaveType = "paid" | "unpaid" | "ลาเเบบได้เงิน" | "ลาเเบบไม่ได้รับเงิน" | "ลาแบบได้เงิน" | "ลาแบบไม่ได้รับเงิน";
 
 export interface EmployeeLeave {
@@ -69,6 +69,7 @@ export interface ChecklistItem {
   isLate?: boolean;
   comment?: string | null;
   isSpecial?: boolean;
+  forManagers?: boolean;
   zeroPoints?: boolean;
 }
 

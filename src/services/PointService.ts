@@ -83,8 +83,8 @@ export class PointService implements IPointService {
         .where(eq(users.id, session.user))
         .limit(1);
 
-      // Check if session tasks exclusively consist of special closing checklist tasks (Zero Points Rule)
-      const nonSpecialTasks = sessionTasks.filter((t: any) => !isSpecialZeroPointTask(t.name));
+      // Check if session tasks exclusively consist of manager / night closing checklist tasks (Zero Points Rule)
+      const nonSpecialTasks = sessionTasks.filter((t: any) => !t.for_managers && t.shift !== "night" && !isSpecialZeroPointTask(t.name));
       const isOnlySpecialTasks = sessionTasks.length > 0 && nonSpecialTasks.length === 0;
 
       if (isOnlySpecialTasks) {
@@ -100,8 +100,8 @@ export class PointService implements IPointService {
       let hasIssueOrLate = false;
       for (const work of sessionWorks) {
         const t = sessionTasks.find((item: any) => item.id === work.task);
-        // Special zero-point closing tasks do not penalize streaks or evaluate late infractions
-        if (t && isSpecialZeroPointTask(t.name)) {
+        // Special / manager zero-point closing tasks do not penalize streaks or evaluate late infractions
+        if (t && (t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name))) {
           continue;
         }
         if (!work.timestamp) {

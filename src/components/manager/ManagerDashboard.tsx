@@ -43,7 +43,7 @@ import {
 import Link from "next/link";
 
 export function isSpecialClosingTask(item: ChecklistItem): boolean {
-  if (item.isSpecial || item.zeroPoints) return true;
+  if (item.forManagers || item.isSpecial || item.zeroPoints) return true;
   const lower = (item.label || "").toLowerCase();
   return (
     lower.includes("turn off light") ||
@@ -97,12 +97,12 @@ export function ManagerDashboard({
   const [navbarLastRefreshType, setNavbarLastRefreshType] = useState<"cache" | "db">("cache");
 
   // --- Task Work State (Checklist) ---
-  type ManagerTaskShiftTab = "morning" | "afternoon" | "closing";
+  type ManagerTaskShiftTab = "morning" | "afternoon" | "night";
   const [selectedTaskShiftTab, setSelectedTaskShiftTab] = useState<ManagerTaskShiftTab>(() => {
-    return isManager ? "closing" : "morning";
+    return isManager ? "night" : "morning";
   });
   const [myChecklistShift, setMyChecklistShift] = useState<ShiftType>(() => {
-    return isManager ? "afternoon" : "morning";
+    return isManager ? "night" : "morning";
   });
   const [myChecklistFilter, setMyChecklistFilter] = useState<"all" | "pending" | "completed">("all");
   const [myChecklistItems, setMyChecklistItems] = useState<ChecklistItem[]>([]);
@@ -171,7 +171,7 @@ export function ManagerDashboard({
 
   const handleSelectShiftTab = useCallback((tab: ManagerTaskShiftTab) => {
     setSelectedTaskShiftTab(tab);
-    const backendShift: ShiftType = tab === "morning" ? "morning" : "afternoon";
+    const backendShift: ShiftType = tab;
     setMyChecklistShift(backendShift);
     void loadChecklist(backendShift);
   }, [loadChecklist]);
@@ -451,13 +451,13 @@ export function ManagerDashboard({
   // Active tasks for the currently selected shift tab
   const activeShiftTasks = useMemo(() => {
     if (selectedTaskShiftTab === "morning") {
-      return myChecklistItems;
+      return myChecklistItems.filter((i) => !isSpecialClosingTask(i));
     }
     if (selectedTaskShiftTab === "afternoon") {
-      return routineAfternoonTasks;
+      return myChecklistItems.filter((i) => !isSpecialClosingTask(i));
     }
-    return specialClosingTasks;
-  }, [selectedTaskShiftTab, myChecklistItems, routineAfternoonTasks, specialClosingTasks]);
+    return myChecklistItems;
+  }, [selectedTaskShiftTab, myChecklistItems]);
 
   // Overall counts for active display tab
   const totalCount = activeShiftTasks.length;
@@ -676,8 +676,8 @@ export function ManagerDashboard({
                       {selectedTaskShiftTab === "morning"
                         ? "เช็คลิสต์ตรวจงานประจำกะเช้า (Morning Shift Tasks)"
                         : selectedTaskShiftTab === "afternoon"
-                        ? "งานประจำกะบ่าย (Afternoon Shift Routine Tasks)"
-                        : "ชุดงานพิเศษปิดร้าน 4 รายการ (Closing & Safety Checklist)"}
+                        ? "เช็คลิสต์ตรวจงานประจำกะบ่าย (Afternoon Shift Routine Tasks)"
+                        : "เช็คลิสต์ตรวจงานกะดึก (Night Shift Tasks)"}
                     </span>
                   </h2>
                   <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
@@ -685,48 +685,52 @@ export function ManagerDashboard({
                       ? "ขั้นตอนการปฏิบัติงานของผู้ช่วยผู้จัดการร้านประจำกะเช้า (เปิดร้าน, ตรวจสอบความพร้อม)"
                       : selectedTaskShiftTab === "afternoon"
                       ? "ขั้นตอนการปฏิบัติงานของผู้ช่วยผู้จัดการร้านประจำกะบ่าย (ตรวจนับเงินทอน, เช็คสินค้า, ความเรียบร้อย)"
-                      : "ขั้นตอนตรวจสอบความปลอดภัยสำคัญตอนปิดร้าน (ปิดไฟ, ตู้แช่, แอร์, ล็อคประตูร้าน)"}
+                      : "ขั้นตอนการปฏิบัติงานประจำกะดึก (ตรวจสอบความปลอดภัย 4 ข้อตอนปิดร้าน)"}
                   </p>
                 </div>
 
-                {/* ─── 3 SEPARATED SHIFT TABS ─────────────────────────────────── */}
+                {/* ─── SHIFT TABS ─────────────────────────────────── */}
                 <div className="inline-flex items-center self-start sm:self-auto bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)]">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectShiftTab("morning")}
-                    className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      selectedTaskShiftTab === "morning"
-                        ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                        : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                    }`}
-                  >
-                    กะเช้า (Morning)
-                  </button>
+                  {isAssistant && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectShiftTab("morning")}
+                        className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                          selectedTaskShiftTab === "morning"
+                            ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
+                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        }`}
+                      >
+                        กะเช้า (Morning)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectShiftTab("afternoon")}
+                        className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                          selectedTaskShiftTab === "afternoon"
+                            ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
+                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        }`}
+                      >
+                        กะบ่าย (Afternoon)
+                      </button>
+                    </>
+                  )}
 
                   <button
                     type="button"
-                    onClick={() => handleSelectShiftTab("afternoon")}
-                    className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      selectedTaskShiftTab === "afternoon"
-                        ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                        : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                    }`}
-                  >
-                    กะบ่าย (Afternoon)
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectShiftTab("closing")}
+                    onClick={() => handleSelectShiftTab("night")}
                     className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                      selectedTaskShiftTab === "closing"
+                      selectedTaskShiftTab === "night"
                         ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
                         : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                     }`}
                   >
-                    <span>งานปิดร้าน (Closing)</span>
+                    <span>กะดึก (Night)</span>
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                      selectedTaskShiftTab === "closing"
+                      selectedTaskShiftTab === "night"
                         ? "bg-amber-400 text-amber-950 font-bold"
                         : "bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold"
                     }`}>
@@ -804,32 +808,10 @@ export function ManagerDashboard({
               </div>
             ) : totalCount === 0 ? (
               <div className="py-12 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface)] p-6">
-                {isManager && selectedTaskShiftTab === "morning" ? (
-                  <div className="space-y-3 max-w-md mx-auto">
-                    <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-900 flex items-center justify-center mx-auto text-xl shadow-xs">
-                      🛡️
-                    </div>
-                    <h3 className="font-bold text-sm text-[var(--color-text)]">
-                      ผู้จัดการร้านไม่มีงานตรวจเช็คลิสต์ในกะเช้า
-                    </h3>
-                    <p className="text-xs text-[var(--color-text-muted)]">
-                      งานตรวจประจำกะเช้าเป็นหน้าที่ของผู้ช่วยผู้จัดการร้าน โดยผู้จัดการร้านสามารถตรวจสอบชุดงานพิเศษปิดร้าน 4 รายการได้ที่แท็บงานปิดร้าน
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectShiftTab("closing")}
-                      className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-400 text-amber-950 hover:bg-amber-300 transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5"
-                    >
-                      <span>สลับไปดูงานปิดร้าน</span>
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  "ไม่พบรายการเช็คลิสต์สำหรับตำแหน่งนี้ในกะที่เลือก"
-                )}
+                ไม่พบรายการเช็คลิสต์สำหรับตำแหน่งนี้ในกะที่เลือก
               </div>
-            ) : selectedTaskShiftTab === "closing" ? (
-              /* ─── TAB: SPECIAL CLOSING SHIFT TASKS (ชุดงานพิเศษปิดร้าน 4 รายการ) ─ */
+            ) : selectedTaskShiftTab === "night" ? (
+              /* ─── TAB: NIGHT / FOR_MANAGERS TASKS (ชุดงานกะดึกปิดร้าน 4 รายการ) ─ */
               <div className="bg-gradient-to-br from-amber-500/10 via-[var(--color-surface)] to-[var(--color-surface)] border-2 border-amber-500/30 rounded-2xl p-4 sm:p-6 shadow-sm space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
                   <div className="flex items-center gap-2.5">
@@ -839,7 +821,7 @@ export function ManagerDashboard({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-sm sm:text-base font-extrabold text-amber-950 dark:text-amber-200">
-                          ชุดงานพิเศษปิดร้าน (Special Store Closing Tasks / 4 รายการ)
+                          ชุดงานกะดึกและงานปิดร้าน (Night Shift & Store Closing / 4 รายการ)
                         </h3>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-amber-950 shadow-2xs">
                           0 Points • ไม่มีคะแนน
