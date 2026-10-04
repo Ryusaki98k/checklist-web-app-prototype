@@ -60,23 +60,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 // Daily cache eviction: check if last visit was on a different day
                 var now = new Date();
                 var todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(now);
-                var lastVisit = localStorage.getItem('app_last_visit_date');
-                if (!lastVisit || lastVisit !== todayStr) {
-                  var keysToRemove = [
-                    'app_sessions',
-                    'app_active_session',
-                    'app_selected_shift',
-                    'app_queue_afternoon',
-                    'cached_branches',
-                    'branch_last_update',
-                    'branches_last_checked_at',
-                    'app_manager_read_notifs',
-                    'app_notifications'
-                  ];
-                  for (var i = 0; i < keysToRemove.length; i++) {
-                    localStorage.removeItem(keysToRemove[i]);
+                var lastVisit = localStorage.getItem('app_last_entered_date') || localStorage.getItem('app_last_visit_date');
+                if (lastVisit && lastVisit !== todayStr) {
+                  var savedTheme = localStorage.getItem('theme') || localStorage.theme;
+                  localStorage.clear();
+                  if (savedTheme) {
+                    localStorage.setItem('theme', savedTheme);
                   }
+                  localStorage.setItem('app_entered_new_date', 'true');
+                  localStorage.setItem('app_previous_entered_date', lastVisit);
                 }
+                localStorage.setItem('app_last_entered_date', todayStr);
                 localStorage.setItem('app_last_visit_date', todayStr);
               } catch (e) {}
             `,

@@ -439,65 +439,67 @@ export function BranchLeaveManagementView({
   const selectedFormUser = employees.find(e => e.id === formUserId);
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] pb-24">
+    <div className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] flex flex-col font-sans">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-30 bg-[var(--color-surface)]/90 backdrop-blur-md border-b border-[var(--color-border)] px-4 sm:px-6 py-3.5 transition-colors">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-30 bg-[var(--color-surface)]/95 backdrop-blur-md border-b border-[var(--color-border)] px-4 sm:px-8 py-3.5 shadow-xs">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {onBackToDashboard ? (
               <button
                 type="button"
                 onClick={onBackToDashboard}
-                className="p-2 -ml-2 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
+                className="p-2 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
                 title="กลับสู่แดชบอร์ดหลัก"
               >
-                <ArrowLeft size={18} />
+                <ArrowLeft size={16} />
+                <span className="hidden sm:inline">แดชบอร์ด</span>
               </button>
             ) : (
               <Link
                 href="/manager/dashboard"
-                className="p-2 -ml-2 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors"
-                title="กลับสู่แดชบอร์ดผู้บริหาร"
+                className="p-2 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0"
+                title="กลับสู่แดชบอร์ดหลัก"
               >
-                <ArrowLeft size={18} />
+                <ArrowLeft size={16} />
+                <span className="hidden sm:inline">แดชบอร์ด</span>
               </Link>
             )}
 
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                  <HeartPulse size={18} />
-                </span>
-                <h1 className="text-base sm:text-lg font-extrabold text-[var(--color-text)]">
-                  ระบบบันทึกการลาพนักงาน
-                </h1>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                  Manager & Assistant
-                </span>
+            <div className="h-5 w-px bg-[var(--color-border)]" />
+
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-amber-500 text-amber-950 flex items-center justify-center font-bold text-xs shadow-2xs">
+                <HeartPulse size={18} />
               </div>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5 hidden sm:block">
-                จัดการลาป่วยและลากิจสำหรับพนักงานในสาขา พร้อมระบบคุ้มครองคะแนนและสตรีค
-              </p>
+              <div>
+                <h1 className="text-base sm:text-lg font-bold text-[var(--color-text)] leading-tight flex items-center gap-2">
+                  <span>ระบบบันทึกการลาพนักงาน</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                    {stats.todayCount} ลาวันนี้
+                  </span>
+                </h1>
+                <p className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
+                  <Store size={12} className="text-amber-600" />
+                  <span>{branches.find(b => b.id === selectedBranchId)?.name || employees[0]?.branchName || "สาขาหลัก"}</span>
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             {/* Branch Selector */}
             {branches.length > 1 && (
-              <div className="flex items-center gap-1.5 bg-[var(--color-surface-2)] px-2.5 py-1.5 rounded-xl border border-[var(--color-border)]">
-                <Store size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                <select
-                  value={selectedBranchId}
-                  onChange={(e) => handleBranchChange(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-[var(--color-text)] focus:outline-none cursor-pointer pr-1"
-                >
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id} className="bg-[var(--color-surface)] text-[var(--color-text)]">
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select
+                value={selectedBranchId}
+                onChange={(e) => handleBranchChange(e.target.value)}
+                className="px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id} className="bg-[var(--color-surface)] text-[var(--color-text)]">
+                    {b.name}
+                  </option>
+                ))}
+              </select>
             )}
 
             {/* Tab Switcher: Presence vs Leaves */}
@@ -508,7 +510,7 @@ export function BranchLeaveManagementView({
                   onClick={() => onTabChange("presence")}
                   className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     currentTab === "presence"
-                      ? "bg-amber-500 text-amber-950 shadow-xs"
+                      ? "bg-amber-500 text-amber-950 shadow-xs cursor-default"
                       : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                   }`}
                 >
@@ -531,11 +533,11 @@ export function BranchLeaveManagementView({
                 onClick={() => onTabChange?.("leaves")}
                 className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all ${
                   currentTab === "leaves"
-                    ? "bg-rose-600 text-white shadow-xs cursor-default"
+                    ? "bg-amber-500 text-amber-950 shadow-xs cursor-default"
                     : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
                 }`}
               >
-                <HeartPulse size={14} className={currentTab === "leaves" ? "text-white" : "text-rose-500"} />
+                <HeartPulse size={14} className={currentTab === "leaves" ? "text-amber-950" : "text-rose-500"} />
                 <span className="hidden sm:inline">จัดการการลา</span>
                 <span className="sm:hidden">การลา</span>
               </button>
@@ -546,10 +548,11 @@ export function BranchLeaveManagementView({
               type="button"
               onClick={() => loadData(selectedBranchId, true)}
               disabled={isRefreshing}
-              className="p-2 rounded-xl bg-[var(--color-surface-2)] hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)] transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 text-[var(--color-text)] cursor-pointer"
               title="รีเฟรชข้อมูล"
             >
-              <RefreshCw size={15} className={isRefreshing ? "animate-spin text-amber-500" : ""} />
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin text-amber-600" : ""} />
+              <span className="hidden sm:inline">อัปเดต</span>
             </button>
 
             <ThemeToggle />
@@ -558,20 +561,20 @@ export function BranchLeaveManagementView({
             <button
               type="button"
               onClick={() => setIsQuotaModalOpen(true)}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-[var(--color-surface-2)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+              className="px-3 py-1.5 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
               title="จัดการโควตาการลาของพนักงานในสาขา"
             >
-              <Sliders size={15} className="text-amber-600 dark:text-amber-400" />
-              <span className="hidden sm:inline">โควตาพนักงาน</span>
+              <Sliders size={14} className="text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">โควตา</span>
             </button>
 
             {/* Primary Action Button */}
             <button
               type="button"
               onClick={() => handleOpenAddModal()}
-              className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+              className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-amber-950 text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
             >
-              <Plus size={16} strokeWidth={2.5} />
+              <Plus size={15} strokeWidth={2.5} />
               <span>บันทึกการลา</span>
             </button>
           </div>
@@ -579,10 +582,10 @@ export function BranchLeaveManagementView({
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-8 py-6 flex-1 flex flex-col gap-6">
         {/* Banner Alert Feedback */}
         {successMsg && (
-          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center justify-between text-xs sm:text-sm animate-fade-in shadow-xs">
+          <div className="p-4 rounded-xl border-l-4 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 flex items-center justify-between text-xs sm:text-sm animate-fade-in">
             <div className="flex items-center gap-2.5">
               <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
               <span>{successMsg}</span>
@@ -598,9 +601,9 @@ export function BranchLeaveManagementView({
         )}
 
         {errorMsg && (
-          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-300 flex items-center justify-between text-xs sm:text-sm animate-fade-in shadow-xs">
+          <div className="p-4 rounded-xl border-l-4 border-red-500 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 flex items-center justify-between text-xs sm:text-sm animate-fade-in">
             <div className="flex items-center gap-2.5">
-              <AlertCircle size={18} className="text-rose-500 shrink-0" />
+              <AlertCircle size={18} className="text-red-500 shrink-0" />
               <span>{errorMsg}</span>
             </div>
             <button
@@ -613,113 +616,83 @@ export function BranchLeaveManagementView({
           </div>
         )}
 
-        {/* ─── GUARANTEE BADGE CARD & KPIS ─────────────────────────────────── */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        {/* ─── GUARANTEE BADGE CARD & KPIS (5 Symmetrical Columns) ─────────────────────────────────── */}
+        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
           {/* Card 1: Today Leaves Count */}
-          <div className="p-5 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-[var(--color-text-muted)]">กำลังลางานวันนี้</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-[var(--color-text)]">
-                  {stats.todayCount}
-                </span>
-                <span className="text-xs text-[var(--color-text-muted)]">คน</span>
-              </div>
-              <p className="text-[11px] text-[var(--color-text-muted)]">
-                ประจำวันที่ {formatThaiDate(thaiTodayStr)}
+          <div className={`p-4 sm:p-5 rounded-2xl bg-[var(--color-surface)] shadow-xs flex items-center justify-between ${
+            stats.todayCount > 0
+              ? "border-2 border-rose-400 dark:border-rose-600"
+              : "border border-[var(--color-border)]"
+          }`}>
+            <div>
+              <p className={`text-xs font-medium ${stats.todayCount > 0 ? "text-rose-800 dark:text-rose-300 font-semibold" : "text-[var(--color-text-muted)]"}`}>
+                ลางานวันนี้ (On Leave)
+              </p>
+              <p className={`text-2xl sm:text-3xl font-extrabold mt-1 ${stats.todayCount > 0 ? "text-rose-950 dark:text-rose-200" : "text-[var(--color-text)]"}`}>
+                {stats.todayCount} <span className="text-xs font-normal text-[var(--color-text-muted)]">คน</span>
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-              <CalendarDays size={24} />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 flex items-center justify-center shrink-0">
+              <HeartPulse size={22} />
             </div>
           </div>
 
           {/* Card 2: Pending Approval Count */}
-          <div className={`p-5 rounded-2xl bg-[var(--color-surface)] border-2 shadow-xs flex items-center justify-between ${
+          <div className={`p-4 sm:p-5 rounded-2xl bg-[var(--color-surface)] shadow-xs flex items-center justify-between ${
             stats.pendingCount > 0
-              ? "border-amber-500 bg-amber-500/5 ring-2 ring-amber-500/20"
-              : "border-[var(--color-border)]"
+              ? "border-2 border-amber-400 dark:border-amber-600"
+              : "border border-[var(--color-border)]"
           }`}>
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${stats.pendingCount > 0 ? "bg-amber-500 animate-ping" : "bg-[var(--color-border)]"}`} />
-                <p className="text-xs font-bold text-amber-700 dark:text-amber-400">คำขอรออนุมัติ</p>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-[var(--color-text)]">
-                  {stats.pendingCount}
-                </span>
-                <span className="text-xs text-[var(--color-text-muted)]">รายการ</span>
-              </div>
-              <p className="text-[11px] text-[var(--color-text-muted)]">
-                {stats.pendingCount > 0 ? "มีคำขอจากพนักงานรอพิจารณา" : "ไม่มีคำขอรออนุมัติ"}
+            <div>
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                {stats.pendingCount > 0 && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
+                คำขอรออนุมัติ
+              </p>
+              <p className="text-2xl sm:text-3xl font-extrabold text-[var(--color-text)] mt-1">
+                {stats.pendingCount} <span className="text-xs font-normal text-[var(--color-text-muted)]">รายการ</span>
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
-              <Clock size={24} />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0">
+              <Clock size={22} />
             </div>
           </div>
 
           {/* Card 3: Paid Leave Count */}
-          <div className="p-5 rounded-2xl bg-[var(--color-surface)] border-2 border-emerald-500/30 dark:border-emerald-500/40 shadow-xs flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">ลาเเบบได้เงิน (Paid)</p>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-emerald-950 dark:text-emerald-200">
-                  {stats.paidCount}
-                </span>
-                <span className="text-xs text-emerald-700 dark:text-emerald-400">คนในวันนี้</span>
-              </div>
-              <p className="text-[11px] text-[var(--color-text-muted)]">ได้รับค่าจ้างตามสิทธิ</p>
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">ลาเเบบได้เงิน (Paid)</p>
+              <p className="text-2xl sm:text-3xl font-extrabold text-emerald-950 dark:text-emerald-200 mt-1">
+                {stats.paidCount} <span className="text-xs font-normal text-emerald-700 dark:text-emerald-400">คน</span>
+              </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shrink-0">
-              <Coins size={24} />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 flex items-center justify-center shrink-0">
+              <Coins size={22} />
             </div>
           </div>
 
-          {/* Card 3: Unpaid Leave Count */}
-          <div className="p-5 rounded-2xl bg-[var(--color-surface)] border-2 border-amber-500/30 dark:border-amber-500/40 shadow-xs flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <p className="text-xs font-bold text-amber-700 dark:text-amber-400">ลาเเบบไม่ได้รับเงิน (Unpaid Leave)</p>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-extrabold text-amber-950 dark:text-amber-200">
-                  {stats.unpaidCount}
-                </span>
-                <span className="text-xs text-amber-700 dark:text-amber-400">คนในวันนี้</span>
-              </div>
-              <p className="text-[11px] text-[var(--color-text-muted)]">ไม่ได้รับค่าจ้าง (Leave without pay)</p>
+          {/* Card 4: Unpaid Leave Count */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-[var(--color-text-muted)]">ลาไม่ได้รับเงิน (Unpaid)</p>
+              <p className="text-2xl sm:text-3xl font-extrabold text-[var(--color-text)] mt-1">
+                {stats.unpaidCount} <span className="text-xs font-normal text-[var(--color-text-muted)]">คน</span>
+              </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
-              <FileText size={24} />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[var(--color-surface-2)] text-[var(--color-text-muted)] flex items-center justify-center shrink-0">
+              <FileText size={22} />
             </div>
           </div>
 
-          {/* Card 4: Streak & Score Management */}
-          <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-[var(--color-surface)] to-amber-500/10 border-2 border-emerald-500/40 shadow-xs flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
-                <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                  ดุลยพินิจจัดการสตรีค
-                </p>
-              </div>
-              <p className="text-xs font-extrabold text-[var(--color-text)]">
-                {stats.streakBrokenCount > 0 
-                  ? `คุ้มครอง ${stats.totalRecorded - stats.streakBrokenCount} รายการ / ตัดสตรีค ${stats.streakBrokenCount} รายการ`
-                  : "คุ้มครองสตรีค 100% (ไม่หักแต้ม)"}
-              </p>
-              <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-                ผู้จัดการสามารถเลือกอนุมัติรักษาสตรีค หรือตัดสตรีคเป็น 0 ตามเกณฑ์ความสมเหตุสมผล
+          {/* Card 5: Streak Management */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-[var(--color-text-muted)]">ดุลยพินิจจัดการสตรีค</p>
+              <p className="text-2xl sm:text-3xl font-extrabold text-[var(--color-primary)] dark:text-amber-300 mt-1">
+                {stats.streakBrokenCount > 0 ? `${stats.streakBrokenCount}` : "100%"} <span className="text-xs font-normal text-[var(--color-text-muted)]">{stats.streakBrokenCount > 0 ? "ตัดสตรีค" : "คุ้มครอง"}</span>
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shrink-0 shadow-xs">
-              <Flame size={24} className="fill-amber-500 text-amber-500 animate-pulse" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+              <ShieldCheck size={22} />
             </div>
           </div>
         </section>
@@ -848,15 +821,12 @@ export function BranchLeaveManagementView({
               onClick={() => setTypeFilter("pending")}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 typeFilter === "pending"
-                  ? "bg-amber-600 text-white shadow-xs"
-                  : "text-amber-700 dark:text-amber-400 hover:text-amber-950"
+                  ? "bg-amber-500 text-amber-950 shadow-xs"
+                  : "text-amber-800 dark:text-amber-400 hover:text-amber-950"
               }`}
             >
-              <Clock size={14} />
+              <Clock size={13} />
               <span>รออนุมัติ ({stats.pendingCount})</span>
-              {stats.pendingCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              )}
             </button>
             <button
               type="button"
@@ -864,10 +834,10 @@ export function BranchLeaveManagementView({
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 typeFilter === "paid"
                   ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-emerald-700 dark:text-emerald-400 hover:text-emerald-950"
+                  : "text-emerald-800 dark:text-emerald-400 hover:text-emerald-950"
               }`}
             >
-              <Coins size={14} />
+              <Coins size={13} />
               <span>ลาเเบบได้เงิน ({leaves.filter(l => isPaidLeave(l.leaveType)).length})</span>
             </button>
             <button
@@ -875,31 +845,31 @@ export function BranchLeaveManagementView({
               onClick={() => setTypeFilter("unpaid")}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 typeFilter === "unpaid"
-                  ? "bg-amber-600 text-white shadow-xs"
-                  : "text-amber-700 dark:text-amber-400 hover:text-amber-950"
+                  ? "bg-[var(--color-surface)] text-[var(--color-text)] shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
               }`}
             >
-              <FileText size={14} />
+              <FileText size={13} />
               <span>ลาเเบบไม่ได้รับเงิน ({leaves.filter(l => isUnpaidLeave(l.leaveType)).length})</span>
             </button>
           </div>
 
-          {/* Date Scope & Streak Status Filters & Search */}
+          {/* Secondary Filters: Streak, Date, and Search */}
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={streakFilter}
               onChange={(e) => setStreakFilter(e.target.value as "all" | "preserved" | "broken")}
-              className="px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs font-semibold text-[var(--color-text)] focus:outline-none cursor-pointer"
+              className="px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs font-medium text-[var(--color-text)]"
             >
               <option value="all">สตรีค: ทั้งหมด</option>
-              <option value="preserved">🛡️ รักษาสตรีค</option>
-              <option value="broken">⚠️ ตัดสตรีค</option>
+              <option value="preserved">รักษาสตรีค</option>
+              <option value="broken">ตัดสตรีค</option>
             </select>
 
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value as "all" | "today" | "upcoming" | "past")}
-              className="px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs font-semibold text-[var(--color-text)] focus:outline-none cursor-pointer"
+              className="px-2.5 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs font-medium text-[var(--color-text)]"
             >
               <option value="all">ทุกช่วงเวลา</option>
               <option value="today">กำลังลาวันนี้</option>
@@ -908,14 +878,14 @@ export function BranchLeaveManagementView({
             </select>
 
             {/* Search Input */}
-            <div className="relative flex-1 sm:w-64">
-              <Search size={14} className="absolute left-3 top-2.5 text-[var(--color-text-muted)]" />
+            <div className="relative flex-1 sm:w-56">
+              <Search size={14} className="absolute left-2.5 top-2.5 text-[var(--color-text-muted)]" />
               <input
                 type="text"
-                placeholder="ค้นหาชื่อพนักงาน หรือเหตุผล..."
+                placeholder="ค้นหาชื่อ หรือเหตุผล..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-2 focus:outline-rose-500"
+                className="w-full pl-8 pr-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-xs focus:outline-2 focus:outline-amber-500"
               />
               {searchQuery && (
                 <button
@@ -932,32 +902,44 @@ export function BranchLeaveManagementView({
 
         {/* ─── LEAVE RECORDS LIST ─────────────────────────────────────────── */}
         {isLoading ? (
-          <div className="p-16 text-center flex flex-col items-center justify-center gap-3">
-            <div className="w-9 h-9 rounded-full border-3 border-rose-500 border-t-transparent animate-spin" />
-            <p className="text-xs text-[var(--color-text-muted)]">กำลังโหลดรายการการลาของสาขา...</p>
+          <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 rounded-full border-3 border-amber-500 border-t-transparent animate-spin" />
+            <p className="text-xs text-[var(--color-text-muted)]">กำลังโหลดรายการการลาของพนักงาน...</p>
           </div>
         ) : filteredLeaves.length === 0 ? (
-          <div className="p-12 text-center bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] flex flex-col items-center justify-center gap-3 shadow-xs">
-            <div className="w-16 h-16 rounded-3xl bg-[var(--color-surface-2)] flex items-center justify-center text-[var(--color-text-muted)]">
-              <Calendar size={32} />
-            </div>
-            <h3 className="text-base font-extrabold text-[var(--color-text)]">
-              ไม่พบรายการการลาที่ตรงกับเงื่อนไข
-            </h3>
-            <p className="text-xs text-[var(--color-text-muted)] max-w-sm">
-              ยังไม่มีการบันทึกการลา หรือตัวกรองที่เลือกไม่พบข้อมูล คุณสามารถกดปุ่มด้านล่างเพื่อบันทึกการลาใหม่
+          <div className="p-12 text-center bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] flex flex-col items-center justify-center gap-3 shadow-xs">
+            <Calendar size={36} className="text-[var(--color-text-muted)] opacity-50" />
+            <p className="text-sm font-bold text-[var(--color-text)]">ไม่พบรายการการลาที่ตรงกับเงื่อนไข</p>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              {leaves.length === 0 ? "ยังไม่มีการบันทึกการลาในสาขานี้" : "ลองปรับเปลี่ยนตัวกรอง หรือล้างคำค้นหา"}
             </p>
-            <button
-              type="button"
-              onClick={() => handleOpenAddModal()}
-              className="mt-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <Plus size={15} />
-              <span>บันทึกการลาพนักงาน</span>
-            </button>
+            <div className="flex items-center gap-2 mt-2">
+              {(typeFilter !== "all" || streakFilter !== "all" || dateFilter !== "all" || searchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTypeFilter("all");
+                    setStreakFilter("all");
+                    setDateFilter("all");
+                    setSearchQuery("");
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  ล้างตัวกรอง
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleOpenAddModal()}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 text-amber-950 font-bold text-xs hover:bg-amber-400 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus size={14} />
+                <span>บันทึกการลา</span>
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredLeaves.map((leave) => {
               const isPaid = isPaidLeave(leave.leaveType);
               const isToday = leave.startDate <= thaiTodayStr && leave.endDate >= thaiTodayStr;
@@ -978,7 +960,7 @@ export function BranchLeaveManagementView({
                   {/* Card Header: Employee info & Type Badge */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 ${
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
                         isPaid
                           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                           : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
@@ -1127,7 +1109,7 @@ export function BranchLeaveManagementView({
                 </div>
               );
             })}
-          </div>
+          </section>
         )}
       </main>
 
@@ -1138,7 +1120,7 @@ export function BranchLeaveManagementView({
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-4">
               <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold">
+                <span className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
                   <Plus size={20} />
                 </span>
                 <div>
@@ -1205,7 +1187,7 @@ export function BranchLeaveManagementView({
                   value={formUserId}
                   onChange={(e) => setFormUserId(e.target.value)}
                   required
-                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-rose-500 cursor-pointer"
+                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
                 >
                   <option value="" disabled>-- กรุณาเลือกพนักงาน --</option>
                   {employees.map((emp) => (
@@ -1362,7 +1344,7 @@ export function BranchLeaveManagementView({
                         setFormEndDate(e.target.value);
                       }
                     }}
-                    className="w-full px-3 py-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-rose-500"
+                    className="w-full px-3 py-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500"
                   />
                 </div>
 
@@ -1376,7 +1358,7 @@ export function BranchLeaveManagementView({
                     min={formStartDate}
                     value={formEndDate}
                     onChange={(e) => setFormEndDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-rose-500"
+                    className="w-full px-3 py-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500"
                   />
                 </div>
               </div>
@@ -1394,7 +1376,7 @@ export function BranchLeaveManagementView({
                   value={formReason}
                   onChange={(e) => setFormReason(e.target.value)}
                   placeholder="ระบุเหตุผล เช่น มีไข้สูง อาเจียน ไปพบแพทย์ที่โรงพยาบาล, มีธุระติดต่อราชการจำเป็นเร่งด่วน ฯลฯ"
-                  className="w-full p-3 bg-[var(--color-surface-2)] border rounded-xl text-xs sm:text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-2 leading-relaxed resize-none border-[var(--color-border)] focus:outline-rose-500"
+                  className="w-full p-3 bg-[var(--color-surface-2)] border rounded-xl text-xs sm:text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-2 leading-relaxed resize-none border-[var(--color-border)] focus:outline-amber-500"
                 />
               </div>
 
@@ -1410,11 +1392,11 @@ export function BranchLeaveManagementView({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-amber-950 text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-amber-950 border-t-transparent rounded-full animate-spin" />
                       <span>กำลังบันทึก...</span>
                     </>
                   ) : (

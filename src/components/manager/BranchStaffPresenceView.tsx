@@ -255,11 +255,11 @@ export function BranchStaffPresenceView({
                   onClick={() => onTabChange("leaves")}
                   className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     currentTab === "leaves"
-                      ? "bg-rose-600 text-white shadow-xs"
+                      ? "bg-amber-500 text-amber-950 shadow-xs cursor-default"
                       : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                   }`}
                 >
-                  <HeartPulse size={14} className={currentTab === "leaves" ? "text-white" : "text-rose-500"} />
+                  <HeartPulse size={14} className={currentTab === "leaves" ? "text-amber-950" : "text-rose-500"} />
                   <span className="hidden sm:inline">จัดการการลา</span>
                   <span className="sm:hidden">การลา</span>
                 </button>

@@ -282,20 +282,21 @@ export function getActiveSession(): ShiftSession | null {
   }
 }
 
-export function evictDailyCache() {
+export function clearAllLocalStorage(preserveTheme = true): void {
   if (typeof window === "undefined") return;
-  const keys = [
-    "app_sessions",
-    "app_active_session",
-    "app_selected_shift",
-    "app_queue_afternoon",
-    "app_manager_read_notifs",
-    "app_notifications",
-    "cached_branches",
-    "branch_last_update",
-    "branches_last_checked_at",
-  ];
-  keys.forEach((k) => secureRemoveItem(k));
+  try {
+    const theme = preserveTheme ? (localStorage.getItem("theme") || localStorage.theme) : null;
+    localStorage.clear();
+    if (theme) {
+      localStorage.setItem("theme", theme);
+    }
+  } catch (err) {
+    console.warn("Failed to clear localStorage:", err);
+  }
+}
+
+export function evictDailyCache() {
+  clearAllLocalStorage(true);
 }
 
 export function saveActiveSession(session: ShiftSession | null) {

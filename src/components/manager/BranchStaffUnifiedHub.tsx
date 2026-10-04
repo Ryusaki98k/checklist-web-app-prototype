@@ -54,7 +54,7 @@ function BranchStaffUnifiedHubContent({
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
+    <div className="min-h-screen bg-[var(--color-background)]">
       {activeTab === "presence" ? (
         <BranchStaffPresenceView
           currentUser={currentUser}

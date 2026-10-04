@@ -16,12 +16,14 @@ import {
   getThaiDateString,
   isTodayThai,
   evictDailyCache,
+  clearAllLocalStorage,
 } from "../data/storage";
 import {
   getOrCreateShiftSessionAction,
   endShiftSessionAction,
 } from "../actions/checklist";
 import { getUserByIdAction, syncOAuthUserAction } from "../actions/auth";
+import { getBranchesAction } from "../actions/branch";
 import { createClient } from "../db/supabase/client";
 import { secureGetItem, secureRemoveItem } from "../utils/crypto";
 import { invalidateBranchCache } from "../utils/cache";
@@ -33,7 +35,7 @@ interface AppContextType {
   activeSession: ShiftSession | null;
   sessions: ShiftSession[];
   isReady: boolean;
-  login: (user: User, shift?: ShiftType, redirectPath?: string) => void;
+  login: (user: User, shift?: ShiftType, redirectPath?: string) => Promise<void> | void;
   logout: (redirectTo?: string) => void;
   selectShift: (shift: ShiftType) => Promise<void>;
   selectPosition: (position: string) => void;
@@ -77,47 +79,102 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const reloadEverythingFromDb = React.useCallback(async (explicitUser?: User | null) => {
+    if (typeof window === "undefined") return;
+    const currentThaiDate = getThaiDateString();
+
+    console.info("Purging localStorage and reloading everything from DB on new date...");
+
+    // 1. Clear all localStorage while preserving theme
+    clearAllLocalStorage(true);
+    localStorage.setItem("app_last_entered_date", currentThaiDate);
+    localStorage.setItem("app_last_visit_date", currentThaiDate);
+    localStorage.setItem("app_last_login_date", currentThaiDate);
+
+    // 2. Clear all in-memory React session states
+    setActiveSessionState(null);
+    setSelectedShiftState(null);
+    setSessionsState([]);
+
+    // 3. Invalidate branch cache
+    invalidateBranchCache();
+
+    // 4. Reload branches from DB
+    try {
+      await getBranchesAction({ forceRefresh: true });
+    } catch (err) {
+      console.warn("Failed to reload branches from DB:", err);
+    }
+
+    // 5. Reload user from DB if user is provided or exists
+    const targetUserId = explicitUser?.id || currentUser?.id;
+    if (targetUserId) {
+      try {
+        const userRes = await getUserByIdAction(targetUserId);
+        if (userRes.success && userRes.user) {
+          setCurrentUserState(userRes.user);
+          saveCurrentUser(userRes.user);
+        } else if (explicitUser) {
+          setCurrentUserState(explicitUser);
+          saveCurrentUser(explicitUser);
+        }
+      } catch (err) {
+        console.warn("Failed to reload user from DB:", err);
+        if (explicitUser) {
+          setCurrentUserState(explicitUser);
+          saveCurrentUser(explicitUser);
+        }
+      }
+    } else {
+      setCurrentUserState(null);
+    }
+
+    // 6. Broadcast event so other components refresh from DB
+    window.dispatchEvent(new CustomEvent("app:date-rollover", { detail: { date: currentThaiDate } }));
+  }, [currentUser?.id]);
+
   const checkDateRollover = React.useCallback(() => {
     if (typeof window === "undefined") return;
     const currentThaiDate = getThaiDateString();
     const lastVisit = localStorage.getItem("app_last_visit_date");
+    const lastEntered = localStorage.getItem("app_last_entered_date");
     const currentSession = activeSessionRef.current;
 
     // Condition 1: Recorded date is different from today's Thai date
     // Condition 2: Active session exists in state but started on a past day
     const isPastSession = currentSession?.startedAt && !isTodayThai(currentSession.startedAt);
-    const dateChanged = Boolean(lastVisit && lastVisit !== currentThaiDate);
+    const dateChanged = Boolean(
+      (lastVisit && lastVisit !== currentThaiDate) ||
+      (lastEntered && lastEntered !== currentThaiDate)
+    );
 
     if (dateChanged || isPastSession) {
-      console.info("Daily cache rollover triggered. Purging previous day's operational cache...");
-      localStorage.setItem("app_last_visit_date", currentThaiDate);
-      evictDailyCache();
-      invalidateBranchCache();
-
-      setActiveSessionState(null);
-      setSelectedShiftState(null);
-      setSessionsState([]);
-
-      window.dispatchEvent(new CustomEvent("app:date-rollover", { detail: { date: currentThaiDate } }));
+      console.info("Daily cache rollover triggered. Purging previous day's operational cache and reloading DB...");
+      void reloadEverythingFromDb();
 
       if (window.location.pathname.includes("/checklist")) {
         router.replace("/shift");
       }
     }
-  }, [router]);
+  }, [router, reloadEverythingFromDb]);
 
   useEffect(() => {
-    // Check if the last time the user visited the site is a different day
+    // Check if the user entered from another date
     if (typeof window !== "undefined") {
       try {
         const todayDateStr = getThaiDateString();
         const lastVisit = localStorage.getItem("app_last_visit_date");
-        if (!lastVisit || lastVisit !== todayDateStr) {
-          // Different day or first init: evict operational cache data
-          evictDailyCache();
-          invalidateBranchCache();
+        const lastEntered = localStorage.getItem("app_last_entered_date");
+        const wasNewDateEntry = localStorage.getItem("app_entered_new_date") === "true";
+
+        if (wasNewDateEntry || (lastVisit && lastVisit !== todayDateStr) || (lastEntered && lastEntered !== todayDateStr)) {
+          console.info("User entered site from another date. Clearing localStorage and reloading from DB...");
+          void reloadEverythingFromDb();
+          localStorage.removeItem("app_entered_new_date");
+        } else {
+          localStorage.setItem("app_last_entered_date", todayDateStr);
+          localStorage.setItem("app_last_visit_date", todayDateStr);
         }
-        localStorage.setItem("app_last_visit_date", todayDateStr);
       } catch (err) {
         console.warn("Failed to check daily visit date:", err);
       }
@@ -219,15 +276,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     saveActiveSession(session);
   }
 
-  function login(user: User, shift?: ShiftType, redirectPath?: unknown) {
+  async function login(user: User, shift?: ShiftType, redirectPath?: unknown) {
     startLoading("กำลังเข้าสู่ระบบ...", true);
     const targetPath = typeof redirectPath === "string" ? redirectPath : null;
 
+    const todayDateStr = getThaiDateString();
+    const lastLoginDate = localStorage.getItem("app_last_login_date");
+    const lastEnteredDate = localStorage.getItem("app_last_entered_date");
+    const wasNewDateEntry = localStorage.getItem("app_entered_new_date") === "true";
+    const prevEnteredDate = localStorage.getItem("app_previous_entered_date");
+
+    const isFromAnotherDate =
+      wasNewDateEntry ||
+      (lastEnteredDate && lastEnteredDate !== todayDateStr) ||
+      (lastLoginDate && lastLoginDate !== todayDateStr) ||
+      (prevEnteredDate && prevEnteredDate !== todayDateStr);
+
+    let activeUser = user;
+
+    if (isFromAnotherDate) {
+      console.info("User login from another date detected. Clearing localStorage and reloading from DB...");
+      await reloadEverythingFromDb(user);
+      localStorage.removeItem("app_entered_new_date");
+      localStorage.removeItem("app_previous_entered_date");
+
+      // Verify user directly from DB to get the most updated state
+      try {
+        const dbUserRes = await getUserByIdAction(user.id);
+        if (dbUserRes.success && dbUserRes.user) {
+          activeUser = dbUserRes.user;
+          setCurrentUserState(activeUser);
+          saveCurrentUser(activeUser);
+        }
+      } catch (err) {
+        console.warn("Could not refetch user on new date login:", err);
+      }
+    } else {
+      localStorage.setItem("app_last_login_date", todayDateStr);
+      localStorage.setItem("app_last_entered_date", todayDateStr);
+      localStorage.setItem("app_last_visit_date", todayDateStr);
+      setCurrentUserState(activeUser);
+      saveCurrentUser(activeUser);
+    }
+
     // Role verification for branch association
     const requiresBranch =
-      user.role === "employee" || user.role === "manager_assistant" || user.role === "manager";
-    if (requiresBranch && !user.branchName) {
-      setCurrentUser(user);
+      activeUser.role === "employee" || activeUser.role === "manager_assistant" || activeUser.role === "manager";
+    if (requiresBranch && !activeUser.branchName) {
+      setCurrentUser(activeUser);
       startTransition(() => {
         router.push("/awaiting-assignment");
       });
@@ -235,7 +331,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (targetPath) {
-      setCurrentUser(user);
+      setCurrentUser(activeUser);
       startTransition(() => {
         router.push(targetPath);
       });
@@ -244,7 +340,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // Reset previous user's active session and queue if user changed
     const prevUser = getCurrentUser();
-    if (prevUser && prevUser.id !== user.id) {
+    if (prevUser && prevUser.id !== activeUser.id) {
       secureRemoveItem("app_sessions");
       secureRemoveItem("app_active_session");
       secureRemoveItem("app_selected_shift");
@@ -254,13 +350,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSelectedShift(null);
     }
 
-    if (user.role === "admin" || user.role === "committee" || user.role === "general_manager") {
-      setCurrentUser(user);
+    if (activeUser.role === "admin" || activeUser.role === "committee" || activeUser.role === "general_manager") {
+      setCurrentUser(activeUser);
       startTransition(() => {
         router.push("/admin/dashboard");
       });
-    } else if (user.role === "manager" || user.role === "manager_assistant") {
-      setCurrentUser(user);
+    } else if (activeUser.role === "manager" || activeUser.role === "manager_assistant") {
+      setCurrentUser(activeUser);
       startTransition(() => {
         router.push("/manager/dashboard");
       });
@@ -271,7 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       secureRemoveItem("app_active_session");
       secureRemoveItem("app_selected_shift");
 
-      const staffUser: User = { ...user, position: undefined };
+      const staffUser: User = { ...activeUser, position: undefined };
       setCurrentUser(staffUser);
       startTransition(() => {
         router.push("/position");

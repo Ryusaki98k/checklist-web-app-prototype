@@ -1,8 +1,9 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
 import { ExecutiveDashboard } from "../../../components/manager/ExecutiveDashboard";
+import { ManagerDashboard } from "../../../components/manager/ManagerDashboard";
 import { useApp } from "../../../context/AppContext";
 import { LoadingSpinner } from "../../loading";
 
@@ -17,6 +18,9 @@ export default function ManagerDashboardPage() {
     updateSession,
     endShift,
   } = useApp();
+
+  const [forceView, setForceView] = useState<"manager" | "executive" | null>(null);
+
   useEffect(() => {
     if (!isReady) return;
     if (currentUser?.role === "admin") {
@@ -25,10 +29,10 @@ export default function ManagerDashboardPage() {
   }, [currentUser, isReady, router]);
 
   if (!isReady) {
-    return <LoadingSpinner text="กำลังโหลดแดชบอร์ดผู้บริหาร..." />;
+    return <LoadingSpinner text="กำลังโหลดแดชบอร์ด..." />;
   }
 
-  // Use current logged in user or sample executive preview user
+  // Use current logged in user or sample preview user
   const activeUser = currentUser || {
     id: "preview-exec-user",
     name: "คุณวิภาดา สุขเจริญ",
@@ -37,8 +41,31 @@ export default function ManagerDashboardPage() {
     position: "ผู้จัดการร้าน",
   };
 
+  const isExecutiveRole =
+    activeUser.role === "general_manager" ||
+    activeUser.role === "committee" ||
+    (activeUser.position?.includes("กรรมการ") ?? false) ||
+    (activeUser.position?.includes("ผู้จัดการทั่วไป") ?? false);
+
+  const showExecutiveDashboard =
+    forceView === "executive" || (isExecutiveRole && forceView !== "manager");
+
+  if (showExecutiveDashboard) {
+    return (
+      <ExecutiveDashboard
+        user={activeUser}
+        onLogout={() => logout("/")}
+        activeSession={activeSession}
+        onStartChecklist={selectShift}
+        onUpdateSession={updateSession}
+        onEndShift={endShift}
+        onOpenChecklistPage={() => router.push("/checklist")}
+      />
+    );
+  }
+
   return (
-    <ExecutiveDashboard
+    <ManagerDashboard
       user={activeUser}
       onLogout={() => logout("/")}
       activeSession={activeSession}
@@ -46,6 +73,7 @@ export default function ManagerDashboardPage() {
       onUpdateSession={updateSession}
       onEndShift={endShift}
       onOpenChecklistPage={() => router.push("/checklist")}
+      onSwitchToExecutiveView={() => setForceView("executive")}
     />
   );
 }

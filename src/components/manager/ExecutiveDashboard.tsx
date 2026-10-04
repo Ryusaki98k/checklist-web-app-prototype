@@ -21,8 +21,6 @@ import {
   ManagerShiftSummary,
 } from "../../actions/manager";
 import {
-  getOrCreateShiftSessionAction,
-  toggleTaskWorkAction,
   resetTodayChecklistDataAction,
 } from "../../actions/checklist";
 import { RefrigeratorConfigView } from "./RefrigeratorConfigView";
@@ -34,27 +32,8 @@ import { LeaderboardWidget } from "./LeaderboardWidget";
 import { ErrorBoundary } from "../common/ErrorBoundary";
 import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users } from "lucide-react";
 import Link from "next/link";
-import { LateReasonModal } from "../common/LateReasonModal";
 
 export type ExecutiveRole = "manager_assistant" | "manager" | "committee" | "general_manager";
-
-function isSpecialClosingTask(item: ChecklistItem): boolean {
-  if (item.isSpecial || item.zeroPoints) return true;
-  const lower = (item.label || "").toLowerCase();
-  return (
-    lower.includes("turn off light") ||
-    lower.includes("turn off refriderator") ||
-    lower.includes("turn off refrigerator") ||
-    lower.includes("turn off air conditioning") ||
-    lower.includes("lock the store") ||
-    lower.includes("ปิดไฟส่องสว่าง") ||
-    lower.includes("ปิดไฟตู้แช่") ||
-    lower.includes("ปิดเครื่องปรับอากาศ") ||
-    lower.includes("ปิดแอร์") ||
-    lower.includes("ล็อคประตูร้าน") ||
-    lower.includes("ล็อคร้าน")
-  );
-}
 
 export function ExecutiveDashboard({
   user,
@@ -109,17 +88,8 @@ export function ExecutiveDashboard({
   const [shiftQueueTimeFilter, setShiftQueueTimeFilter] = useState<"all" | ShiftType>("all");
   const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "pending" | "approved">("all");
 
-  // Checklist for Assistant Manager or Manager special closing tasks (connected to Supabase)
-  const [myChecklistShift, setMyChecklistShift] = useState<ShiftType>(() => {
-    return currentRole === "manager" ? "afternoon" : "morning";
-  });
-  const [myChecklistItems, setMyChecklistItems] = useState<ChecklistItem[]>([]);
-  const [myChecklistFilter, setMyChecklistFilter] = useState<"all" | "pending" | "completed">("all");
-  const [assistantSession, setAssistantSession] = useState<ShiftSession | null>(null);
-  const [isLoadingChecklist, setIsLoadingChecklist] = useState(false);
-
   // Navigation tab
-  type DashboardTab = "overview" | "checklist" | "history" | "refrigerator";
+  type DashboardTab = "overview" | "history" | "refrigerator";
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
 
   // Load live shift sessions from Supabase DB
@@ -353,70 +323,13 @@ export function ExecutiveDashboard({
     fetchSpecificHistoryDate(val);
   };
 
-  // Load assistant manager or manager checklist directly from Supabase DB
-  const loadAssistantChecklist = useCallback(async (shift: ShiftType, isSilent = false) => {
-    if (currentRole !== "manager_assistant" && currentRole !== "manager") return;
-    try {
-      if (!isSilent) setIsLoadingChecklist(true);
-      const userPosition = currentRole === "manager" ? "ผู้จัดการร้าน" : "ผู้ช่วยผู้จัดการร้าน";
-      const res = await getOrCreateShiftSessionAction({
-        userId: user.id,
-        userName: user.name,
-        position: userPosition,
-        shift: shift,
-      });
-      if (res.success && res.session) {
-        setAssistantSession(res.session);
-        setMyChecklistItems((prev) => {
-          let fresh = res.session!.items || [];
-          if (currentRole === "manager") {
-            fresh = fresh.filter((i) => isSpecialClosingTask(i));
-          }
-          const curSig = prev
-            .map((i) => `${i.id}:${i.completedAt || ""}:${i.completedByName || ""}:${i.comment || ""}`)
-            .join("|");
-          const freshSig = fresh
-            .map((i) => `${i.id}:${i.completedAt || ""}:${i.completedByName || ""}:${i.comment || ""}`)
-            .join("|");
-          if (curSig !== freshSig || prev.length !== fresh.length) {
-            return fresh;
-          }
-          return prev;
-        });
-      }
-    } catch (err) {
-      console.error("Failed to load assistant checklist from DB:", err);
-    } finally {
-      if (!isSilent) setIsLoadingChecklist(false);
-    }
-  }, [currentRole, user]);
 
-  useEffect(() => {
-    if (currentRole === "manager_assistant" || currentRole === "manager") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadAssistantChecklist(myChecklistShift);
-
-      const interval = setInterval(() => {
-        if (typeof document !== "undefined" && document.hidden) return;
-        void loadAssistantChecklist(myChecklistShift, true);
-      }, 6000);
-
-      return () => clearInterval(interval);
-    } else {
-      setAssistantSession(null);
-      setMyChecklistItems([]);
-      if (activeTab === "checklist") {
-        setActiveTab("overview");
-      }
-    }
-  }, [currentRole, myChecklistShift, loadAssistantChecklist, activeTab]);
 
   const handleNavbarRefresh = useCallback(async () => {
     try {
       setIsNavbarRefreshing(true);
       await Promise.all([
         loadDbSessions(true),
-        (currentRole === "manager_assistant" || currentRole === "manager") ? loadAssistantChecklist(myChecklistShift, false) : Promise.resolve(),
         activeTab === "history" ? loadHistorySessions() : Promise.resolve(),
       ]);
       if (typeof window !== "undefined") {
@@ -431,7 +344,7 @@ export function ExecutiveDashboard({
     } finally {
       setIsNavbarRefreshing(false);
     }
-  }, [loadDbSessions, currentRole, loadAssistantChecklist, myChecklistShift, activeTab, loadHistorySessions]);
+  }, [loadDbSessions, activeTab, loadHistorySessions]);
 
   const handleNavbarRefreshFromDb = useCallback(async () => {
     try {
@@ -439,7 +352,6 @@ export function ExecutiveDashboard({
       invalidateBranchCache();
       await Promise.all([
         loadDbSessions(true),
-        (currentRole === "manager_assistant" || currentRole === "manager") ? loadAssistantChecklist(myChecklistShift, false) : Promise.resolve(),
         activeTab === "history" ? loadHistorySessions() : Promise.resolve(),
       ]);
       if (typeof window !== "undefined") {
@@ -454,7 +366,7 @@ export function ExecutiveDashboard({
     } finally {
       setIsNavbarDbRefreshing(false);
     }
-  }, [loadDbSessions, currentRole, loadAssistantChecklist, myChecklistShift, activeTab, loadHistorySessions]);
+  }, [loadDbSessions, activeTab, loadHistorySessions]);
 
   // Role metadata configurations
   const roleConfig = {
@@ -575,95 +487,7 @@ export function ExecutiveDashboard({
     }
   }
 
-  const [lateModalTarget, setLateModalTarget] = useState<{
-    id: string;
-    label: string;
-    deadlineText?: string;
-  } | null>(null);
 
-  async function executeToggleMyItem(itemId: string, willBeDone: boolean, comment?: string) {
-    const newCompletedAt = willBeDone ? new Date().toISOString() : null;
-    const item = myChecklistItems.find((i) => i.id === itemId);
-
-    // Optimistic UI update
-    const myTitle = user.position || (currentRole === "manager" ? "ผู้จัดการร้าน" : "ผู้ช่วยผู้จัดการร้าน");
-    setMyChecklistItems((prev) =>
-      prev.map((i) =>
-        i.id === itemId
-          ? {
-            ...i,
-            completedAt: newCompletedAt,
-            completedBy: willBeDone ? user.id : null,
-            completedByName: willBeDone ? `${user.name} (${myTitle})` : null,
-            comment: willBeDone ? (comment ?? i.comment) : null,
-            isLate: willBeDone ? (comment ? true : i.isLate) : false,
-          }
-          : i
-      )
-    );
-
-    // Persist to Supabase database
-    try {
-      await toggleTaskWorkAction({
-        shiftSessionId: assistantSession?.id,
-        taskId: itemId,
-        taskWorkId: item?.taskWorkId,
-        completed: willBeDone,
-        comment: willBeDone ? (comment || undefined) : undefined,
-      });
-      // Refresh live shift sessions in background
-      loadDbSessions();
-      // Silently reload my checklist to sync shared branch state
-      void loadAssistantChecklist(myChecklistShift, true);
-    } catch (err) {
-      console.error("Failed to toggle assistant task work in DB:", err);
-    }
-  }
-
-  function handleAssistantLateSubmit(reason: string) {
-    if (!lateModalTarget) return;
-    executeToggleMyItem(lateModalTarget.id, true, reason);
-    setLateModalTarget(null);
-  }
-
-  async function handleToggleMyItem(itemId: string) {
-    const item = myChecklistItems.find((i) => i.id === itemId);
-    if (!item) return;
-
-    if (item.completedAt) {
-      // Unchecking task
-      await executeToggleMyItem(itemId, false);
-      return;
-    }
-
-    // Check if late
-    let isLate = false;
-    let deadlineText: string | undefined;
-    if (item.category) {
-      const match = item.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
-      if (match) {
-        const endStr = match[2];
-        const [endHr, endMin] = endStr.split(":").map(Number);
-        const deadlineDate = new Date();
-        deadlineDate.setHours(endHr, endMin, 0, 0);
-        deadlineText = `${item.category} (สิ้นสุด ${endStr} น.)`;
-        if (new Date() > deadlineDate) {
-          isLate = true;
-        }
-      }
-    }
-
-    if (isLate) {
-      setLateModalTarget({
-        id: item.id,
-        label: item.label,
-        deadlineText,
-      });
-      return;
-    }
-
-    await executeToggleMyItem(itemId, true);
-  }
 
   async function handleResetChecklistData() {
     try {
@@ -674,9 +498,6 @@ export function ExecutiveDashboard({
       secureRemoveItem("app_manager_read_notifs");
       showToast("รีเซ็ตข้อมูลเช็คลิสต์ประจำวันเรียบร้อยแล้ว ✓");
       await loadDbSessions(true);
-      if (currentRole === "manager_assistant" || currentRole === "manager") {
-        await loadAssistantChecklist(myChecklistShift);
-      }
       setShowResetModal(false);
     } catch (err) {
       console.error("Reset error:", err);
@@ -836,7 +657,7 @@ export function ExecutiveDashboard({
 
         {/* ─── Navigation Tabs (Tailored to Executive & Operations) ──────────── */}
         <div className="bg-[var(--color-surface-2)] p-1.5 rounded-2xl border border-[var(--color-border)] shadow-2xs">
-          <div className={`grid ${(currentRole === "manager_assistant" || currentRole === "manager") ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"} gap-1.5`}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
             {[
               {
                 id: "overview" as DashboardTab,
@@ -844,16 +665,6 @@ export function ExecutiveDashboard({
                 Icon: ClipboardCheck,
                 desc: "ตรวจรับรองกะและแจ้งเตือน",
               },
-              ...(currentRole === "manager_assistant" || currentRole === "manager"
-                ? [
-                  {
-                    id: "checklist" as DashboardTab,
-                    label: currentRole === "manager" ? "ชุดงานพิเศษปิดร้าน" : "เช็คลิสต์ตรวจงานของฉัน",
-                    Icon: CheckCircle2,
-                    desc: currentRole === "manager" ? "ตรวจความปลอดภัยปิดร้าน (4 ข้อ)" : "บันทึกเช็คลิสต์ประจำกะ & ปิดร้าน",
-                  },
-                ]
-                : []),
               {
                 id: "refrigerator" as DashboardTab,
                 label: "ตู้แช่ & ตรวจสอบงาน",
@@ -1704,396 +1515,6 @@ export function ExecutiveDashboard({
           </div>
         )}
 
-        {/* ─── TAB 2: MY CHECKLIST (MANAGER & ASSISTANT MANAGER) ─────────────────── */}
-        {activeTab === "checklist" && (currentRole === "manager_assistant" || currentRole === "manager") && (
-          <div className="space-y-4 animate-fade-in">
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-5">
-              {/* Header: Title, Description & Shift Toggle */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-[var(--color-text)] flex items-center gap-2">
-                    <CheckCircle2 size={18} className="text-amber-700 shrink-0" />
-                    <span>
-                      {currentRole === "manager"
-                        ? "ชุดงานพิเศษปิดร้าน (สำหรับผู้จัดการร้าน)"
-                        : "เช็คลิสต์ตรวจงานประจำกะ & ชุดงานพิเศษปิดร้าน"}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                    {currentRole === "manager"
-                      ? "บันทึกผลการตรวจสอบชุดงานปิดร้าน 4 รายการความปลอดภัย (0 แต้ม • แชร์ร่วมระดับสาขา)"
-                      : "บันทึกผลการตรวจสอบขั้นตอนการปฏิบัติงานของผู้ช่วยผู้จัดการร้าน และชุดงานปิดร้าน (Zero Points)"}
-                  </p>
-                </div>
-
-                {/* Shift Selector */}
-                <div className="inline-flex items-center self-start sm:self-auto bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)]">
-                  {(["morning", "afternoon"] as ShiftType[]).map((sh) => (
-                    <button
-                      key={sh}
-                      type="button"
-                      onClick={() => {
-                        setMyChecklistShift(sh);
-                        loadAssistantChecklist(sh);
-                      }}
-                      className={`min-h-[36px] px-3.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${myChecklistShift === sh
-                          ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                          : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                        }`}
-                    >
-                      {sh === "morning" ? "กะเช้า" : "กะบ่าย & ปิดร้าน"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Special Store Closing Checklist Notice Banner */}
-              <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-start sm:items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-900 dark:text-amber-300 flex items-center justify-center shrink-0 text-base shadow-2xs">
-                    🛡️
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200">
-                        {currentRole === "manager"
-                          ? "ชุดงานพิเศษปิดร้าน (ผู้จัดการร้านปฏิบัติเฉพาะชุดงานปิดร้าน 4 ข้อ)"
-                          : "ชุดงานพิเศษปิดร้าน (สำหรับผู้จัดการ & ผู้ช่วยผู้จัดการร้าน)"}
-                      </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-amber-950 shadow-2xs">
-                        ไม่มีคะแนน • 0 Points
-                      </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40">
-                        🔗 เช็คลิสต์ร่วมระดับสาขา (Shared Checklist)
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-amber-900/80 dark:text-amber-300/80 mt-0.5">
-                      4 รายการตรวจความปลอดภัย: 1) ปิดไฟ 2) ปิดไฟตู้แช่ 3) ปิดแอร์ 4) ล็อคประตูร้าน • ปฏิบัติงานในกะบ่าย/ปิดร้าน (ไม่คิดแต้ม) • แชร์ข้อมูลร่วมกันในสาขาเหมือนระบบตู้แช่ (คนหนึ่งตรวจแล้ว ทุกคนในสาขาจะเห็นทันที)
-                    </p>
-                  </div>
-                </div>
-                {myChecklistShift !== "afternoon" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMyChecklistShift("afternoon");
-                      loadAssistantChecklist("afternoon");
-                    }}
-                    className="self-end sm:self-center px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-all cursor-pointer whitespace-nowrap shadow-2xs"
-                  >
-                    ดูกะบ่าย & ปิดร้าน →
-                  </button>
-                )}
-              </div>
-
-              {isLoadingChecklist ? (
-                <div className="py-12 text-center text-[var(--color-text-muted)] text-xs flex flex-col items-center justify-center gap-2">
-                  <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                  <span>กำลังดึงรายการเช็คลิสต์จากฐานข้อมูล...</span>
-                </div>
-              ) : (
-                <>
-                  {/* Distilled Toolbar: Task Status Filters & Compact Progress Meter */}
-                  {(() => {
-                    const doneCount = myChecklistItems.filter((i) => i.completedAt).length;
-                    const totalCount = myChecklistItems.length;
-                    const pendingCount = totalCount - doneCount;
-                    const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
-
-                    return (
-                      <div className="space-y-3">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[var(--color-surface-2)]/60 p-2.5 sm:p-3 rounded-xl border border-[var(--color-border)]">
-                          {/* Filter Tabs */}
-                          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                            <button
-                              type="button"
-                              onClick={() => setMyChecklistFilter("all")}
-                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${myChecklistFilter === "all"
-                                  ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                                  : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                                }`}
-                            >
-                              <span>ทั้งหมด</span>
-                              <span className="font-mono text-xs font-bold">({totalCount})</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setMyChecklistFilter("pending")}
-                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${myChecklistFilter === "pending"
-                                  ? "bg-amber-400 text-amber-950 font-bold shadow-2xs"
-                                  : pendingCount > 0
-                                    ? "bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200/80 font-bold"
-                                    : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                                }`}
-                            >
-                              <span>ยังไม่ตรวจ</span>
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-bold font-mono ${myChecklistFilter === "pending"
-                                    ? "bg-amber-950 text-amber-200"
-                                    : pendingCount > 0
-                                      ? "bg-amber-400 text-amber-950"
-                                      : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
-                                  }`}
-                              >
-                                {pendingCount}
-                              </span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setMyChecklistFilter("completed")}
-                              className={`min-h-[40px] px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${myChecklistFilter === "completed"
-                                  ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                                  : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                                }`}
-                            >
-                              <span>ตรวจแล้ว</span>
-                              <span className="font-mono text-xs font-bold">({doneCount})</span>
-                            </button>
-                          </div>
-
-                          {/* Slim Inline Progress Bar */}
-                          <div className="flex items-center gap-3 md:min-w-[200px] justify-end">
-                            <div className="flex-1 max-w-[140px] bg-[var(--color-border)] h-2 rounded-full overflow-hidden">
-                              <div
-                                className="bg-amber-400 h-full rounded-full transition-all duration-300"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-mono font-bold text-[var(--color-text)] whitespace-nowrap">
-                              {doneCount}/{totalCount} <span className="text-[var(--color-text-muted)] font-normal font-sans">({pct}%)</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Checklist items list */}
-                        {(() => {
-                          const filteredItems = myChecklistItems.filter((item) => {
-                            if (myChecklistFilter === "pending") return !item.completedAt;
-                            if (myChecklistFilter === "completed") return !!item.completedAt;
-                            return true;
-                          });
-
-                          if (totalCount === 0) {
-                            return (
-                              <div className="py-10 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-xl bg-[var(--color-surface-2)]/40 p-5">
-                                {currentRole === "manager" ? (
-                                  <div className="space-y-2 max-w-md mx-auto">
-                                    <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 flex items-center justify-center mx-auto text-lg">
-                                      🛡️
-                                    </div>
-                                    <p className="font-bold text-sm text-[var(--color-text)]">
-                                      ผู้จัดการร้านไม่มีงานตรวจเช็คลิสต์ในกะเช้า
-                                    </p>
-                                    <p className="text-xs text-[var(--color-text-muted)]">
-                                      งานตรวจประจำกะเป็นหน้าที่ของผู้ช่วยผู้จัดการร้าน โดยผู้จัดการร้านจะปฏิบัติเฉพาะชุดงานพิเศษปิดร้าน 4 รายการในกะบ่าย & ปิดร้าน
-                                    </p>
-                                    {myChecklistShift !== "afternoon" && (
-                                      <div className="pt-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setMyChecklistShift("afternoon");
-                                            loadAssistantChecklist("afternoon");
-                                          }}
-                                          className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-400 text-amber-950 hover:bg-amber-300 transition-all cursor-pointer shadow-xs"
-                                        >
-                                          สลับไปดูกะบ่าย & ปิดร้าน →
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  "ไม่พบรายการเช็คลิสต์ของตำแหน่งผู้ช่วยผู้จัดการร้านสำหรับกะนี้"
-                                )}
-                              </div>
-                            );
-                          }
-
-                          if (filteredItems.length === 0) {
-                            if (myChecklistFilter === "pending") {
-                              return (
-                                <div className="py-10 px-4 text-center rounded-2xl border border-emerald-200 bg-emerald-50/60 flex flex-col items-center justify-center gap-2.5">
-                                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                      <polyline points="20 6 9 17 4 12" />
-                                    </svg>
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-emerald-950">
-                                      ตรวจเช็คลิสต์ครบถ้วนทุกข้อแล้ว!
-                                    </p>
-                                    <p className="text-xs text-emerald-800 mt-0.5">
-                                      ไม่มีงานที่ค้างตรวจสำหรับ{myChecklistShift === "morning" ? "กะเช้า" : "กะบ่าย"}
-                                    </p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setMyChecklistFilter("completed")}
-                                    className="mt-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer"
-                                  >
-                                    ดูรายการที่ตรวจแล้ว ({doneCount})
-                                  </button>
-                                </div>
-                              );
-                            }
-
-                            if (myChecklistFilter === "completed") {
-                              return (
-                                <div className="py-10 px-4 text-center rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]/40 flex flex-col items-center justify-center gap-2">
-                                  <div className="w-10 h-10 rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-muted)] flex items-center justify-center">
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                      <circle cx="12" cy="12" r="10" />
-                                      <polyline points="12 6 12 12 14 14" />
-                                    </svg>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs sm:text-sm font-semibold text-[var(--color-text)]">
-                                      ยังไม่มีรายการที่ได้รับการตรวจเสร็จ
-                                    </p>
-                                    <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                                      เลือกแท็บ &quot;ยังไม่ตรวจ&quot; เพื่อเริ่มติ๊กตรวจสอบขั้นตอนการทำงาน
-                                    </p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setMyChecklistFilter("pending")}
-                                    className="mt-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-400 text-amber-950 hover:bg-amber-500 transition-colors cursor-pointer"
-                                  >
-                                    ตรวจงานที่ค้างอยู่ ({pendingCount})
-                                  </button>
-                                </div>
-                              );
-                            }
-                          }
-
-                          return (
-                            <div className="space-y-2">
-                              {filteredItems.map((item, idx) => {
-                                const isDone = !!item.completedAt;
-                                return (
-                                  <div
-                                    key={item.id}
-                                    role="checkbox"
-                                    aria-checked={isDone}
-                                    tabIndex={0}
-                                    onClick={() => handleToggleMyItem(item.id)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === " " || e.key === "Enter") {
-                                        e.preventDefault();
-                                        handleToggleMyItem(item.id);
-                                      }
-                                    }}
-                                    className={`p-3 sm:p-3.5 rounded-xl border flex items-start gap-3 cursor-pointer transition-all select-none min-h-[48px] focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 ${isDone
-                                        ? "bg-[var(--color-amber-glow)]/30 border-[var(--color-amber)]/40 hover:bg-[var(--color-amber-glow)]/50"
-                                        : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-amber-400 hover:bg-[var(--color-surface-2)]/50"
-                                      }`}
-                                  >
-                                    <div
-                                      className={`w-5 h-5 rounded-md border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${isDone
-                                          ? "bg-amber-500 border-amber-500 text-white"
-                                          : "border-[var(--color-border-strong)] bg-[var(--color-surface)]"
-                                        }`}
-                                    >
-                                      {isDone && (
-                                        <svg
-                                          width="12"
-                                          height="12"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="3"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                      )}
-                                    </div>
-
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="text-xs font-mono text-[var(--color-text-muted)]">
-                                          {String(idx + 1).padStart(2, "0")}
-                                        </span>
-                                        {item.category && (
-                                          <span className="text-xs font-semibold text-[var(--color-text)] bg-[var(--color-surface-2)] px-1.5 py-0.5 rounded border border-[var(--color-border)]">
-                                            {item.category}
-                                          </span>
-                                        )}
-                                        {isSpecialClosingTask(item) && (
-                                          <span className="inline-flex flex-wrap items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-900 dark:text-amber-300 border border-amber-400/40">
-                                            <span>🛡️ ชุดงานพิเศษปิดร้าน</span>
-                                            <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400 font-semibold">(0 แต้ม)</span>
-                                            <span className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-300/60">
-                                              แชร์ร่วมระดับสาขา
-                                            </span>
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p
-                                        className={`text-xs sm:text-sm font-medium mt-1 leading-snug ${isDone
-                                            ? "text-[var(--color-text-muted)] line-through"
-                                            : "text-[var(--color-text)]"
-                                          }`}
-                                      >
-                                        {item.label}
-                                      </p>
-                                      {item.completedAt && (() => {
-                                        let isLate = item.isLate ?? false;
-                                        if (!isLate && item.category) {
-                                          const match = item.category.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
-                                          if (match) {
-                                            const endStr = match[2];
-                                            const [endHr, endMin] = endStr.split(":").map(Number);
-                                            const completedDate = new Date(item.completedAt);
-                                            const deadlineDate = new Date(); // use today
-                                            deadlineDate.setHours(endHr, endMin, 0, 0);
-                                            if (completedDate > deadlineDate) {
-                                              isLate = true;
-                                            }
-                                          }
-                                        }
-                                        return (
-                                          <div className="mt-1 flex flex-col gap-1">
-                                            <div className="text-xs font-mono text-emerald-800 dark:text-emerald-300 font-semibold flex flex-wrap items-center gap-1.5">
-                                              <span>บันทึกเมื่อ: {fmtTime(item.completedAt)}</span>
-                                              {item.completedByName && (
-                                                <span className="text-xs font-sans text-emerald-950 dark:text-emerald-200 bg-emerald-100/80 dark:bg-emerald-900/40 px-2 py-0.5 rounded-md border border-emerald-300/60 font-medium">
-                                                  ตรวจโดย {item.completedByName}
-                                                </span>
-                                              )}
-                                              {isLate && (
-                                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-xs font-bold bg-amber-100 text-amber-950 border border-amber-300">
-                                                  ล่าช้า
-                                                </span>
-                                              )}
-                                            </div>
-                                            {item.comment && (
-                                              <div className="text-xs text-rose-900 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-lg px-2.5 py-1 flex items-start gap-1 font-sans font-normal">
-                                                <span className="font-semibold shrink-0">เหตุผล:</span>
-                                                <span className="break-words">{item.comment}</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    );
-                  })()}
-                </>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* ─── TAB 3: AUDIT HISTORY & SHIFT REPORTS ───────────────────────────── */}
         {activeTab === "history" && (
@@ -2550,14 +1971,7 @@ export function ExecutiveDashboard({
         </div>
       </footer>
 
-      {/* Late Reason Requirement Modal for Assistant Manager */}
-      <LateReasonModal
-        isOpen={Boolean(lateModalTarget)}
-        taskLabel={lateModalTarget?.label || ""}
-        deadlineText={lateModalTarget?.deadlineText}
-        onSubmit={handleAssistantLateSubmit}
-        onCancel={() => setLateModalTarget(null)}
-      />
+
     </div>
   );
 }
