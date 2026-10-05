@@ -4,6 +4,7 @@ import { IChecklistService, INotificationService } from "./types";
 import { ShiftSession, ShiftType, ChecklistItem } from "../types";
 
 export function isSpecialZeroPointTask(taskName: string): boolean {
+  // Retained for backward compatibility if called with a task name
   const lower = (taskName || "").toLowerCase();
   return (
     lower.includes("turn off light") ||
@@ -146,7 +147,7 @@ export class ChecklistService implements IChecklistService {
           !position.includes("assistant"));
 
       if (isManager) {
-        dbTasks = dbTasks.filter((t: any) => t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name));
+        dbTasks = dbTasks.filter((t: any) => t.for_managers || t.shift === "night");
       }
 
       const [existingSession] = await this.db
@@ -278,8 +279,8 @@ export class ChecklistService implements IChecklistService {
         }
       }
 
-      // Query shared store closing / manager tasks for this branch today from taskWork
-      const specialTaskIds = dbTasks.filter((t: any) => t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name)).map((t: any) => t.id);
+      // Query shared store closing / manager tasks for this branch today from taskWork directly from DB attributes
+      const specialTaskIds = dbTasks.filter((t: any) => t.for_managers || t.shift === "night").map((t: any) => t.id);
       const branchClosingMap = new Map<
         string,
         {
@@ -339,7 +340,7 @@ export class ChecklistService implements IChecklistService {
         const work = workRows.find((w: any) => w.task === t.id);
         const timeRange = t.start && t.end ? `${t.start.slice(0, 5)} - ${t.end.slice(0, 5)}` : undefined;
 
-        const isSpecial = Boolean(t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name));
+        const isSpecial = Boolean(t.for_managers || t.shift === "night");
         const sharedClosing = isSpecial ? branchClosingMap.get(t.id) : undefined;
 
         let completedAt: string | null = null;
@@ -390,7 +391,7 @@ export class ChecklistService implements IChecklistService {
         return {
           id: t.id,
           label: t.name,
-          category: timeRange ? `ช่วงเวลา ${timeRange}` : undefined,
+          category: t.category || (timeRange ? `ช่วงเวลา ${timeRange}` : undefined),
           completedAt,
           completedBy,
           completedByName,
@@ -398,7 +399,7 @@ export class ChecklistService implements IChecklistService {
           isLate,
           comment: taskComment,
           isSpecial,
-          forManagers: isSpecial,
+          forManagers: Boolean(t.for_managers),
           zeroPoints: isSpecial,
         };
       });
@@ -549,7 +550,7 @@ export class ChecklistService implements IChecklistService {
               .where(eq(tasks.id, resolvedTaskId))
               .limit(1);
 
-            if (tRow && (tRow.for_managers || tRow.shift === "night" || isSpecialZeroPointTask(tRow.name))) {
+            if (tRow && (tRow.for_managers || tRow.shift === "night")) {
               const { dateStr, startOfDay, endOfDay } = getThaiStartAndEndOfDay();
               try {
                 // Sync all today's sessions in this branch for this special task
@@ -699,7 +700,7 @@ export class ChecklistService implements IChecklistService {
       let activeTasks = dbTasks;
 
       if (isManagerUser && sess.task_role === "manager_assistant") {
-        activeTasks = activeTasks.filter((t: any) => t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name));
+        activeTasks = activeTasks.filter((t: any) => t.for_managers || t.shift === "night");
       }
 
       const works = await this.db

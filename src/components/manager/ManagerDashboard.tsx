@@ -43,21 +43,7 @@ import {
 import Link from "next/link";
 
 export function isSpecialClosingTask(item: ChecklistItem): boolean {
-  if (item.forManagers || item.isSpecial || item.zeroPoints) return true;
-  const lower = (item.label || "").toLowerCase();
-  return (
-    lower.includes("turn off light") ||
-    lower.includes("turn off refriderator") ||
-    lower.includes("turn off refrigerator") ||
-    lower.includes("turn off air conditioning") ||
-    lower.includes("lock the store") ||
-    lower.includes("ปิดไฟส่องสว่าง") ||
-    lower.includes("ปิดไฟตู้แช่") ||
-    lower.includes("ปิดเครื่องปรับอากาศ") ||
-    lower.includes("ปิดแอร์") ||
-    lower.includes("ล็อคประตูร้าน") ||
-    lower.includes("ล็อคร้าน")
-  );
+  return Boolean(item.forManagers || item.isSpecial || item.zeroPoints);
 }
 
 export function ManagerDashboard({
@@ -438,22 +424,9 @@ export function ManagerDashboard({
     }
   }
 
-  // --- Partition Tasks into Afternoon Routine vs Special Closing ---
-  const isAfternoon = myChecklistShift === "afternoon";
-  const routineAfternoonTasks = useMemo(() => {
-    return myChecklistItems.filter((i) => !isSpecialClosingTask(i));
-  }, [myChecklistItems]);
-
-  const specialClosingTasks = useMemo(() => {
-    return myChecklistItems.filter((i) => isSpecialClosingTask(i));
-  }, [myChecklistItems]);
-
-  // Active tasks for the currently selected shift tab
+  // Active tasks for the currently selected shift tab (fetched from database)
   const activeShiftTasks = useMemo(() => {
-    if (selectedTaskShiftTab === "morning") {
-      return myChecklistItems.filter((i) => !isSpecialClosingTask(i));
-    }
-    if (selectedTaskShiftTab === "afternoon") {
+    if (selectedTaskShiftTab === "morning" || selectedTaskShiftTab === "afternoon") {
       return myChecklistItems.filter((i) => !isSpecialClosingTask(i));
     }
     return myChecklistItems;

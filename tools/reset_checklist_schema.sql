@@ -20,13 +20,7 @@ DECLARE
     -- 🛡️ TABLE PRESERVATION CONFIGURATION:
     -- Add any tables you want to KEEP/PRESERVE into this array:
     -- Examples: 'users', 'branches', 'tasks', 'refrigerators', 'cron_settings'
-    v_preserved_tables text[] := ARRAY[
-        -- 'users',
-        -- 'branches',
-        -- 'tasks',
-        -- 'refrigerators',
-        -- 'cron_settings'
-    ];
+    v_preserved_tables text[] := ARRAY[]::text[];
 
     r RECORD;
     v_table_name text;

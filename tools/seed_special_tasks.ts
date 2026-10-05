@@ -65,14 +65,31 @@ async function seedSpecialTasks() {
     }
   }
 
-  // Update all manager night tasks in DB to ensure shift = 'night' and for_managers = true
+  // Update all manager night tasks in DB to ensure shift = 'night', for_managers = true, category = 'ความปลอดภัยตอนปิดร้าน'
   for (const id of createdOrFoundTaskIds) {
-    await db.update(tasks).set({ shift: "night", for_managers: true }).where(sql`${tasks.id} = ${id}`);
+    await db.update(tasks).set({
+      shift: "night",
+      for_managers: true,
+      category: "ความปลอดภัยตอนปิดร้าน",
+      disabled: false,
+    }).where(sql`${tasks.id} = ${id}`);
+  }
+
+  // Link to all branches via branch_tasks
+  const allBranches = await db.select({ id: branches.id }).from(branches);
+  for (const b of allBranches) {
+    for (const taskId of createdOrFoundTaskIds) {
+      await db.execute(sql`
+        INSERT INTO checklist_web_app.branch_tasks (branch_id, task_id)
+        VALUES (${b.id}, ${taskId})
+        ON CONFLICT (branch_id, task_id) DO NOTHING;
+      `);
+    }
   }
 
   // Touch branches last_update
   await db.update(branches).set({ last_update: new Date() });
-  console.log("Updated branches last_update.");
+  console.log("Updated branches last_update and linked branch_tasks.");
 
   console.log("Seeding complete! Special Task IDs:", createdOrFoundTaskIds);
 }

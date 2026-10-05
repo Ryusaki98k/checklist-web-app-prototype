@@ -1,5 +1,5 @@
-import { eq, or, and, isNull, sql, desc } from "drizzle-orm";
-import { notifications, branches } from "../db/schema";
+import { eq, or, and, isNull, inArray, desc } from "drizzle-orm";
+import { notifications, branches, notificationReads } from "../db/schema";
 import { INotificationService } from "./types";
 import { Notification, Role } from "../types";
 
@@ -27,7 +27,6 @@ export class NotificationService implements INotificationService {
           type: params.type || "info",
           shift_session_id: params.shiftSessionId || null,
           is_read: false,
-          read_by: [],
           created_at: new Date(),
         })
         .returning();
@@ -84,8 +83,24 @@ export class NotificationService implements INotificationService {
 
       const branchMap = new Map<string, string>(branchRows.map((b: any) => [b.id, b.name]));
 
+      // Fetch read receipts for broadcast notifications for this user (eliminates array scanning and race conditions)
+      const notifIds = rows.map((r: any) => r.id);
+      let userReadNotifIds = new Set<string>();
+      if (notifIds.length > 0) {
+        const readRows = await this.db
+          .select({ notificationId: notificationReads.notification_id })
+          .from(notificationReads)
+          .where(
+            and(
+              eq(notificationReads.user_id, userId),
+              inArray(notificationReads.notification_id, notifIds)
+            )
+          );
+        userReadNotifIds = new Set(readRows.map((r: any) => r.notificationId));
+      }
+
       const mapped: Notification[] = rows.map((r: any) => {
-        const isRead = r.is_read || (Array.isArray(r.read_by) && r.read_by.includes(userId));
+        const isRead = r.recipient_id === userId ? Boolean(r.is_read) : userReadNotifIds.has(r.id);
         return {
           id: r.id,
           title: r.title,
@@ -120,18 +135,21 @@ export class NotificationService implements INotificationService {
       }
 
       if (existing.recipient_id === userId) {
+        // Direct notification targeted specifically to this user
         await this.db
           .update(notifications)
           .set({ is_read: true })
           .where(eq(notifications.id, notificationId));
       } else {
-        const readBy = Array.isArray(existing.read_by) ? existing.read_by : [];
-        if (!readBy.includes(userId)) {
-          await this.db
-            .update(notifications)
-            .set({ read_by: [...readBy, userId] })
-            .where(eq(notifications.id, notificationId));
-        }
+        // Broadcast notification: atomic insert with ON CONFLICT DO NOTHING (zero race conditions)
+        await this.db
+          .insert(notificationReads)
+          .values({
+            notification_id: notificationId,
+            user_id: userId,
+            read_at: new Date(),
+          })
+          .onConflictDoNothing();
       }
 
       return { success: true };
@@ -144,10 +162,10 @@ export class NotificationService implements INotificationService {
   async markAllAsRead(userId: string, role?: Role, branchId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { notifications: userNotifs } = await this.getNotificationsForUser({ userId, role, branchId });
-      for (const n of userNotifs) {
-        if (!n.read) {
-          await this.markAsRead(n.id, userId);
-        }
+      const unreadNotifs = userNotifs.filter((n) => !n.read);
+
+      for (const n of unreadNotifs) {
+        await this.markAsRead(n.id, userId);
       }
       return { success: true };
     } catch (err: any) {
@@ -156,3 +174,4 @@ export class NotificationService implements INotificationService {
     }
   }
 }
+

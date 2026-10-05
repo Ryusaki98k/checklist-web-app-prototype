@@ -1,10 +1,10 @@
-import { boolean, integer, jsonb, pgSchema, timestamp, time, uuid, text, index } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgSchema, timestamp, time, uuid, text, index, primaryKey } from "drizzle-orm/pg-core";
 
 export const checklistSchema = pgSchema("checklist_web_app");
 
 export const roleEnum = checklistSchema.enum('role', ['admin', 'committee', 'general_manager', 'manager', 'manager_assistant', 'employee']);
 export const taskRoleEnum = checklistSchema.enum('task_role', ['manager_assistant', 'cashier', 'stock']);
-export const shiftEnum = checklistSchema.enum('shift', ['morning', 'afternoon', 'night', 'morning_afternoon']);
+export const shiftEnum = checklistSchema.enum('shift', ['morning', 'afternoon', 'morning_afternoon', 'night']);
 export const pointStreakEnum = checklistSchema.enum('point_streak', ['none', 'flawed', 'perfect']);
 export const leaveTypeEnum = checklistSchema.enum('leave_type', [
     'paid',
@@ -23,7 +23,6 @@ export const users = checklistSchema.table.withRLS("users", {
     name: text("name").notNull(),
     username: text("username").notNull().default(""),
     password: text("password"),
-    password_hash: text("password_hash"),
     role: roleEnum("role").notNull(),
     branch_id: uuid("branch_id").references(() => branches.id, { onDelete: 'set null' }),
 
@@ -55,6 +54,16 @@ export const tasks = checklistSchema.table.withRLS("tasks", {
 }, (table) => [
     index("idx_tasks_role_shift").on(table.task_role, table.shift),
     index("idx_tasks_for_managers").on(table.for_managers),
+]);
+
+export const branchTasks = checklistSchema.table.withRLS("branch_tasks", {
+    branch_id: uuid("branch_id").notNull().references(() => branches.id, { onDelete: 'cascade' }),
+    task_id: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    primaryKey({ columns: [table.branch_id, table.task_id] }),
+    index("idx_branch_tasks_branch").on(table.branch_id),
+    index("idx_branch_tasks_task").on(table.task_id),
 ]);
 
 export const shiftSession = checklistSchema.table.withRLS("shift_session", {
@@ -140,6 +149,15 @@ export const notifications = checklistSchema.table.withRLS("notifications", {
 }, (table) => [
     index("idx_notifications_recipient_read").on(table.recipient_id, table.is_read),
     index("idx_notifications_branch").on(table.branch_id),
+]);
+
+export const notificationReads = checklistSchema.table.withRLS("notification_reads", {
+    notification_id: uuid("notification_id").notNull().references(() => notifications.id, { onDelete: 'cascade' }),
+    user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    read_at: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    primaryKey({ columns: [table.notification_id, table.user_id] }),
+    index("idx_notification_reads_user").on(table.user_id),
 ]);
 
 export const pointTransactions = checklistSchema.table.withRLS("point_transactions", {

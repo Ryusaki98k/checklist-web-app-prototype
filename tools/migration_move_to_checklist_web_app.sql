@@ -10,16 +10,32 @@ CREATE SCHEMA IF NOT EXISTS checklist_web_app;
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'role' AND n.nspname = 'public') THEN
-        ALTER TYPE public.role SET SCHEMA checklist_web_app;
+        IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'role' AND n.nspname = 'checklist_web_app') THEN
+            ALTER TYPE public.role SET SCHEMA checklist_web_app;
+        ELSE
+            DROP TYPE public.role;
+        END IF;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'task_role' AND n.nspname = 'public') THEN
-        ALTER TYPE public.task_role SET SCHEMA checklist_web_app;
+        IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'task_role' AND n.nspname = 'checklist_web_app') THEN
+            ALTER TYPE public.task_role SET SCHEMA checklist_web_app;
+        ELSE
+            DROP TYPE public.task_role;
+        END IF;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'shift' AND n.nspname = 'public') THEN
-        ALTER TYPE public.shift SET SCHEMA checklist_web_app;
+        IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'shift' AND n.nspname = 'checklist_web_app') THEN
+            ALTER TYPE public.shift SET SCHEMA checklist_web_app;
+        ELSE
+            DROP TYPE public.shift;
+        END IF;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'point_streak' AND n.nspname = 'public') THEN
-        ALTER TYPE public.point_streak SET SCHEMA checklist_web_app;
+        IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'point_streak' AND n.nspname = 'checklist_web_app') THEN
+            ALTER TYPE public.point_streak SET SCHEMA checklist_web_app;
+        ELSE
+            DROP TYPE public.point_streak;
+        END IF;
     END IF;
 END $$;
 

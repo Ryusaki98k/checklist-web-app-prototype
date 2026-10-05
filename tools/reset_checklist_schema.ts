@@ -35,9 +35,9 @@ import * as readline from "readline";
  */
 
 export const PRESERVED_TABLES: string[] = [
-  // Uncomment or add table names here to preserve them by default:
-  // "users",
-  // "branches",
+  "users",
+  "branches",
+  "branch_tasks",
   "tasks",
   "refrigerators",
   "cron_settings",

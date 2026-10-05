@@ -1,5 +1,5 @@
-import { eq, sql } from "drizzle-orm";
-import { branches, users } from "../db/schema";
+import { eq, sql, and, inArray, notInArray } from "drizzle-orm";
+import { branches, users, branchTasks } from "../db/schema";
 import { IBranchService } from "./types";
 
 export interface DashboardBranch {
@@ -135,6 +135,15 @@ export class BranchService implements IBranchService {
       // Full database load & formatting
       const allBranches = await this.db.select().from(branches);
       const allUsers = await this.db.select().from(users);
+      const allBranchTasks = await this.db.select().from(branchTasks);
+
+      // Group assigned tasks by branch_id
+      const branchTasksMap = new Map<string, string[]>();
+      for (const bt of allBranchTasks) {
+        const current = branchTasksMap.get(bt.branch_id) || [];
+        current.push(bt.task_id);
+        branchTasksMap.set(bt.branch_id, current);
+      }
 
       let maxBranchUpdate: Date | null = null;
 
@@ -165,7 +174,7 @@ export class BranchService implements IBranchService {
           status: "active",
           todayCompletionRate: 0,
           members: branchUsers.map((u: any) => u.id),
-          tasks: [],
+          tasks: branchTasksMap.get(b.id) || [],
           leaveQuota: typeof b.leave_quota === "number" ? b.leave_quota : 3,
         };
       });
@@ -205,15 +214,33 @@ export class BranchService implements IBranchService {
 
   async assignStaffToBranch(branchId: string, userIds: string[]): Promise<{ success: boolean; error?: string }> {
     try {
-      // 1. Assign selected users to this branch
-      if (userIds.length > 0) {
+      if (!branchId || typeof branchId !== "string") {
+        return { success: false, error: "ID ของสาขาไม่ถูกต้อง" };
+      }
+
+      const validUserIds = Array.isArray(userIds) ? userIds.filter(Boolean) : [];
+
+      if (validUserIds.length > 0) {
+        // 1. Unassign users previously assigned to this branch who were unselected
+        await this.db
+          .update(users)
+          .set({ branch_id: null })
+          .where(and(eq(users.branch_id, branchId), notInArray(users.id, validUserIds)));
+
+        // 2. Assign selected users to this branch
         await this.db
           .update(users)
           .set({ branch_id: branchId })
-          .where(sql`${users.id} = ANY(${userIds})`);
+          .where(inArray(users.id, validUserIds));
+      } else {
+        // Unassign all users from this branch
+        await this.db
+          .update(users)
+          .set({ branch_id: null })
+          .where(eq(users.branch_id, branchId));
       }
 
-      // 2. Touch branch last_update
+      // Touch branch last_update
       await this.db
         .update(branches)
         .set({ last_update: new Date() })
@@ -227,10 +254,34 @@ export class BranchService implements IBranchService {
     }
   }
 
-  async assignTasksToBranch(branchId: string, _taskIds: string[]): Promise<{ success: boolean; error?: string }> {
+  async assignTasksToBranch(branchId: string, taskIds: string[]): Promise<{ success: boolean; error?: string }> {
     try {
       if (!branchId || typeof branchId !== "string") {
         return { success: false, error: "ID ของสาขาไม่ถูกต้อง" };
+      }
+
+      const validTaskIds = Array.isArray(taskIds) ? taskIds.filter(Boolean) : [];
+
+      if (validTaskIds.length > 0) {
+        // 1. Remove branch tasks that are no longer assigned
+        await this.db
+          .delete(branchTasks)
+          .where(and(eq(branchTasks.branch_id, branchId), notInArray(branchTasks.task_id, validTaskIds)));
+
+        // 2. Insert new task assignments with ON CONFLICT DO NOTHING (prevents duplicate key errors and race conditions)
+        const taskValues = validTaskIds.map((taskId) => ({
+          branch_id: branchId,
+          task_id: taskId,
+        }));
+        await this.db
+          .insert(branchTasks)
+          .values(taskValues)
+          .onConflictDoNothing();
+      } else {
+        // Clear all tasks for this branch
+        await this.db
+          .delete(branchTasks)
+          .where(eq(branchTasks.branch_id, branchId));
       }
 
       await this.db
@@ -245,6 +296,7 @@ export class BranchService implements IBranchService {
       return { success: false, error: "ไม่สามารถปรับปรุงงานของสาขาได้" };
     }
   }
+
 
   async updateBranchLeaveQuota(branchId: string, quota: number): Promise<{ success: boolean; error?: string }> {
     try {

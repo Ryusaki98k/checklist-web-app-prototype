@@ -2,7 +2,6 @@ import { eq, desc, sql, inArray } from "drizzle-orm";
 import { users, pointTransactions, shiftSession, taskWork, tasks, branches } from "../db/schema";
 import { IPointService, INotificationService } from "./types";
 import { PointTransaction, LeaderboardEntry, Role } from "../types";
-import { isSpecialZeroPointTask } from "./ChecklistService";
 
 export class PointService implements IPointService {
   constructor(private db: any, private notificationService?: INotificationService) {}
@@ -84,7 +83,7 @@ export class PointService implements IPointService {
         .limit(1);
 
       // Check if session tasks exclusively consist of manager / night closing checklist tasks (Zero Points Rule)
-      const nonSpecialTasks = sessionTasks.filter((t: any) => !t.for_managers && t.shift !== "night" && !isSpecialZeroPointTask(t.name));
+      const nonSpecialTasks = sessionTasks.filter((t: any) => !t.for_managers && t.shift !== "night");
       const isOnlySpecialTasks = sessionTasks.length > 0 && nonSpecialTasks.length === 0;
 
       if (isOnlySpecialTasks) {
@@ -101,7 +100,7 @@ export class PointService implements IPointService {
       for (const work of sessionWorks) {
         const t = sessionTasks.find((item: any) => item.id === work.task);
         // Special / manager zero-point closing tasks do not penalize streaks or evaluate late infractions
-        if (t && (t.for_managers || t.shift === "night" || isSpecialZeroPointTask(t.name))) {
+        if (t && (t.for_managers || t.shift === "night")) {
           continue;
         }
         if (!work.timestamp) {

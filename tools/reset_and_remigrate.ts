@@ -42,6 +42,8 @@ async function main() {
   // 2. Drop existing tables in checklist_web_app in dependency order
   console.log("\nDropping existing tables in checklist_web_app schema...");
   await db.execute(sql`
+    DROP TABLE IF EXISTS checklist_web_app.notification_reads CASCADE;
+    DROP TABLE IF EXISTS checklist_web_app.branch_tasks CASCADE;
     DROP TABLE IF EXISTS checklist_web_app.store_closing_tasks CASCADE;
     DROP TABLE IF EXISTS checklist_web_app.task_work CASCADE;
     DROP TABLE IF EXISTS checklist_web_app.refrigerator_tasks CASCADE;
@@ -97,7 +99,6 @@ async function main() {
       name TEXT NOT NULL,
       username TEXT NOT NULL DEFAULT '',
       password TEXT,
-      password_hash TEXT,
       role checklist_web_app.role NOT NULL,
       branch_id UUID REFERENCES checklist_web_app.branches(id) ON DELETE SET NULL,
       point_streak_type checklist_web_app.point_streak NOT NULL DEFAULT 'none',
@@ -125,6 +126,16 @@ async function main() {
     );
     CREATE INDEX idx_tasks_role_shift ON checklist_web_app.tasks(task_role, shift);
     CREATE INDEX idx_tasks_for_managers ON checklist_web_app.tasks(for_managers);
+
+    -- 3.1 Branch Tasks (Replaces branch.task_ids array to eliminate race conditions)
+    CREATE TABLE checklist_web_app.branch_tasks (
+      branch_id UUID NOT NULL REFERENCES checklist_web_app.branches(id) ON DELETE CASCADE,
+      task_id UUID NOT NULL REFERENCES checklist_web_app.tasks(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (branch_id, task_id)
+    );
+    CREATE INDEX idx_branch_tasks_branch ON checklist_web_app.branch_tasks(branch_id);
+    CREATE INDEX idx_branch_tasks_task ON checklist_web_app.branch_tasks(task_id);
 
     -- 4. Shift Session
     CREATE TABLE checklist_web_app.shift_session (
@@ -207,6 +218,15 @@ async function main() {
     );
     CREATE INDEX idx_notifications_recipient_read ON checklist_web_app.notifications(recipient_id, is_read);
     CREATE INDEX idx_notifications_branch ON checklist_web_app.notifications(branch_id);
+
+    -- 8.1 Notification Reads (Replaces notifications.read_by array to eliminate race conditions)
+    CREATE TABLE checklist_web_app.notification_reads (
+      notification_id UUID NOT NULL REFERENCES checklist_web_app.notifications(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES checklist_web_app.users(id) ON DELETE CASCADE,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (notification_id, user_id)
+    );
+    CREATE INDEX idx_notification_reads_user ON checklist_web_app.notification_reads(user_id);
 
     -- 9. Point Transactions
     CREATE TABLE checklist_web_app.point_transactions (
