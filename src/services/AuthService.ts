@@ -84,11 +84,13 @@ export class AuthService implements IAuthService {
       else if (foundUser.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
       else if (foundUser.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
 
-      const branchQuery = await this.db
-        .select({ id: branches.id, name: branches.name })
-        .from(branches)
-        .where(sql`${foundUser.id} = ANY(${branches.members})`)
-        .limit(1);
+      const branchQuery = foundUser.branch_id
+        ? await this.db
+          .select({ id: branches.id, name: branches.name })
+          .from(branches)
+          .where(eq(branches.id, foundUser.branch_id))
+          .limit(1)
+        : [];
 
       const branchName = branchQuery.length > 0 ? branchQuery[0].name : undefined;
       const branchId = branchQuery.length > 0 ? branchQuery[0].id : undefined;
