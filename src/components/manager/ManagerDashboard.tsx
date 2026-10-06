@@ -524,7 +524,7 @@ export function ManagerDashboard({
               <span className="hidden sm:inline">การลา & สถานะพนักงาน</span>
             </Link>
 
-            {onSwitchToExecutiveView && (
+            {!isAssistant && onSwitchToExecutiveView && (
               <button
                 type="button"
                 onClick={onSwitchToExecutiveView}

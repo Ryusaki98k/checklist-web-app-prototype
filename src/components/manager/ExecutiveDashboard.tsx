@@ -33,7 +33,7 @@ import { ErrorBoundary } from "../common/ErrorBoundary";
 import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
-export type ExecutiveRole = "manager_assistant" | "manager" | "committee" | "general_manager";
+export type ExecutiveRole = "manager" | "committee" | "general_manager";
 
 export function ExecutiveDashboard({
   user,
@@ -54,11 +54,22 @@ export function ExecutiveDashboard({
   onOpenChecklistPage: () => void;
   onSwitchToManagerView?: () => void;
 }) {
+  const isAssistant = user.role === "manager_assistant" || (user.position?.includes("ผู้ช่วย") ?? false);
+
+  useEffect(() => {
+    if (isAssistant) {
+      if (onSwitchToManagerView) {
+        onSwitchToManagerView();
+      } else if (typeof window !== "undefined") {
+        window.location.replace("/manager/dashboard");
+      }
+    }
+  }, [isAssistant, onSwitchToManagerView]);
+
   // Determine role directly from logged-in user account
   const currentRole: ExecutiveRole = useMemo(() => {
     if (user.role === "general_manager" || user.position?.includes("ผู้จัดการทั่วไป")) return "general_manager";
     if (user.role === "committee" || user.position?.includes("กรรมการ")) return "committee";
-    if (user.role === "manager_assistant" || user.position?.includes("ผู้ช่วย")) return "manager_assistant";
     return "manager";
   }, [user]);
 
@@ -96,6 +107,7 @@ export function ExecutiveDashboard({
 
   // Load live shift sessions from Supabase DB
   const loadDbSessions = useCallback(async (isManual = false) => {
+    if (isAssistant) return;
     try {
       if (isManual) setIsLoadingDb(true);
       const res = await getManagerShiftSessionsAction();
@@ -223,6 +235,7 @@ export function ExecutiveDashboard({
 
   // Load history metadata
   const loadHistorySessions = useCallback(async () => {
+    if (isAssistant) return;
     try {
       setIsLoadingHistory(true);
       const res = await getHistoryShiftSessionsAction(14);
@@ -372,13 +385,6 @@ export function ExecutiveDashboard({
 
   // Role metadata configurations
   const roleConfig = {
-    manager_assistant: {
-      title: "ผู้ช่วยผู้จัดการร้าน (Assistant Manager)",
-      badge: "bg-amber-100 text-amber-950 border-amber-300 font-bold shadow-2xs",
-      description: "ตรวจสอบความเรียบร้อยหน้างาน รับรองกะพนักงานเบื้องต้น และรายงานสรุป",
-      primaryDuty: "ตรวจรับรองกะงานพนักงาน (Morning / Afternoon Sign-off)",
-      Icon: ClipboardCheck,
-    },
     manager: {
       title: "ผู้จัดการร้าน (Store Manager)",
       badge: "bg-[var(--color-brown)] text-amber-100 border-amber-500/40 font-bold shadow-2xs",
@@ -407,12 +413,6 @@ export function ExecutiveDashboard({
   const completedSessions = sessions.filter((s) => s.completedAt);
   const pendingApprovalsCount = sessions.filter((s) => {
     const app = approvals[s.id];
-    const isAssistantSession = s.taskRole === "manager_assistant" || s.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-    if (currentRole === "manager_assistant") {
-      // Assistant manager cannot approve tasks from assistant manager
-      if (isAssistantSession) return false;
-      return !app?.assistantApproved;
-    }
     return !app?.managerApproved;
   }).length;
 
@@ -434,36 +434,23 @@ export function ExecutiveDashboard({
     type: "assistant" | "manager",
     isException?: boolean
   ) {
-    // Check if target session is from assistant manager
-    const target = sessions.find((s) => s.id === sessionId);
-    const isAssistantSession =
-      target?.taskRole === "manager_assistant" || target?.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-
-    if (isAssistantSession && currentRole === "manager_assistant") {
-      showToast("เฉพาะผู้จัดการร้านหรือกรรมการบริหารเท่านั้นที่สามารถอนุมัติงานของผู้ช่วยผู้จัดการร้านได้");
-      return;
-    }
-
     // Optimistic UI update
     setApprovals((prev) => {
-      const isMgr = type !== "assistant";
       return {
         ...prev,
         [sessionId]: {
           ...prev[sessionId],
           assistantApproved: true,
-          managerApproved: isMgr ? true : Boolean(prev[sessionId]?.managerApproved ?? false),
+          managerApproved: true,
         },
       };
     });
 
     try {
       const roleForDb =
-        type === "assistant"
-          ? "manager_assistant"
-          : (currentRole === "committee" || currentRole === "general_manager")
-            ? currentRole
-            : "manager";
+        (currentRole === "committee" || currentRole === "general_manager")
+          ? currentRole
+          : "manager";
 
       const res = await approveShiftSessionAction({
         shiftSessionId: sessionId,
@@ -474,11 +461,9 @@ export function ExecutiveDashboard({
       if (res.success) {
         const exceptionNotice = isException ? " (แบบอนุโลม / Exception: สตรีคจะคงอยู่เป็นสถานะ Flawed)" : "";
         showToast(
-          type === "assistant"
-            ? `บันทึกการรับรองกะโดยผู้ช่วยผู้จัดการลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
-            : (currentRole === "committee" || currentRole === "general_manager")
-              ? `รับรองผลการตรวจงานโดย${roleConfig.title}ลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
-              : `อนุมัติกะโดยผู้จัดการร้านลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
+          (currentRole === "committee" || currentRole === "general_manager")
+            ? `รับรองผลการตรวจงานโดย${roleConfig.title}ลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
+            : `อนุมัติกะโดยผู้จัดการร้านลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
         );
         await loadDbSessions();
       } else {
@@ -527,19 +512,18 @@ export function ExecutiveDashboard({
     if (!matchesSearch || !matchesShift) return false;
 
     const app = approvals[s.id] || {};
-    const isAssistantSession = s.taskRole === "manager_assistant" || s.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-    const isPending = currentRole === "manager_assistant"
-      ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
-      : !app.managerApproved;
+    const isPending = !app.managerApproved;
 
     if (historyStatusFilter === "pending") return isPending;
     if (historyStatusFilter === "approved") {
-      return currentRole === "manager_assistant"
-        ? (!!app.assistantApproved || !!app.managerApproved)
-        : !!app.managerApproved;
+      return !!app.managerApproved;
     }
     return true;
   });
+
+  if (isAssistant) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] pb-16 font-sans">
@@ -946,19 +930,9 @@ export function ExecutiveDashboard({
 
               {/* ─── Usability Enhancement: Quick Filter Pills Toolbar ─── */}
               {(() => {
-                const sessionsForRole = sessions.filter((sess) => {
-                  if (currentRole === "manager_assistant") {
-                    return !(sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน");
-                  }
-                  return true;
-                });
+                const sessionsForRole = sessions;
                 const pendingCount = sessionsForRole.filter((s) => {
                   const app = approvals[s.id] || {};
-                  const isAssistantSession = s.taskRole === "manager_assistant" || s.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-                  if (currentRole === "manager_assistant") {
-                    if (isAssistantSession) return false;
-                    return !app.assistantApproved && !app.managerApproved;
-                  }
                   return !app.managerApproved;
                 }).length;
                 const approvedCount = sessionsForRole.length - pendingCount;
@@ -1031,40 +1005,25 @@ export function ExecutiveDashboard({
 
               {/* ─── Render Shifts: Responsive Dual View (Cards on Mobile, Table on Desktop) ─── */}
               {(() => {
-                const sessionsForRole = sessions.filter((sess) => {
-                  if (currentRole === "manager_assistant") {
-                    return !(sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน");
-                  }
-                  return true;
-                });
+                const sessionsForRole = sessions;
 
                 const filteredSessions = sessionsForRole
                   .filter((sess) => {
                     if (shiftQueueTimeFilter !== "all" && sess.shift !== shiftQueueTimeFilter) return false;
                     const app = approvals[sess.id] || {};
-                    const isAssistantSession =
-                      sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-                    const isPending = currentRole === "manager_assistant"
-                      ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
-                      : !app.managerApproved;
+                    const isPending = !app.managerApproved;
 
                     if (shiftQueueStatusFilter === "pending") return isPending;
                     if (shiftQueueStatusFilter === "approved") {
-                      return currentRole === "manager_assistant"
-                        ? (!!app.assistantApproved || !!app.managerApproved)
-                        : !!app.managerApproved;
+                      return !!app.managerApproved;
                     }
                     return true;
                   })
                   .sort((a, b) => {
                     const aApp = approvals[a.id] || {};
                     const bApp = approvals[b.id] || {};
-                    const aPending = currentRole === "manager_assistant"
-                      ? (!aApp.assistantApproved && !aApp.managerApproved)
-                      : !aApp.managerApproved;
-                    const bPending = currentRole === "manager_assistant"
-                      ? (!bApp.assistantApproved && !bApp.managerApproved)
-                      : !bApp.managerApproved;
+                    const aPending = !aApp.managerApproved;
+                    const bPending = !bApp.managerApproved;
                     if (aPending && !bPending) return -1;
                     if (!aPending && bPending) return 1;
                     if (a.shift === "morning" && b.shift !== "morning") return -1;
@@ -1267,11 +1226,7 @@ export function ExecutiveDashboard({
                             {/* Status & Action */}
                             {(() => {
                               const app = approvals[sess.id] || {};
-                              const isAssistantSession =
-                                sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-                              const isPendingForMe = currentRole === "manager_assistant"
-                                ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
-                                : !app.managerApproved;
+                              const isPendingForMe = !app.managerApproved;
 
                               return (
                                 <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
@@ -1287,9 +1242,7 @@ export function ExecutiveDashboard({
                                     <span>
                                       {isPendingForMe
                                         ? "ตรวจรับรอง"
-                                        : currentRole === "manager_assistant" && app.assistantApproved && !app.managerApproved
-                                          ? "รับรองแล้ว (รอผู้จัดการ)"
-                                          : "ดูรายละเอียด"}
+                                        : "ดูรายละเอียด"}
                                     </span>
                                     {isPendingForMe && <span>→</span>}
                                   </button>
@@ -1416,11 +1369,7 @@ export function ExecutiveDashboard({
                                 <td className="py-3 px-3 text-right">
                                   {(() => {
                                     const app = approvals[sess.id] || {};
-                                    const isAssistantSession =
-                                      sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-                                    const isPendingForMe = currentRole === "manager_assistant"
-                                      ? (!isAssistantSession && !app.assistantApproved && !app.managerApproved)
-                                      : !app.managerApproved;
+                                    const isPendingForMe = !app.managerApproved;
 
                                     return (
                                       <button
@@ -1433,9 +1382,7 @@ export function ExecutiveDashboard({
                                       >
                                         {isPendingForMe
                                           ? "ตรวจรับรอง →"
-                                          : currentRole === "manager_assistant" && app.assistantApproved && !app.managerApproved
-                                            ? "รับรองแล้ว (รอผู้จัดการ)"
-                                            : "ดูรายละเอียด"}
+                                          : "ดูรายละเอียด"}
                                       </button>
                                     );
                                   })()}
@@ -1563,20 +1510,10 @@ export function ExecutiveDashboard({
 
             {/* ─── Audit History Quick Filters & Search ─── */}
             {(() => {
-              const baseHistoryForRole = activeHistorySource.filter((sess) => {
-                if (currentRole === "manager_assistant") {
-                  return !(sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน");
-                }
-                return true;
-              });
+              const baseHistoryForRole = activeHistorySource;
 
               const pendingHistoryCount = baseHistoryForRole.filter((s) => {
                 const app = approvals[s.id] || {};
-                const isAssistantSession = s.taskRole === "manager_assistant" || s.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-                if (currentRole === "manager_assistant") {
-                  if (isAssistantSession) return false;
-                  return !app.assistantApproved;
-                }
                 return !app.managerApproved;
               }).length;
 
@@ -1686,12 +1623,7 @@ export function ExecutiveDashboard({
 
             {/* ─── Render History: Responsive Dual View (Cards on Mobile, Table on Desktop) ─── */}
             {(() => {
-              const visibleHistory = filteredHistory.filter((sess) => {
-                if (currentRole === "manager_assistant") {
-                  return !(sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน");
-                }
-                return true;
-              });
+              const visibleHistory = filteredHistory;
 
               if (visibleHistory.length === 0) {
                 return (
@@ -1880,23 +1812,9 @@ export function ExecutiveDashboard({
           selectedSession.userPosition === "ผู้ช่วยผู้จัดการร้าน";
         const isMgrOrHigher = currentRole === "manager" || currentRole === "committee" || currentRole === "general_manager";
 
-        const canApprove = isAssistantSess
-          ? isMgrOrHigher && !approvals[selectedSession.id]?.managerApproved
-          : currentRole === "manager_assistant"
-            ? !approvals[selectedSession.id]?.assistantApproved && !approvals[selectedSession.id]?.managerApproved
-            : !approvals[selectedSession.id]?.managerApproved;
-
-        const isApproved = isAssistantSess
-          ? !!approvals[selectedSession.id]?.managerApproved
-          : currentRole === "manager_assistant"
-            ? (!!approvals[selectedSession.id]?.assistantApproved || !!approvals[selectedSession.id]?.managerApproved)
-            : !!approvals[selectedSession.id]?.managerApproved;
-
-        const approveTitle = isAssistantSess
-          ? (currentRole === "committee" || currentRole === "general_manager")
-            ? roleConfig.title
-            : "ผู้จัดการร้าน"
-          : roleConfig.title;
+        const canApprove = !approvals[selectedSession.id]?.managerApproved;
+        const isApproved = !!approvals[selectedSession.id]?.managerApproved;
+        const approveTitle = roleConfig.title;
 
         return (
           <SessionDetailModal
@@ -1906,14 +1824,14 @@ export function ExecutiveDashboard({
             isApproved={isApproved}
             approveRoleTitle={approveTitle}
             reviewerId={user.id}
-            canReviewIncomplete={["manager", "manager_assistant", "general_manager", "committee"].includes(currentRole)}
+            canReviewIncomplete={["manager", "general_manager", "committee"].includes(currentRole)}
             onReviewSuccess={() => {
               loadDbSessions();
             }}
             onApprove={(sessId, isException) => {
               handleApproveSession(
                 sessId,
-                isAssistantSess ? "manager" : currentRole === "manager_assistant" ? "assistant" : "manager",
+                "manager",
                 isException
               );
             }}
