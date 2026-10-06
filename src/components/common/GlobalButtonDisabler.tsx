@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useLoading } from "../../context/LoadingContext";
 import { useOptionalApp } from "../../context/AppContext";
+
+const emptySubscribe = () => () => {};
 
 /**
  * GlobalButtonDisabler
@@ -18,10 +20,11 @@ export function GlobalButtonDisabler() {
   const appContext = useOptionalApp();
   const isAppReady = appContext ? appContext.isReady : true;
 
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const isMounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
 
   // Unified busy state across the entire application
   const isBusy = !isMounted || !isAppReady || isLoading || isPageTransition || isNavigating;
@@ -31,7 +34,7 @@ export function GlobalButtonDisabler() {
     isBusyRef.current = isBusy;
   }, [isBusy]);
 
-  // Synchronize disabled state with DOM elements and set data attribute on body
+  // Synchronize loading busy state with root document element and body
   useEffect(() => {
     if (typeof document === "undefined") return;
 
@@ -41,70 +44,18 @@ export function GlobalButtonDisabler() {
     if (isBusy) {
       body.setAttribute("data-loading-busy", "true");
       docEl.setAttribute("data-loading-busy", "true");
-
-      const disableElement = (el: HTMLElement) => {
-        if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) {
-          // Only tag if not already disabled by component's internal logic
-          if (!el.disabled && !el.hasAttribute("data-auto-disabled-by-loading")) {
-            el.disabled = true;
-            el.setAttribute("data-auto-disabled-by-loading", "true");
-            el.setAttribute("aria-disabled", "true");
-          }
-        } else if (el.getAttribute("role") === "button") {
-          if (el.getAttribute("aria-disabled") !== "true") {
-            el.setAttribute("aria-disabled", "true");
-            el.setAttribute("data-auto-disabled-by-loading", "true");
-          }
-        }
-      };
-
-      // Disable existing button elements in current DOM
-      const targets = document.querySelectorAll<HTMLElement>(
-        "button, input[type='button'], input[type='submit'], [role='button']"
-      );
-      targets.forEach(disableElement);
-
-      // Mutation observer to immediately disable any dynamically mounted buttons while loading
-      const observer = new MutationObserver((mutations) => {
-        if (!isBusyRef.current) return;
-        mutations.forEach((mutation) => {
-          mutation.addedNodes.forEach((node) => {
-            if (node instanceof HTMLElement) {
-              if (
-                node.matches("button, input[type='button'], input[type='submit'], [role='button']")
-              ) {
-                disableElement(node);
-              }
-              const children = node.querySelectorAll<HTMLElement>(
-                "button, input[type='button'], input[type='submit'], [role='button']"
-              );
-              children.forEach(disableElement);
-            }
-          });
-        });
-      });
-
-      observer.observe(body, { childList: true, subtree: true });
-
-      return () => {
-        observer.disconnect();
-      };
+      docEl.setAttribute("aria-busy", "true");
     } else {
-      // Re-enable elements that were disabled specifically by this loader
-      const autoDisabled = document.querySelectorAll<HTMLElement>(
-        "[data-auto-disabled-by-loading='true']"
-      );
-      autoDisabled.forEach((el) => {
-        if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) {
-          el.disabled = false;
-        }
-        el.removeAttribute("aria-disabled");
-        el.removeAttribute("data-auto-disabled-by-loading");
-      });
-
       body.removeAttribute("data-loading-busy");
       docEl.removeAttribute("data-loading-busy");
+      docEl.removeAttribute("aria-busy");
     }
+
+    return () => {
+      body.removeAttribute("data-loading-busy");
+      docEl.removeAttribute("data-loading-busy");
+      docEl.removeAttribute("aria-busy");
+    };
   }, [isBusy]);
 
   // Window-level capture phase interceptor:
