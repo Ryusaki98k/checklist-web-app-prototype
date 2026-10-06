@@ -138,12 +138,13 @@ export function EmployeeAuthPage({
                             key={t}
                             type="button"
                             role="tab"
+                            disabled={loading}
                             aria-selected={tab === t}
                             onClick={() => {
                                 setTab(t);
                                 setError("");
                             }}
-                            className={`flex-1 py-2.5 sm:py-2 min-h-[44px] sm:min-h-[36px] text-xs font-semibold rounded-lg transition-all cursor-pointer text-center inline-flex items-center justify-center ${tab === t
+                            className={`flex-1 py-2.5 sm:py-2 min-h-[44px] sm:min-h-[36px] text-xs font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-center inline-flex items-center justify-center ${tab === t
                                 ? "bg-[var(--color-brown)] text-amber-100 shadow-sm font-bold"
                                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                                 }`}
@@ -214,8 +215,9 @@ export function EmployeeAuthPage({
                             {tab === "login" && (
                                 <button
                                     type="button"
+                                    disabled={loading}
                                     onClick={() => setShowForgotModal(true)}
-                                    className="text-xs text-amber-700 dark:text-amber-400 hover:underline cursor-pointer font-medium"
+                                    className="text-xs text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-medium"
                                 >
                                     ลืมรหัสผ่าน?
                                 </button>

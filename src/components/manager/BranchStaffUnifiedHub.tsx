@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useLoading } from "../../context/LoadingContext";
 import { User } from "../../types";
 import { BranchStaffPresenceView } from "./BranchStaffPresenceView";
 import { BranchLeaveManagementView } from "./BranchLeaveManagementView";
@@ -16,7 +17,7 @@ function BranchStaffUnifiedHubContent({
   currentUser,
   initialTab = "presence",
 }: BranchStaffUnifiedHubProps) {
-  const router = useRouter();
+  const { navigate } = useLoading();
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab") as "presence" | "leaves" | null;
   const urlUserId = searchParams.get("userId") || undefined;
@@ -67,7 +68,7 @@ function BranchStaffUnifiedHubContent({
           currentUser={currentUser}
           currentTab="leaves"
           onTabChange={handleTabChange}
-          onBackToDashboard={() => router.push("/manager/dashboard")}
+          onBackToDashboard={() => navigate("/manager/dashboard", "กำลังกลับสู่แดชบอร์ด...")}
           defaultSelectedUserId={selectedUserIdForLeave}
         />
       )}

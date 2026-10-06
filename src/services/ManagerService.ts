@@ -2,7 +2,7 @@ import { eq, and, gte, lte, lt, desc, inArray, sql } from "drizzle-orm";
 import { tasks, taskWork, shiftSession, users, branches, employeeLeaves, pointTransactions } from "../db/schema";
 import { IManagerService, IPointService, INotificationService, BranchEmployeeStatus } from "./types";
 import { ShiftType, Role, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
-import { isPaidLeave } from "../utils/leave";
+import { isPaidLeave, toDbLeaveType } from "../utils/leave";
 
 export interface ManagerShiftSummary {
   id: string;
@@ -1062,6 +1062,7 @@ export class ManagerService implements IManagerService {
       const [branch] = await this.db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
 
       const previousStreak = targetUser.point_streak ?? 0;
+      const dbLeaveType = toDbLeaveType(leaveType);
 
       // If the manager decided not to preserve streak (e.g. invalid leave or unexcused), break streak
       if (!preserveStreak) {
@@ -1080,7 +1081,7 @@ export class ManagerService implements IManagerService {
         .values({
           user_id: userId,
           branch_id: branchId,
-          leave_type: leaveType,
+          leave_type: dbLeaveType,
           start_date: startDate,
           end_date: endDate,
           reason: reason.trim(),
@@ -1363,6 +1364,8 @@ export class ManagerService implements IManagerService {
 
       for (const l of userLeaves) {
         if (l.start_date?.startsWith(currentYearStr) || l.end_date?.startsWith(currentYearStr)) {
+          // Unpaid leaves do not deduct from paid leave quota
+          if (!isPaidLeave(l.leave_type)) continue;
           const days = calcDays(l.start_date, l.end_date);
           const st = l.status || "approved";
           if (st === "approved") {
@@ -1452,12 +1455,14 @@ export class ManagerService implements IManagerService {
           .where(eq(users.id, userId));
       }
 
+      const dbLeaveType = toDbLeaveType(leaveType);
+
       const [newLeave] = await this.db
         .insert(employeeLeaves)
         .values({
           user_id: userId,
           branch_id: branchId,
-          leave_type: leaveType,
+          leave_type: dbLeaveType,
           start_date: startDate,
           end_date: endDate,
           reason: reason.trim(),
@@ -1557,7 +1562,7 @@ export class ManagerService implements IManagerService {
       const [targetUser] = await this.db.select().from(users).where(eq(users.id, existingLeave.user_id)).limit(1);
 
       const finalPreserveStreak = preserveStreak !== undefined ? preserveStreak : existingLeave.preserve_streak;
-      const finalLeaveType = leaveType || existingLeave.leave_type;
+      const finalLeaveType = toDbLeaveType(leaveType || existingLeave.leave_type);
 
       if (!finalPreserveStreak) {
         await this.db

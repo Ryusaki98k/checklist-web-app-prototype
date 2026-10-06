@@ -148,7 +148,8 @@ export function ShiftSelectPage({
     }
   };
 
-  const hasSelection = chosenShift !== null && !isLoadingStatuses && !isStartingShift;
+  const isPageBusy = isLoadingStatuses || isStartingShift;
+  const hasSelection = chosenShift !== null && !isPageBusy;
 
   return (
     <main className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] flex flex-col justify-between px-3 sm:px-4 py-4 sm:py-10 pb-[max(1rem,env(safe-area-inset-bottom))] font-sans">
@@ -160,8 +161,9 @@ export function ShiftSelectPage({
           {onBack && (
             <button
               type="button"
+              disabled={isPageBusy}
               onClick={onBack}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] flex items-center justify-center text-[var(--color-text)] transition-all cursor-pointer shrink-0"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-[var(--color-text)] transition-all cursor-pointer shrink-0"
               title="ย้อนกลับไปเลือกตำแหน่ง"
               aria-label="ย้อนกลับไปเลือกตำแหน่ง"
             >
@@ -205,10 +207,11 @@ export function ShiftSelectPage({
 
           <button
             type="button"
+            disabled={isPageBusy}
             onClick={onLogout}
             title="ออกจากระบบ"
             aria-label="ออกจากระบบ"
-            className="text-xs sm:text-sm text-[var(--color-text)] hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 transition-all p-2 sm:px-2.5 sm:py-2 rounded-xl border border-[var(--color-border)] font-bold cursor-pointer min-h-[36px] min-w-[36px] inline-flex items-center justify-center gap-1.5 shrink-0"
+            className="text-xs sm:text-sm text-[var(--color-text)] hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all p-2 sm:px-2.5 sm:py-2 rounded-xl border border-[var(--color-border)] font-bold cursor-pointer min-h-[36px] min-w-[36px] inline-flex items-center justify-center gap-1.5 shrink-0"
           >
             <LogOut size={15} />
             <span className="hidden xl:inline">ออกจากระบบ</span>
@@ -265,7 +268,7 @@ export function ShiftSelectPage({
                     : "incomplete";
 
             const isLoading = dbStatuses === null;
-            const isDisabled = isLoading;
+            const isDisabled = isPageBusy || isLoading;
             const isChecked = isDisabled ? false : chosenShift === s.id;
 
             const toggleSelect = () => {
@@ -487,8 +490,9 @@ export function ShiftSelectPage({
           {onBack && (
             <button
               type="button"
+              disabled={isPageBusy}
               onClick={onBack}
-              className="text-sm text-[var(--color-text)] hover:text-amber-600 font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer p-2 rounded-xl"
+              className="text-sm text-[var(--color-text)] hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer p-2 rounded-xl"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -501,6 +505,7 @@ export function ShiftSelectPage({
 
           <button
             type="button"
+            disabled={isPageBusy}
             onClick={async () => {
               if (confirm("ต้องการล้างข้อมูลเช็คลิสต์ประจำวันในกะนี้เพื่อเริ่มต้นใหม่ใช่หรือไม่? (ข้อมูลผลการตรวจที่บันทึกไว้ในวันนี้จะถูกลบออกจากระบบเพื่อเริ่มรอบใหม่)")) {
                 await resetTodayChecklistDataAction(user.position);
@@ -510,7 +515,7 @@ export function ShiftSelectPage({
                 window.location.reload();
               }
             }}
-            className="text-xs sm:text-sm text-[var(--color-text-muted)] hover:text-rose-700 font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer p-1.5 rounded-lg"
+            className="text-xs sm:text-sm text-[var(--color-text-muted)] hover:text-rose-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer p-1.5 rounded-lg"
             title="ล้างข้อมูลเช็คลิสต์ทั้งหมดเพื่อเริ่มทดสอบใหม่"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -7,7 +7,7 @@ import { useLoading } from "../../context/LoadingContext";
 export function PageTransitionWatcher() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { startLoading, stopLoading, resetLoading } = useLoading();
+  const { startLoading, resetLoading, setIsNavigating } = useLoading();
 
   const [progress, setProgress] = useState<number | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -38,19 +38,21 @@ export function PageTransitionWatcher() {
         const resetTimer = setTimeout(() => {
           setProgress(null);
           activeNavRef.current = false;
-        }, 200);
+          setIsNavigating(false);
+        }, 180);
         timersRef.current.push(resetTimer);
-      }, 160);
+      }, 120);
       timersRef.current.push(hideTimer);
 
-      // Reset any lingering global page-transition lock
+      // Reset any lingering global page-transition lock and re-enable buttons
       resetLoading();
+      setIsNavigating(false);
     }
 
     previousUrlRef.current = currentUrl;
-  }, [pathname, searchParams, clearTimers, resetLoading]);
+  }, [pathname, searchParams, clearTimers, resetLoading, setIsNavigating]);
 
-  // Intercept click on internal links to provide instant feedback and prevent misclicks
+  // Intercept click on internal links to provide instant feedback and lock buttons immediately
   useEffect(() => {
     function handleAnchorClick(e: MouseEvent) {
       // Ignore right clicks or clicks with modifier keys
@@ -93,37 +95,32 @@ export function PageTransitionWatcher() {
         // Cancel any pending timers from previous interactions
         clearTimers();
 
-        // Start navigation progress
+        // Start navigation progress & immediately lock all buttons across all pages
         activeNavRef.current = true;
         setIsVisible(true);
         setProgress(25);
+        startLoading("กำลังเตรียมเนื้อหาหน้าถัดไป...", true);
+        setIsNavigating(true);
 
-        // Advance progress smoothly and predictably (all tracked in timersRef)
+        // Advance progress smoothly and predictably
         timersRef.current.push(setTimeout(() => setProgress(50), 120));
         timersRef.current.push(setTimeout(() => setProgress(75), 350));
         timersRef.current.push(setTimeout(() => setProgress(88), 700));
 
-        // Show full screen transition blocker ONLY if transition takes unusually long (> 1200ms)
-        const overlayTimer = setTimeout(() => {
-          if (activeNavRef.current) {
-            startLoading("กำลังเตรียมเนื้อหาหน้าถัดไป...", true);
-          }
-        }, 1200);
-        timersRef.current.push(overlayTimer);
-
-        // Safety fallback: if navigation fails or is cancelled, auto-recover in 3.5 seconds
+        // Safety fallback: if navigation fails or cancels, auto-recover in 4 seconds
         const fallbackTimer = setTimeout(() => {
           if (activeNavRef.current) {
             setProgress(100);
             const fadeTimer = setTimeout(() => {
               setIsVisible(false);
               setProgress(null);
-              stopLoading();
+              resetLoading();
+              setIsNavigating(false);
               activeNavRef.current = false;
             }, 180);
             timersRef.current.push(fadeTimer);
           }
-        }, 3500);
+        }, 4000);
         timersRef.current.push(fallbackTimer);
       } catch {
         // Ignore invalid URLs
@@ -136,18 +133,35 @@ export function PageTransitionWatcher() {
       activeNavRef.current = true;
       setIsVisible(true);
       setProgress(35);
+      startLoading("กำลังเตรียมเนื้อหาหน้าถัดไป...", true);
+      setIsNavigating(true);
       timersRef.current.push(setTimeout(() => setProgress(70), 150));
+    };
+
+    const handleCustomNav = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const message = detail?.message || "กำลังเตรียมเนื้อหาหน้าถัดไป...";
+      clearTimers();
+      activeNavRef.current = true;
+      setIsVisible(true);
+      setProgress(30);
+      startLoading(message, true);
+      setIsNavigating(true);
+      timersRef.current.push(setTimeout(() => setProgress(65), 120));
+      timersRef.current.push(setTimeout(() => setProgress(85), 350));
     };
 
     document.addEventListener("click", handleAnchorClick, true);
     window.addEventListener("popstate", handlePopState);
+    window.addEventListener("app:navigating", handleCustomNav);
 
     return () => {
       document.removeEventListener("click", handleAnchorClick, true);
       window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("app:navigating", handleCustomNav);
       clearTimers();
     };
-  }, [clearTimers, startLoading, stopLoading]);
+  }, [clearTimers, startLoading, resetLoading, setIsNavigating]);
 
   if (!isVisible && progress === null) return null;
 

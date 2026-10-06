@@ -4,11 +4,13 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShiftSelectPage } from "../../components/staff/ShiftSelectPage";
 import { useApp } from "../../context/AppContext";
+import { useLoading } from "../../context/LoadingContext";
 import { LoadingSpinner } from "../loading";
 
 export default function ShiftRoutePage() {
   const router = useRouter();
   const { currentUser, sessions, isReady, selectShift, logout } = useApp();
+  const { navigate } = useLoading();
 
   useEffect(() => {
     if (!isReady) return;
@@ -30,7 +32,7 @@ export default function ShiftRoutePage() {
       user={currentUser}
       sessions={sessions}
       onSelect={selectShift}
-      onBack={() => router.push("/position")}
+      onBack={() => navigate("/position", "กำลังเตรียมข้อมูลตำแหน่ง...")}
       onLogout={logout}
     />
   );

@@ -105,8 +105,9 @@ export function ManagerAuthPage({
                             </label>
                             <button
                                 type="button"
+                                disabled={loading}
                                 onClick={() => setShowForgotModal(true)}
-                                className="text-xs text-amber-700 dark:text-amber-400 hover:underline cursor-pointer font-medium"
+                                className="text-xs text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-medium"
                             >
                                 ลืมรหัสผ่าน?
                             </button>

@@ -94,8 +94,63 @@ async function main() {
     }
   }
 
+  // 3b. Validate All Enums Match between Drizzle and PostgreSQL
+  console.log("\n--- 3b. Validating Database Enum Types ---");
+  const expectedEnums: Record<string, string[]> = {
+    role: ["admin", "committee", "general_manager", "manager", "manager_assistant", "employee"],
+    task_role: ["manager_assistant", "cashier", "stock"],
+    shift: ["morning", "afternoon", "morning_afternoon", "night"],
+    point_streak: ["none", "flawed", "perfect"],
+    leave_type: ["paid", "unpaid"],
+  };
+
+  for (const [enumName, expectedVals] of Object.entries(expectedEnums)) {
+    try {
+      const res: any = await db.execute(sql`
+        SELECT array_agg(e.enumlabel ORDER BY e.enumsortorder) as values
+        FROM pg_type t
+        JOIN pg_enum e ON t.oid = e.enumtypid
+        JOIN pg_namespace n ON t.typnamespace = n.oid
+        WHERE n.nspname = 'checklist_web_app' AND t.typname = ${enumName}
+      `);
+      const actualVals = res[0]?.values || [];
+      const match = expectedVals.every((v) => actualVals.includes(v)) && actualVals.length === expectedVals.length;
+      if (match) {
+        results.push({ category: "Enum Validation", name: `checklist_web_app.${enumName} [${actualVals.join(", ")}]`, status: "PASS" });
+        console.log(`  ✓ [PASS] [Enum Validation] checklist_web_app.${enumName} [${actualVals.join(", ")}]`);
+      } else {
+        const error = `Mismatch: expected [${expectedVals.join(", ")}], got [${actualVals.join(", ")}]`;
+        results.push({ category: "Enum Validation", name: `checklist_web_app.${enumName}`, status: "FAIL", error });
+        console.error(`  ✗ [FAIL] [Enum Validation] checklist_web_app.${enumName}: ${error}`);
+      }
+    } catch (err: any) {
+      results.push({ category: "Enum Validation", name: `checklist_web_app.${enumName}`, status: "FAIL", error: err?.message });
+      console.error(`  ✗ [FAIL] [Enum Validation] checklist_web_app.${enumName}:`, err?.message);
+    }
+  }
+
   // 4. Validate All Raw SQL Queries from Services & Tools
   console.log("\n--- 4. Validating Application SQL Queries (EXPLAIN mode) ---");
+
+  // ManagerService & EmployeeLeaves Queries
+  await validateSql(
+    "ManagerService Query",
+    "Employee leaves filter by branch and date overlap",
+    sql`EXPLAIN SELECT id, user_id, branch_id, leave_type, start_date, end_date, status 
+        FROM checklist_web_app.employee_leaves 
+        WHERE branch_id = '00000000-0000-0000-0000-000000000000' 
+          AND start_date <= '2026-10-06' 
+          AND end_date >= '2026-10-06' 
+        ORDER BY created_at DESC`
+  );
+
+  await validateSql(
+    "ManagerService Query",
+    "Employee leave quota user leaves lookup",
+    sql`EXPLAIN SELECT id, user_id, leave_type, start_date, end_date, status 
+        FROM checklist_web_app.employee_leaves 
+        WHERE user_id = '00000000-0000-0000-0000-000000000000'`
+  );
 
   // AuthService lower(username) query
   await validateSql(
@@ -182,6 +237,42 @@ async function main() {
           ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'checklist_web_app'`
   );
+
+  // 4b. Validate Employee Leaves Insertion & Update (Dry-Run Rollback Transaction)
+  console.log("\n--- 4b. Validating Drizzle employee_leaves Mutation (Dry-Run) ---");
+  try {
+    await db.transaction(async (tx) => {
+      const [u] = await tx.select({ id: schema.users.id }).from(schema.users).limit(1);
+      const [b] = await tx.select({ id: schema.branches.id }).from(schema.branches).limit(1);
+
+      if (u && b) {
+        const [inserted] = await tx.insert(schema.employeeLeaves).values({
+          user_id: u.id,
+          branch_id: b.id,
+          leave_type: "paid",
+          start_date: "2026-10-06",
+          end_date: "2026-10-06",
+          reason: "Test leave validation",
+          recorded_by: u.id,
+        }).returning();
+
+        await tx.update(schema.employeeLeaves)
+          .set({ leave_type: "unpaid", status: "approved" })
+          .where(sql`${schema.employeeLeaves.id} = ${inserted.id}`);
+
+        results.push({ category: "Drizzle Mutation", name: "employee_leaves insert ('paid') & update ('unpaid')", status: "PASS" });
+        console.log(`  ✓ [PASS] [Drizzle Mutation] employee_leaves insert ('paid') & update ('unpaid')`);
+      }
+      tx.rollback();
+    });
+  } catch (err: any) {
+    if (err.constructor?.name === "TransactionRollbackError" || err.name === "TransactionRollbackError") {
+      // Expected rollback
+    } else {
+      results.push({ category: "Drizzle Mutation", name: "employee_leaves insert/update", status: "FAIL", error: err?.message });
+      console.error(`  ✗ [FAIL] [Drizzle Mutation] employee_leaves insert/update:`, err?.message);
+    }
+  }
 
   // 5. Validate SQL Files (Syntax & Execution Dry-Run in rolled-back transaction)
   console.log("\n--- 5. Validating SQL Script Files (Transaction Dry-Run) ---");

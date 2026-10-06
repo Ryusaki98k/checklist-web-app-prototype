@@ -76,6 +76,8 @@ export function ChecklistPage({
   const [incompleteReason, setIncompleteReason] = useState("");
   const [dbPendingTasks, setDbPendingTasks] = useState<Array<{ id: string; name: string }>>([]);
   const [isValidatingDb, setIsValidatingDb] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
+  const isPageBusy = isValidatingDb || isEnding;
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
   const [mobileTab, setMobileTab] = useState<"tasks" | "refrigerators">("tasks");
@@ -413,6 +415,7 @@ export function ChecklistPage({
   }
 
   function endCompleteShift() {
+    setIsEnding(true);
     setShowConfirm(false);
     setShiftCompleted(true);
     onEndShift(continueShift);
@@ -420,6 +423,7 @@ export function ChecklistPage({
 
   function endIncompleteShift() {
     if (!incompleteReason.trim()) return;
+    setIsEnding(true);
     setShowIncompleteModal(false);
     setShiftCompleted(true);
     onEndShift(continueShift, incompleteReason.trim());
@@ -464,9 +468,10 @@ export function ChecklistPage({
             {onOpenDashboard && (
               <button
                 type="button"
+                disabled={isPageBusy}
                 onClick={onOpenDashboard}
                 aria-label="เปิดหน้าแดชบอร์ด"
-                className="p-1.5 sm:p-2 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:text-[var(--color-text)] hover:bg-[var(--color-border-subtle)] transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center"
+                className="p-1.5 sm:p-2 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:text-[var(--color-text)] hover:bg-[var(--color-border-subtle)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center"
                 title="เปิดหน้าแดชบอร์ด"
               >
                 <LayoutDashboard size={16} />
@@ -475,8 +480,9 @@ export function ChecklistPage({
 
             <button
               type="button"
+              disabled={isPageBusy}
               onClick={() => setShowExitConfirm(true)}
-              className="p-1.5 sm:p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:text-rose-700 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center"
+              className="p-1.5 sm:p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:text-rose-700 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center"
               title="ออกจากหน้าเช็คลิสต์"
               aria-label="ออกจากหน้าเช็คลิสต์"
             >
@@ -539,8 +545,9 @@ export function ChecklistPage({
           <div className="lg:hidden flex bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] text-xs font-bold gap-1 shadow-2xs">
             <button
               type="button"
+              disabled={isPageBusy}
               onClick={() => setMobileTab("tasks")}
-              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
+              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                 mobileTab === "tasks"
                   ? "bg-[var(--color-brown)] text-amber-100 dark:bg-amber-400 dark:text-amber-950 shadow-xs"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
@@ -550,8 +557,9 @@ export function ChecklistPage({
             </button>
             <button
               type="button"
+              disabled={isPageBusy}
               onClick={() => setMobileTab("refrigerators")}
-              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
+              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                 mobileTab === "refrigerators"
                   ? "bg-sky-600 text-white shadow-xs"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
@@ -589,10 +597,11 @@ export function ChecklistPage({
                 key={t}
                 type="button"
                 role="tab"
+                disabled={isPageBusy}
                 aria-selected={filter === t}
                 tabIndex={filter === t ? 0 : -1}
                 onClick={() => setFilter(t)}
-                className={`flex-1 sm:flex-initial px-2 sm:px-3.5 py-2 min-h-[40px] sm:min-h-[34px] rounded-lg transition-all text-center cursor-pointer inline-flex items-center justify-center truncate ${
+                className={`flex-1 sm:flex-initial px-2 sm:px-3.5 py-2 min-h-[40px] sm:min-h-[34px] rounded-lg transition-all text-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center truncate ${
                   filter === t
                     ? "bg-[var(--color-brown)] text-amber-200 dark:bg-amber-400 dark:text-amber-950 shadow-xs font-bold"
                     : "text-[var(--color-text)] hover:bg-black/5 dark:hover:bg-white/5 font-semibold"
@@ -660,8 +669,9 @@ export function ChecklistPage({
                   type="button"
                   role="checkbox"
                   aria-checked={isDone}
-                  onClick={() => toggleItem(item.id)}
-                  className={`w-full group flex items-start gap-3.5 p-4 rounded-2xl border text-left transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 active:scale-[0.99] ${
+                  disabled={isPageBusy || shiftCompleted}
+                  onClick={() => !(isPageBusy || shiftCompleted) && toggleItem(item.id)}
+                  className={`w-full group flex items-start gap-3.5 p-4 rounded-2xl border text-left transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 active:scale-[0.99] ${
                     isDone
                       ? "bg-[var(--color-surface-2)]/80 border-[var(--color-border)] shadow-2xs"
                       : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-amber-400 hover:bg-amber-50/70 dark:hover:bg-amber-950/20 shadow-xs hover:shadow-sm"
@@ -807,10 +817,10 @@ export function ChecklistPage({
             {hasNextShift && !shiftCompleted && (
               <button
                 type="button"
-                disabled={!canContinueShift}
+                disabled={!canContinueShift || isPageBusy}
                 onClick={handleToggleContinue}
-                className={`text-xs sm:text-sm px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl border font-bold flex items-center gap-1 transition-colors min-h-[40px] sm:min-h-[44px] cursor-pointer shrink-0 ${
-                  !canContinueShift
+                className={`text-xs sm:text-sm px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl border font-bold flex items-center gap-1 transition-colors min-h-[40px] sm:min-h-[44px] cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  !canContinueShift || isPageBusy
                     ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border-[var(--color-border)] cursor-not-allowed"
                     : continueShift
                     ? "bg-[var(--color-brown)] text-amber-100 dark:bg-amber-400 dark:text-amber-950 border-[var(--color-text)] shadow-xs"
@@ -827,13 +837,13 @@ export function ChecklistPage({
             {/* Primary Action Button: "จบกะงาน" */}
             <button
               type="button"
-              disabled={shiftCompleted || isValidatingDb}
+              disabled={shiftCompleted || isPageBusy}
               onClick={handleInitiateEndShift}
               className={`text-xs sm:text-sm px-2.5 sm:px-5 py-2 sm:py-2.5 rounded-xl font-extrabold flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[44px] transition-all cursor-pointer shadow-xs min-w-0 truncate ${
                 shiftCompleted
                   ? "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] font-bold border border-[var(--color-border)] cursor-not-allowed shadow-none"
-                  : isValidatingDb
-                  ? "bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40 cursor-wait"
+                  : isPageBusy
+                  ? "bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40 cursor-wait opacity-60"
                   : allDone
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-md active:scale-95 ring-2 ring-emerald-400/40"
                   : "bg-amber-600 hover:bg-amber-700 text-white shadow-sm hover:shadow-md active:scale-95"
@@ -898,17 +908,19 @@ export function ChecklistPage({
             <div className="flex gap-2.5">
               <button
                 type="button"
+                disabled={isEnding}
                 onClick={() => setShowConfirm(false)}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 กลับไปตรวจทาน
               </button>
               <button
                 type="button"
+                disabled={isEnding}
                 onClick={endCompleteShift}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-400 text-amber-950 text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-amber-400 text-amber-950 text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
               >
-                ส่งมอบงานจบกะ
+                {isEnding ? "กำลังส่งมอบงาน..." : "ส่งมอบงานจบกะ"}
               </button>
             </div>
           </div>
@@ -994,18 +1006,19 @@ export function ChecklistPage({
             <div className="flex gap-2.5 pt-1">
               <button
                 type="button"
+                disabled={isEnding}
                 onClick={() => setShowIncompleteModal(false)}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 กลับไปตรวจต่อ
               </button>
               <button
                 type="button"
-                disabled={!incompleteReason.trim()}
+                disabled={!incompleteReason.trim() || isEnding}
                 onClick={endIncompleteShift}
                 className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-amber-400 text-amber-950 text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
               >
-                ยืนยันจบกะและส่งเหตุผล
+                {isEnding ? "กำลังส่งเหตุผล..." : "ยืนยันจบกะและส่งเหตุผล"}
               </button>
             </div>
           </div>
@@ -1042,13 +1055,15 @@ export function ChecklistPage({
             <div className="flex gap-2.5">
               <button
                 type="button"
+                disabled={isPageBusy}
                 onClick={() => setShowExitConfirm(false)}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 อยู่ตรวจเช็คลิสต์ต่อ
               </button>
               <button
                 type="button"
+                disabled={isPageBusy}
                 onClick={() => {
                   setShowExitConfirm(false);
                   if (onExit) {
@@ -1057,7 +1072,7 @@ export function ChecklistPage({
                     window.location.href = "/shift";
                   }
                 }}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
+                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-rose-700 hover:bg-rose-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
               >
                 ออกจากหน้างาน
               </button>

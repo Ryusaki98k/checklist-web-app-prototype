@@ -6,6 +6,7 @@ import { AppProvider } from "../context/AppContext";
 import { LoadingProvider } from "../context/LoadingContext";
 import { PageTransitionWatcher } from "../components/common/PageTransitionWatcher";
 import { GlobalLoadingOverlay } from "../components/common/GlobalLoadingOverlay";
+import { GlobalButtonDisabler } from "../components/common/GlobalButtonDisabler";
 import { WeeklyLeaderboardPopup } from "../components/common/WeeklyLeaderboardPopup";
 
 const geistSans = Geist({
@@ -90,6 +91,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </Suspense>
           <GlobalLoadingOverlay />
           <AppProvider>
+            <GlobalButtonDisabler />
             <main id="main-content" tabIndex={-1} className="min-h-full flex-1 focus-visible:outline-none">
               {children}
             </main>

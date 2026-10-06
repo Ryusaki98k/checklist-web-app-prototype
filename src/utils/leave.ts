@@ -16,6 +16,15 @@ export function getLeaveTypeLabel(type?: string | null): string {
   return "ลาเเบบได้เงิน";
 }
 
+/**
+ * Ensures any input leave type (Thai string or English) is cleanly mapped to
+ * the exact PostgreSQL enum value ('paid' | 'unpaid') for database persistence.
+ */
+export function toDbLeaveType(type?: string | null): "paid" | "unpaid" {
+  if (isUnpaidLeave(type)) return "unpaid";
+  return "paid";
+}
+
 export const LEAVE_TYPE_OPTIONS: Array<{ value: LeaveType; label: string; desc: string; badge: string }> = [
   {
     value: "paid",

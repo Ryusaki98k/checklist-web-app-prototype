@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ExecutiveDashboard } from "../../../components/manager/ExecutiveDashboard";
 import { ManagerDashboard } from "../../../components/manager/ManagerDashboard";
 import { useApp } from "../../../context/AppContext";
+import { useLoading } from "../../../context/LoadingContext";
 import { LoadingSpinner } from "../../loading";
 
 export default function ManagerDashboardPage() {
@@ -18,6 +19,7 @@ export default function ManagerDashboardPage() {
     updateSession,
     endShift,
   } = useApp();
+  const { navigate } = useLoading();
 
   const [forceView, setForceView] = useState<"manager" | "executive" | null>(null);
 
@@ -59,7 +61,7 @@ export default function ManagerDashboardPage() {
         onStartChecklist={selectShift}
         onUpdateSession={updateSession}
         onEndShift={endShift}
-        onOpenChecklistPage={() => router.push("/checklist")}
+        onOpenChecklistPage={() => navigate("/checklist", "กำลังเปิดรายการเช็คลิสต์...")}
       />
     );
   }
@@ -72,7 +74,7 @@ export default function ManagerDashboardPage() {
       onStartChecklist={selectShift}
       onUpdateSession={updateSession}
       onEndShift={endShift}
-      onOpenChecklistPage={() => router.push("/checklist")}
+      onOpenChecklistPage={() => navigate("/checklist", "กำลังเปิดรายการเช็คลิสต์...")}
       onSwitchToExecutiveView={() => setForceView("executive")}
     />
   );

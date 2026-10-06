@@ -575,3 +575,8 @@ export function useApp() {
   }
   return context;
 }
+
+export function useOptionalApp() {
+  return useContext(AppContext);
+}
+

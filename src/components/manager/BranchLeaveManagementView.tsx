@@ -740,30 +740,30 @@ export function BranchLeaveManagementView({
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-[var(--color-text)]">กำหนดประเภทการลา:</span>
                       <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
-                        {(approvalLeaveTypes[pl.id] || "ลาเเบบได้เงิน") === "ลาเเบบได้เงิน" ? "หักสิทธิการลา (Paid)" : "ไม่หักสิทธิการลา (Unpaid)"}
+                        {(!approvalLeaveTypes[pl.id] || isPaidLeave(approvalLeaveTypes[pl.id])) ? "หักสิทธิการลา (Paid)" : "ไม่หักสิทธิการลา (Unpaid)"}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setApprovalLeaveTypes(prev => ({ ...prev, [pl.id]: "ลาเเบบได้เงิน" }))}
-                        className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${(approvalLeaveTypes[pl.id] || "ลาเเบบได้เงิน") === "ลาเเบบได้เงิน"
+                        onClick={() => setApprovalLeaveTypes(prev => ({ ...prev, [pl.id]: "paid" }))}
+                        className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${(!approvalLeaveTypes[pl.id] || isPaidLeave(approvalLeaveTypes[pl.id]))
                           ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500 font-extrabold shadow-2xs"
                           : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-surface)]"
                         }`}
                       >
-                        <Coins size={14} className={(approvalLeaveTypes[pl.id] || "ลาเเบบได้เงิน") === "ลาเเบบได้เงิน" ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-muted)]"} />
+                        <Coins size={14} className={(!approvalLeaveTypes[pl.id] || isPaidLeave(approvalLeaveTypes[pl.id])) ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-muted)]"} />
                         <span>ลาเเบบได้เงิน</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setApprovalLeaveTypes(prev => ({ ...prev, [pl.id]: "ลาเเบบไม่ได้รับเงิน" }))}
-                        className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${approvalLeaveTypes[pl.id] === "ลาเเบบไม่ได้รับเงิน"
+                        onClick={() => setApprovalLeaveTypes(prev => ({ ...prev, [pl.id]: "unpaid" }))}
+                        className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${isUnpaidLeave(approvalLeaveTypes[pl.id])
                           ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500 font-extrabold shadow-2xs"
                           : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-surface)]"
                         }`}
                       >
-                        <Clock size={14} className={approvalLeaveTypes[pl.id] === "ลาเเบบไม่ได้รับเงิน" ? "text-amber-600 dark:text-amber-400" : "text-[var(--color-text-muted)]"} />
+                        <Clock size={14} className={isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "text-amber-600 dark:text-amber-400" : "text-[var(--color-text-muted)]"} />
                         <span>ลาเเบบไม่ได้รับเงิน</span>
                       </button>
                     </div>
@@ -783,7 +783,7 @@ export function BranchLeaveManagementView({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleApprove(pl.id, approvalLeaveTypes[pl.id] || "ลาเเบบได้เงิน", true)}
+                      onClick={() => handleApprove(pl.id, approvalLeaveTypes[pl.id] || "paid", true)}
                       disabled={isApproving === pl.id}
                       className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
                     >
@@ -792,7 +792,7 @@ export function BranchLeaveManagementView({
                       ) : (
                         <Check size={14} />
                       )}
-                      <span>อนุมัติ ({(approvalLeaveTypes[pl.id] || "ลาเเบบได้เงิน") === "ลาเเบบไม่ได้รับเงิน" ? "ไม่ได้รับเงิน" : "ได้เงิน"})</span>
+                      <span>อนุมัติ ({isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "ไม่ได้รับเงิน" : "ได้เงิน"})</span>
                     </button>
                   </div>
                 </div>

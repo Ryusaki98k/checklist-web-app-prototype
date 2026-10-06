@@ -4,12 +4,14 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChecklistPage } from "../../components/staff/ChecklistPage";
 import { useApp } from "../../context/AppContext";
+import { useLoading } from "../../context/LoadingContext";
 import { LoadingSpinner } from "../loading";
 import { getActiveSession } from "../../data/storage";
 
 export default function ChecklistRoutePage() {
   const router = useRouter();
   const { currentUser, activeSession, selectedShift, isReady, updateSession, endShift, setActiveSession } = useApp();
+  const { navigate } = useLoading();
 
   useEffect(() => {
     if (!isReady) return;
@@ -39,10 +41,10 @@ export default function ChecklistRoutePage() {
       onEndShift={endShift}
       onOpenDashboard={
         currentUser.role === "manager"
-          ? () => router.push("/admin/dashboard")
+          ? () => navigate("/admin/dashboard", "กำลังเปิดแดชบอร์ด...")
           : undefined
       }
-      onExit={() => router.push("/shift")}
+      onExit={() => navigate("/shift", "กำลังกลับสู่หน้าเลือกกะ...")}
     />
   );
 }

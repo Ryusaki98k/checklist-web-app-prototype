@@ -45,6 +45,8 @@ export function PositionSelectPage({
   const [quota, setQuota] = useState<LeaveQuotaInfo | null>(null);
   const [leaveReason, setLeaveReason] = useState("");
   const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const isBusy = isSelecting || isSubmittingLeave;
   const [leaveError, setLeaveError] = useState<string | null>(null);
   const [leaveSuccess, setLeaveSuccess] = useState<string | null>(null);
   const [autoApproved, setAutoApproved] = useState(false);
@@ -119,7 +121,7 @@ export function PositionSelectPage({
       const res = await requestEmployeeLeaveAction({
         userId: user.id,
         branchId: user.branchId,
-        leaveType: "ลาเเบบได้เงิน",
+        leaveType: "paid",
         startDate: todayStr,
         endDate: todayStr,
         reason: leaveReason.trim(),
@@ -156,8 +158,9 @@ export function PositionSelectPage({
           {onBack && (
             <button
               type="button"
+              disabled={isBusy}
               onClick={onBack}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] flex items-center justify-center text-[var(--color-text)] transition-all cursor-pointer shrink-0"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-[var(--color-text)] transition-all cursor-pointer shrink-0"
               title="ย้อนกลับ"
               aria-label="ย้อนกลับ"
             >
@@ -197,10 +200,11 @@ export function PositionSelectPage({
 
           <button
             type="button"
+            disabled={isBusy}
             onClick={onLogout}
             title="ออกจากระบบ"
             aria-label="ออกจากระบบ"
-            className="text-xs sm:text-sm text-[var(--color-text)] hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 transition-all p-2 sm:px-2.5 sm:py-2 rounded-xl border border-[var(--color-border)] font-bold cursor-pointer min-h-[36px] min-w-[36px] inline-flex items-center justify-center gap-1.5 shrink-0"
+            className="text-xs sm:text-sm text-[var(--color-text)] hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all p-2 sm:px-2.5 sm:py-2 rounded-xl border border-[var(--color-border)] font-bold cursor-pointer min-h-[36px] min-w-[36px] inline-flex items-center justify-center gap-1.5 shrink-0"
           >
             <LogOut size={15} />
             <span className="hidden xl:inline">ออกจากระบบ</span>
@@ -220,7 +224,7 @@ export function PositionSelectPage({
           </p>
         </div>
 
-        {/* Position Cards Grid - Clean, un-nested cards with clear contrast and readable body typography */}
+        {/* Position Cards Grid */}
         <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
           {availablePositions.map((pos) => {
             const isCashier = pos === "แคชเชียร์";
@@ -229,16 +233,25 @@ export function PositionSelectPage({
               <div
                 key={pos}
                 role="button"
-                tabIndex={0}
+                tabIndex={isBusy ? -1 : 0}
+                aria-disabled={isBusy}
                 aria-label={`เลือกหน้าที่ ${pos}`}
-                onClick={() => onSelectPosition(pos)}
+                onClick={() => {
+                  if (isBusy) return;
+                  setIsSelecting(true);
+                  onSelectPosition(pos);
+                }}
                 onKeyDown={(e) => {
+                  if (isBusy) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
+                    setIsSelecting(true);
                     onSelectPosition(pos);
                   }
                 }}
-                className={`group rounded-2xl p-6 sm:p-7 shadow-sm hover:shadow-md focus-visible:outline-none focus-visible:ring-3 transition-all duration-150 flex flex-col justify-between cursor-pointer active:scale-[0.99] bg-[var(--color-surface)] border-2 ${
+                className={`group rounded-2xl p-6 sm:p-7 shadow-sm hover:shadow-md focus-visible:outline-none focus-visible:ring-3 transition-all duration-150 flex flex-col justify-between ${
+                  isBusy ? "opacity-60 cursor-not-allowed pointer-events-none" : "cursor-pointer active:scale-[0.99]"
+                } bg-[var(--color-surface)] border-2 ${
                   isCashier
                     ? "border-amber-400 hover:border-amber-500 dark:border-amber-600 dark:hover:border-amber-500 focus-visible:ring-amber-400/50"
                     : "border-emerald-500 hover:border-emerald-600 dark:border-emerald-600 dark:hover:border-emerald-500 focus-visible:ring-emerald-400/50"
@@ -363,8 +376,9 @@ export function PositionSelectPage({
 
           <button
             type="button"
+            disabled={isBusy}
             onClick={handleOpenLeaveModal}
-            className="w-full sm:w-auto px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs sm:text-sm font-extrabold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 border border-rose-700"
+            className="w-full sm:w-auto px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-extrabold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 border border-rose-700"
           >
             <CalendarOff size={16} />
             <span>ขอลางานวันนี้ (Request Leave)</span>
@@ -376,8 +390,9 @@ export function PositionSelectPage({
           <div className="mt-8 text-center">
             <button
               type="button"
+              disabled={isBusy}
               onClick={onBack}
-              className="text-sm text-[var(--color-text)] hover:text-amber-600 font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer p-2 rounded-xl"
+              className="text-sm text-[var(--color-text)] hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer p-2 rounded-xl"
             >
               <ArrowLeft size={16} />
               <span>ย้อนกลับไปหน้าเลือกช่องทางเข้างาน</span>

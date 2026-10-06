@@ -305,4 +305,31 @@ input, textarea, select {
   table, pre {
     page-break-inside: avoid;
   }
-}
+}
+
+/* Universal button & interactive action protection while loading process is active */
+body[data-loading-busy="true"] button,
+body[data-loading-busy="true"] input[type="button"],
+body[data-loading-busy="true"] input[type="submit"],
+body[data-loading-busy="true"] [role="button"],
+body[data-loading-busy="true"] [role="checkbox"],
+html[data-loading-busy="true"] button,
+html[data-loading-busy="true"] input[type="button"],
+html[data-loading-busy="true"] input[type="submit"],
+html[data-loading-busy="true"] [role="button"],
+html[data-loading-busy="true"] [role="checkbox"] {
+  cursor: not-allowed !important;
+  opacity: 0.55 !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  filter: grayscale(20%);
+  transition: opacity 0.15s ease-in-out, filter 0.15s ease-in-out;
+}
+
+body[data-loading-busy="true"] a[href],
+html[data-loading-busy="true"] a[href] {
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
