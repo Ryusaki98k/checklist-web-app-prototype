@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 import { useRouter } from "next/navigation";
 import { ExecutiveDashboard } from "../../../components/manager/ExecutiveDashboard";
@@ -22,6 +22,43 @@ export default function ManagerDashboardPage() {
   const { navigate } = useLoading();
 
   const [forceView, setForceView] = useState<"manager" | "executive" | null>(null);
+
+  // Sync initial view from URL query param if present (?view=executive or ?view=manager)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const parseViewParam = () => {
+        const params = new URLSearchParams(window.location.search);
+        const v = params.get("view");
+        if (v === "executive" || v === "manager") {
+          setForceView(v);
+        } else {
+          setForceView(null);
+        }
+      };
+
+      parseViewParam();
+      window.addEventListener("popstate", parseViewParam);
+      return () => window.removeEventListener("popstate", parseViewParam);
+    }
+  }, []);
+
+  const handleSwitchToExecutive = useCallback(() => {
+    setForceView("executive");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", "executive");
+      window.history.pushState({ view: "executive" }, "", url.toString());
+    }
+  }, []);
+
+  const handleSwitchToManager = useCallback(() => {
+    setForceView("manager");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", "manager");
+      window.history.pushState({ view: "manager" }, "", url.toString());
+    }
+  }, []);
 
   useEffect(() => {
     if (!isReady) return;
@@ -62,6 +99,7 @@ export default function ManagerDashboardPage() {
         onUpdateSession={updateSession}
         onEndShift={endShift}
         onOpenChecklistPage={() => navigate("/checklist", "กำลังเปิดรายการเช็คลิสต์...")}
+        onSwitchToManagerView={handleSwitchToManager}
       />
     );
   }
@@ -75,7 +113,7 @@ export default function ManagerDashboardPage() {
       onUpdateSession={updateSession}
       onEndShift={endShift}
       onOpenChecklistPage={() => navigate("/checklist", "กำลังเปิดรายการเช็คลิสต์...")}
-      onSwitchToExecutiveView={() => setForceView("executive")}
+      onSwitchToExecutiveView={handleSwitchToExecutive}
     />
   );
 }

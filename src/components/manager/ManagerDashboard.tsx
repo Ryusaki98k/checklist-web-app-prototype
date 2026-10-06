@@ -494,10 +494,11 @@ export function ManagerDashboard({
               <button
                 type="button"
                 onClick={onSwitchToExecutiveView}
-                className="text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-border)] px-2.5 py-1.5 rounded-xl transition-colors hidden lg:inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
+                className="text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-border)] px-2.5 py-1.5 rounded-xl transition-colors inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
                 title="สลับไปยังแดชบอร์ดผู้บริหาร (Executive Audit View)"
               >
-                <span>มุมมองผู้บริหาร ↗</span>
+                <span className="hidden sm:inline">มุมมองผู้บริหาร ↗</span>
+                <span className="sm:hidden">ผู้บริหาร ↗</span>
               </button>
             )}
 
