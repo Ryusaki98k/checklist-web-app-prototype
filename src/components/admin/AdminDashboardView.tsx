@@ -1762,6 +1762,7 @@ export function AdminDashboardView({
         <AdminManageRefrigeratorsModal
           isOpen={Boolean(selectedBranchForRefrigerators)}
           branch={selectedBranchForRefrigerators}
+          allBranches={branches}
           onClose={() => setSelectedBranchForRefrigerators(null)}
           onUpdated={() => {
             invalidateBranchCache();

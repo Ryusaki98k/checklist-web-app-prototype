@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Thermometer,
   ShieldAlert,
+  ArrowRightLeft,
 } from "lucide-react";
 import {
   RefrigeratorConfig,
@@ -19,6 +20,7 @@ import {
   createBranchRefrigeratorAction,
   updateRefrigeratorAction,
   deleteRefrigeratorAction,
+  transferRefrigeratorAction,
 } from "../../actions/refrigerator";
 
 interface AdminManageRefrigeratorsModalProps {
@@ -28,6 +30,11 @@ interface AdminManageRefrigeratorsModalProps {
     name: string;
     code?: string;
   } | null;
+  allBranches?: Array<{
+    id: string;
+    name: string;
+    code?: string;
+  }>;
   onClose: () => void;
   onUpdated?: () => void;
 }
@@ -42,6 +49,7 @@ const PRESETS = [
 export function AdminManageRefrigeratorsModal({
   isOpen,
   branch,
+  allBranches = [],
   onClose,
   onUpdated,
 }: AdminManageRefrigeratorsModalProps) {
@@ -70,6 +78,11 @@ export function AdminManageRefrigeratorsModal({
   // Delete Confirmation State
   const [deletingRef, setDeletingRef] = useState<RefrigeratorConfig | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Transfer State
+  const [transferringRef, setTransferringRef] = useState<RefrigeratorConfig | null>(null);
+  const [selectedTargetBranchId, setSelectedTargetBranchId] = useState<string>("");
+  const [isTransferring, setIsTransferring] = useState(false);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -106,6 +119,7 @@ export function AdminManageRefrigeratorsModal({
       setIsAddingNew(false);
       setEditingId(null);
       setDeletingRef(null);
+      setTransferringRef(null);
     }
   }, [isOpen, branch, loadRefrigerators]);
 
@@ -244,6 +258,41 @@ export function AdminManageRefrigeratorsModal({
       showToast("เกิดข้อผิดพลาดในการลบตู้แช่");
     } finally {
       setIsDeleting(false);
+    }
+  }
+
+  // Transfer to other branch
+  const otherBranches = branch ? allBranches.filter((b) => b.id !== branch.id) : [];
+
+  function startTransfer(ref: RefrigeratorConfig) {
+    setTransferringRef(ref);
+    setSelectedTargetBranchId(otherBranches[0]?.id || "");
+  }
+
+  async function handleConfirmTransfer() {
+    if (!transferringRef || !selectedTargetBranchId) return;
+    try {
+      setIsTransferring(true);
+      const targetBranchObj = otherBranches.find((b) => b.id === selectedTargetBranchId);
+      const res = await transferRefrigeratorAction({
+        refrigeratorId: transferringRef.id,
+        targetBranchId: selectedTargetBranchId,
+      });
+
+      if (res.success) {
+        showToast(
+          `ย้ายตู้แช่ "${transferringRef.name}" ไปยังสาขา ${targetBranchObj?.name || ""} สำเร็จ`
+        );
+        setTransferringRef(null);
+        await loadRefrigerators(true);
+        onUpdated?.();
+      } else {
+        showToast(res.error || "ไม่สามารถย้ายตู้แช่ได้");
+      }
+    } catch {
+      showToast("เกิดข้อผิดพลาดในการย้ายตู้แช่");
+    } finally {
+      setIsTransferring(false);
     }
   }
 
@@ -673,6 +722,17 @@ export function AdminManageRefrigeratorsModal({
 
                       <button
                         type="button"
+                        onClick={() => startTransfer(ref)}
+                        className="px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-800 dark:text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                        title="ย้ายตู้แช่นี้ไปสาขาอื่น"
+                        aria-label={`ย้ายตู้แช่ ${ref.name} ไปสาขาอื่น`}
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                        <span className="hidden sm:inline">ย้ายสาขา</span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => startEdit(ref)}
                         className="p-1.5 rounded-xl bg-[var(--color-surface-2)] hover:bg-[var(--color-border)] text-[var(--color-text)] border border-[var(--color-border)] transition-all cursor-pointer"
                         title="แก้ไขข้อมูลตู้แช่"
@@ -759,6 +819,82 @@ export function AdminManageRefrigeratorsModal({
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shadow-sm disabled:opacity-50"
               >
                 {isDeleting ? "กำลังลบ..." : "ยืนยันการลบตู้แช่"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Refrigerator Sub-Modal */}
+      {transferringRef && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-cyan-600 dark:text-cyan-400">
+              <div className="w-10 h-10 rounded-xl bg-cyan-100 dark:bg-cyan-950/60 flex items-center justify-center shrink-0">
+                <ArrowRightLeft className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-[var(--color-text)]">
+                  ย้ายตู้แช่ไปสาขาอื่น (Transfer Refrigerator)
+                </h4>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  จากสาขาปัจจุบัน: <strong className="text-[var(--color-text)]">{branch.name}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-[var(--color-surface-2)] p-3 rounded-xl border border-[var(--color-border)] text-xs space-y-1">
+              <p className="font-bold text-[var(--color-text)]">
+                ตู้แช่: {transferringRef.name}
+              </p>
+              <p className="text-[var(--color-text-muted)]">
+                ช่วงอุณหภูมิ: {transferringRef.min_temperature}°C ถึง {transferringRef.max_temperature}°C
+              </p>
+            </div>
+
+            {otherBranches.length === 0 ? (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-800 dark:text-amber-200">
+                ไม่พบสาขาอื่นในระบบสำหรับย้ายตู้แช่ไป
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-bold text-[var(--color-text)] mb-1.5">
+                  เลือกสาขาปลายทาง *
+                </label>
+                <select
+                  value={selectedTargetBranchId}
+                  onChange={(e) => setSelectedTargetBranchId(e.target.value)}
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs font-semibold text-[var(--color-text)] focus:outline-none focus:border-cyan-400"
+                >
+                  {otherBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} {b.code ? `(${b.code})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-1.5">
+                  ℹ️ งานตรวจประจำวันที่ยังไม่ได้ตรวจของวันนี้จะถูกโอนย้ายไปยังสาขาใหม่โดยอัตโนมัติ
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTransferringRef(null)}
+                disabled={isTransferring}
+                className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-[var(--color-surface-2)] hover:bg-[var(--color-border)] text-[var(--color-text)] border border-[var(--color-border)] cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmTransfer}
+                disabled={isTransferring || otherBranches.length === 0 || !selectedTargetBranchId}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white cursor-pointer shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>{isTransferring ? "กำลังย้าย..." : "ยืนยันการย้ายสาขา"}</span>
               </button>
             </div>
           </div>

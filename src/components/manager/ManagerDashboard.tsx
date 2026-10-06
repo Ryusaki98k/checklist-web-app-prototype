@@ -20,6 +20,7 @@ import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 import { LeaderboardWidget } from "./LeaderboardWidget";
+import { RefrigeratorConfigView } from "./RefrigeratorConfigView";
 import { ErrorBoundary } from "../common/ErrorBoundary";
 import { LateReasonModal } from "../common/LateReasonModal";
 import {
@@ -40,6 +41,7 @@ import {
   History,
   Lock,
   Layers,
+  Snowflake,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -70,7 +72,7 @@ export function ManagerDashboard({
   const isManager = user.role === "manager" || (!isAssistant && (user.position?.includes("ผู้จัดการ") ?? false));
 
   // Tab navigation
-  type ManagerTab = "tasks" | "approvals" | "history";
+  type ManagerTab = "tasks" | "approvals" | "refrigerator" | "history";
   const [activeTab, setActiveTab] = useState<ManagerTab>("tasks");
 
   // Notifications
@@ -304,6 +306,9 @@ export function ManagerDashboard({
     try {
       setIsNavbarRefreshing(true);
       await flushChecklistBuffer();
+      if (activeTab === "refrigerator") {
+        window.dispatchEvent(new Event("refresh-dashboard-data"));
+      }
       await Promise.all([
         loadChecklist(myChecklistShift, false),
         loadDbSessions(true),
@@ -324,6 +329,9 @@ export function ManagerDashboard({
       setIsNavbarDbRefreshing(true);
       await flushChecklistBuffer();
       invalidateBranchCache();
+      if (activeTab === "refrigerator") {
+        window.dispatchEvent(new Event("refresh-dashboard-data"));
+      }
       await Promise.all([
         loadChecklist(myChecklistShift, false),
         loadDbSessions(true),
@@ -610,7 +618,7 @@ export function ManagerDashboard({
 
         {/* ─── Navigation Tabs ──────────────────────────────────────────────── */}
         <div className="bg-[var(--color-surface-2)] p-1.5 rounded-2xl border border-[var(--color-border)] shadow-2xs">
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
             <button
               type="button"
               onClick={() => setActiveTab("tasks")}
@@ -647,6 +655,23 @@ export function ManagerDashboard({
               </div>
               <span className={`text-[11px] hidden sm:block ${activeTab === "approvals" ? "text-amber-200/90" : "text-[var(--color-text-muted)]"}`}>
                 ตรวจรับรองกะส่งมอบ ({sessions.length})
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("refrigerator")}
+              className={`p-2.5 sm:p-3 rounded-xl text-left transition-all cursor-pointer flex flex-col justify-center min-h-[48px] sm:min-h-[54px] ${activeTab === "refrigerator"
+                ? "bg-[var(--color-brown)] text-amber-100 shadow-sm font-bold"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/70"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Snowflake size={17} strokeWidth={2.2} className="shrink-0 text-cyan-400" />
+                <span className="text-xs sm:text-sm font-bold">ตู้แช่ประจำสาขา</span>
+              </div>
+              <span className={`text-[11px] hidden sm:block ${activeTab === "refrigerator" ? "text-amber-200/90" : "text-[var(--color-text-muted)]"}`}>
+                เช็คลิสต์ & ตั้งค่าอุณหภูมิ
               </span>
             </button>
 
@@ -1210,7 +1235,14 @@ export function ManagerDashboard({
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            TAB 3: HISTORY & AUDIT LOGS
+            TAB 3: REFRIGERATOR MONITORING & CONFIGURATION
+        ═══════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "refrigerator" && (
+          <RefrigeratorConfigView user={user} />
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════════
+            TAB 4: HISTORY & AUDIT LOGS
         ═══════════════════════════════════════════════════════════════════════ */}
         {activeTab === "history" && (
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm space-y-5 animate-fade-in">

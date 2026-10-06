@@ -5,7 +5,6 @@ import { User } from "../../types";
 import {
     RefrigeratorConfig,
     getRefrigeratorsAction,
-    createRefrigeratorAction,
     updateRefrigeratorAction,
 } from "../../actions/refrigerator";
 import { Snowflake, AlertOctagon, ClipboardCheck, Settings, Pencil, X } from "lucide-react";
@@ -17,7 +16,6 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    const [isAdding, setIsAdding] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
 
     // Form State
@@ -98,27 +96,11 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
         }
     }
 
-    function handleOpenAdd() {
-        setIsAdding(true);
-        setEditId(null);
-        setFormName("ตู้แช่");
-        setFormMinTemp(0);
-        setFormMaxTemp(4);
-        setFormDisable(false);
-        setFormError("");
-        if (typeof window !== "undefined" && window.innerWidth < 1024) {
-            setTimeout(() => {
-                editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }, 50);
-        }
-    }
-
     function handleOpenEdit(ref: RefrigeratorConfig) {
         if (editId === ref.id) {
             handleCancel();
             return;
         }
-        setIsAdding(false);
         setEditId(ref.id);
         setFormName(ref.name);
         setFormMinTemp(ref.min_temperature ?? 0);
@@ -133,12 +115,13 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
     }
 
     function handleCancel() {
-        setIsAdding(false);
         setEditId(null);
         setFormError("");
     }
 
     async function handleSave() {
+        if (!editId) return;
+
         if (!formName.trim()) {
             setFormError("กรุณาระบุชื่อตู้แช่");
             return;
@@ -151,42 +134,25 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
 
         setSaving(true);
         setFormError("");
-        if (isAdding) {
-            const res = await createRefrigeratorAction({
-                userId: user.id,
-                name: formName,
-                minTemperature: formMinTemp,
-                maxTemperature: formMaxTemp,
-                disableCheck: formDisable,
-            });
-            if (res.success && res.data) {
-                setRefrigerators([...refrigerators, res.data]);
-                setLiveRefreshKey((k) => k + 1);
-                handleCancel();
-            } else {
-                setFormError(res.error || "บันทึกไม่สำเร็จ");
-            }
-        } else if (editId) {
-            const res = await updateRefrigeratorAction({
-                id: editId,
-                name: formName,
-                minTemperature: formMinTemp,
-                maxTemperature: formMaxTemp,
-                disableCheck: formDisable,
-            });
-            if (res.success) {
-                setRefrigerators(
-                    refrigerators.map((r) =>
-                        r.id === editId
-                            ? { ...r, name: formName, min_temperature: formMinTemp, max_temperature: formMaxTemp, disable_check: formDisable }
-                            : r
-                    )
-                );
-                setLiveRefreshKey((k) => k + 1);
-                handleCancel();
-            } else {
-                setFormError(res.error || "อัปเดตไม่สำเร็จ");
-            }
+        const res = await updateRefrigeratorAction({
+            id: editId,
+            name: formName,
+            minTemperature: formMinTemp,
+            maxTemperature: formMaxTemp,
+            disableCheck: formDisable,
+        });
+        if (res.success) {
+            setRefrigerators(
+                refrigerators.map((r) =>
+                    r.id === editId
+                        ? { ...r, name: formName, min_temperature: formMinTemp, max_temperature: formMaxTemp, disable_check: formDisable }
+                        : r
+                )
+            );
+            setLiveRefreshKey((k) => k + 1);
+            handleCancel();
+        } else {
+            setFormError(res.error || "อัปเดตไม่สำเร็จ");
         }
         setSaving(false);
     }
@@ -229,23 +195,15 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                         <div>
                             <h3 className="text-sm font-bold text-[var(--color-text)] flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                                <span>การตั้งค่าและจัดการอุปกรณ์ตู้แช่เซเว่นฯ (Refrigerator Configuration)</span>
+                                <span>การตั้งค่าและแก้ไขอุปกรณ์ตู้แช่สาขา (Refrigerator Configuration)</span>
                             </h3>
                             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                                เพิ่มตู้แช่, ตั้งชื่อ, และกำหนดอุณหภูมิเป้าหมายของตู้แช่ในสาขาของท่าน
+                                แก้ไขชื่อ กำหนดช่วงอุณหภูมิเป้าหมาย และเปิด/ปิดตรวจตู้แช่ประจำสาขา
                             </p>
                         </div>
-                        <button
-                            type="button"
-                            onClick={handleOpenAdd}
-                            className={`text-xs font-semibold px-3.5 py-2 min-h-[44px] sm:min-h-[36px] rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
-                                isAdding
-                                    ? "bg-amber-500 text-amber-950 font-bold border border-amber-600"
-                                    : "text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 border border-amber-500"
-                            }`}
-                        >
-                            <span>+ เพิ่มตู้แช่ใหม่</span>
-                        </button>
+                        <div className="text-[11px] font-medium text-[var(--color-text-muted)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl flex items-center gap-1.5 self-start sm:self-auto">
+                            <span>🏢 การเพิ่มตู้แช่หรือย้ายสาขาดำเนินการโดย Admin</span>
+                        </div>
                     </div>
 
                     {error && (
@@ -257,7 +215,7 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                     {/* Split Layout: Left Editor (Sticky) + Right Cards Grid */}
                     <div className="flex flex-col lg:flex-row items-start gap-4">
                         {/* ─── Left Sticky Editor Panel ─── */}
-                        {(isAdding || editId) && (
+                        {Boolean(editId) && (
                             <div
                                 ref={editorRef}
                                 className="w-full lg:w-80 xl:w-88 shrink-0 lg:sticky lg:top-20 z-10 self-start animate-in fade-in slide-in-from-left-4 duration-200"
@@ -271,10 +229,10 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             </span>
                                             <div>
                                                 <h4 className="font-bold text-sm text-[var(--color-text)] leading-tight">
-                                                    {isAdding ? "เพิ่มตู้แช่ใหม่" : `แก้ไขตู้: ${formName}`}
+                                                    แก้ไขตู้: {formName}
                                                 </h4>
                                                 <span className="text-[10px] text-[var(--color-text-muted)] font-mono">
-                                                    {isAdding ? "กรอกข้อมูลตู้ใหม่เพื่อบันทึก" : "แก้ไขค่าและบันทึกข้อมูล"}
+                                                    แก้ไขค่าและบันทึกข้อมูล
                                                 </span>
                                             </div>
                                         </div>
@@ -338,7 +296,6 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             </div>
                                         </div>
 
-
                                         {/* Maintenance toggle */}
                                         <div className="pt-1">
                                             <label className="flex items-center gap-2.5 p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] cursor-pointer hover:border-amber-400 transition-colors">
@@ -370,7 +327,7 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             disabled={saving}
                                             className="flex-1 py-2.5 px-3 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-xl transition-colors border border-amber-500 shadow-sm disabled:opacity-50 cursor-pointer text-center"
                                         >
-                                            {saving ? "กำลังบันทึก..." : isAdding ? "เพิ่มตู้แช่" : "บันทึกข้อมูล"}
+                                            {saving ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
                                         </button>
                                     </div>
                                 </div>
@@ -381,18 +338,20 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                         <div className="flex-1 min-w-0 w-full space-y-3">
                             {loading && <div className="text-center py-8 text-xs text-[var(--color-text-muted)]">กำลังโหลดข้อมูลตู้แช่...</div>}
 
-                            {!loading && refrigerators.length === 0 && !isAdding && (
+                            {!loading && refrigerators.length === 0 && (
                                 <div className="text-center py-10 border-2 border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-2)]/50 p-6">
-                                    <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center mx-auto mb-2.5">
+                                    <div className="w-10 h-10 rounded-full bg-cyan-100 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 flex items-center justify-center mx-auto mb-2.5">
                                         <Snowflake className="w-5 h-5" />
                                     </div>
                                     <p className="text-sm font-bold text-[var(--color-text)] mb-1">ยังไม่มีรายการตู้แช่ในระบบสาขานี้</p>
-                                    <p className="text-xs text-[var(--color-text-subtle)] max-w-sm mx-auto">กดปุ่ม &quot;+ เพิ่มตู้แช่ใหม่&quot; ด้านบน เพื่อระบุชื่อตู้และกำหนดอุณหภูมิเป้าหมายสำหรับให้พนักงานตรวจสอบประจำวัน</p>
+                                    <p className="text-xs text-[var(--color-text-subtle)] max-w-sm mx-auto">
+                                        หากต้องการเพิ่มตู้แช่ใหม่ หรือย้ายตู้แช่เข้ามายังสาขานี้ กรุณาติดต่อผู้ดูแลระบบ (Admin) ส่วนกลาง
+                                    </p>
                                 </div>
                             )}
 
                             {!loading && refrigerators.length > 0 && (
-                                <div className={`grid grid-cols-1 sm:grid-cols-2 ${(isAdding || editId) ? "" : "lg:grid-cols-3"} gap-3`}>
+                                <div className={`grid grid-cols-1 sm:grid-cols-2 ${editId ? "" : "lg:grid-cols-3"} gap-3`}>
                                     {refrigerators.map((ref) => {
                                         const isEditingThis = editId === ref.id;
                                         return (

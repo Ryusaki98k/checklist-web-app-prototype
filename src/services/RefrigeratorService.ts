@@ -280,6 +280,90 @@ export class RefrigeratorService implements IRefrigeratorService {
     }
   }
 
+  async transferRefrigerator(params: {
+    refrigeratorId: string;
+    targetBranchId: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { refrigeratorId, targetBranchId } = params;
+      if (!refrigeratorId || !targetBranchId) {
+        return { success: false, error: "ข้อมูลไม่ครบถ้วน (ต้องระบุรหัสตู้แช่และสาขาปลายทาง)" };
+      }
+
+      const [existing] = await this.db
+        .select({
+          id: refrigerators.id,
+          branch_id: refrigerators.branch_id,
+          name: refrigerators.name,
+          disable_check: refrigerators.disable_check,
+        })
+        .from(refrigerators)
+        .where(eq(refrigerators.id, refrigeratorId))
+        .limit(1);
+
+      if (!existing) {
+        return { success: false, error: "ไม่พบตู้แช่นี้ในระบบ" };
+      }
+
+      const [targetBranch] = await this.db
+        .select({ id: branches.id, name: branches.name })
+        .from(branches)
+        .where(eq(branches.id, targetBranchId))
+        .limit(1);
+
+      if (!targetBranch) {
+        return { success: false, error: "ไม่พบสาขาปลายทางในระบบ" };
+      }
+
+      const oldBranchId = existing.branch_id;
+      if (oldBranchId === targetBranchId) {
+        return { success: true };
+      }
+
+      // Update refrigerator branch assignment
+      await this.db
+        .update(refrigerators)
+        .set({ branch_id: targetBranchId })
+        .where(eq(refrigerators.id, refrigeratorId));
+
+      const targetDate = getThaiDateString();
+
+      // Transfer incomplete tasks for today to the new branch
+      await this.db
+        .update(refrigeratorTasks)
+        .set({ branch_id: targetBranchId })
+        .where(
+          and(
+            eq(refrigeratorTasks.refrigerator_id, refrigeratorId),
+            eq(refrigeratorTasks.task_date, targetDate),
+            sql`${refrigeratorTasks.completed_at} IS NULL`
+          )
+        );
+
+      // If active, ensure task exists in target branch
+      if (!existing.disable_check) {
+        await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
+      }
+
+      // Touch both branches last_update
+      if (oldBranchId) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, oldBranchId));
+      }
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, targetBranchId));
+
+      return { success: true };
+    } catch (err: unknown) {
+      console.error("RefrigeratorService.transferRefrigerator error:", err);
+      return { success: false, error: (err as Error)?.message || "เกิดข้อผิดพลาดในการย้ายตู้แช่" };
+    }
+  }
+
   async ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const targetDate = dateStr || getThaiDateString();

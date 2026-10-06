@@ -413,6 +413,10 @@ export interface IRefrigeratorService {
     disableCheck: boolean;
   }): Promise<{ success: boolean; error?: string }>;
   deleteRefrigerator(id: string): Promise<{ success: boolean; error?: string }>;
+  transferRefrigerator(params: {
+    refrigeratorId: string;
+    targetBranchId: string;
+  }): Promise<{ success: boolean; error?: string }>;
   ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }>;
   getBranchRefrigeratorTasks(params: {
     userId?: string;

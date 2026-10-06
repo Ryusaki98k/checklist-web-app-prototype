@@ -61,6 +61,14 @@ export async function deleteRefrigeratorAction(
   return await services.refrigerator.deleteRefrigerator(id);
 }
 
+export async function transferRefrigeratorAction(params: {
+  refrigeratorId: string;
+  targetBranchId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const services = getServices();
+  return await services.refrigerator.transferRefrigerator(params);
+}
+
 export async function getBranchRefrigeratorTasksAction(params: {
   userId?: string;
   branchId?: string;
