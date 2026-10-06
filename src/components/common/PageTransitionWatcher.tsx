@@ -21,36 +21,37 @@ export function PageTransitionWatcher() {
     timersRef.current = [];
   }, []);
 
+  // Complete navigation progress and cleanup state
+  const completeTransition = useCallback(() => {
+    clearTimers();
+    setProgress(100);
+    setIsVisible(true);
+
+    const hideTimer = setTimeout(() => {
+      setIsVisible(false);
+      const resetTimer = setTimeout(() => {
+        setProgress(null);
+        activeNavRef.current = false;
+        setIsNavigating(false);
+      }, 140);
+      timersRef.current.push(resetTimer);
+    }, 100);
+    timersRef.current.push(hideTimer);
+
+    resetLoading();
+    setIsNavigating(false);
+  }, [clearTimers, resetLoading, setIsNavigating]);
+
   // When pathname or searchParams change, navigation has landed
   useEffect(() => {
     const currentUrl = `${pathname}${searchParams ? `?${searchParams.toString()}` : ""}`;
 
     if (previousUrlRef.current && previousUrlRef.current !== currentUrl) {
-      // Clear any pending step or fallback timers
-      clearTimers();
-
-      // Complete the top loading bar
-      setProgress(100);
-      setIsVisible(true);
-
-      const hideTimer = setTimeout(() => {
-        setIsVisible(false);
-        const resetTimer = setTimeout(() => {
-          setProgress(null);
-          activeNavRef.current = false;
-          setIsNavigating(false);
-        }, 180);
-        timersRef.current.push(resetTimer);
-      }, 120);
-      timersRef.current.push(hideTimer);
-
-      // Reset any lingering global page-transition lock and re-enable buttons
-      resetLoading();
-      setIsNavigating(false);
+      completeTransition();
     }
 
     previousUrlRef.current = currentUrl;
-  }, [pathname, searchParams, clearTimers, resetLoading, setIsNavigating]);
+  }, [pathname, searchParams, completeTransition]);
 
   // Intercept click on internal links to provide instant feedback and lock buttons immediately
   useEffect(() => {
@@ -107,20 +108,12 @@ export function PageTransitionWatcher() {
         timersRef.current.push(setTimeout(() => setProgress(75), 350));
         timersRef.current.push(setTimeout(() => setProgress(88), 700));
 
-        // Safety fallback: if navigation fails or cancels, auto-recover in 4 seconds
+        // Safety fallback: if navigation fails or cancels, auto-recover in 1.5 seconds
         const fallbackTimer = setTimeout(() => {
           if (activeNavRef.current) {
-            setProgress(100);
-            const fadeTimer = setTimeout(() => {
-              setIsVisible(false);
-              setProgress(null);
-              resetLoading();
-              setIsNavigating(false);
-              activeNavRef.current = false;
-            }, 180);
-            timersRef.current.push(fadeTimer);
+            completeTransition();
           }
-        }, 4000);
+        }, 1500);
         timersRef.current.push(fallbackTimer);
       } catch {
         // Ignore invalid URLs
@@ -128,14 +121,24 @@ export function PageTransitionWatcher() {
     }
 
     const handlePopState = () => {
-      // Browser back/forward button clicked
+      // Browser back/forward button clicked:
+      // History traversal is nearly instantaneous via browser bfcache or client router cache.
+      // We show a brief, responsive progress bar and auto-complete promptly,
+      // and NEVER lock the screen with a blocking full-screen modal or long delay.
       clearTimers();
       activeNavRef.current = true;
       setIsVisible(true);
-      setProgress(35);
-      startLoading("กำลังเตรียมเนื้อหาหน้าถัดไป...", true);
+      setProgress(40);
       setIsNavigating(true);
-      timersRef.current.push(setTimeout(() => setProgress(70), 150));
+
+      // Smooth step
+      timersRef.current.push(setTimeout(() => setProgress(80), 80));
+
+      // Quick auto-completion (200ms) ensuring the loading bar never hangs on back navigation
+      const popstateCompleteTimer = setTimeout(() => {
+        completeTransition();
+      }, 200);
+      timersRef.current.push(popstateCompleteTimer);
     };
 
     const handleCustomNav = (e: Event) => {
@@ -149,6 +152,14 @@ export function PageTransitionWatcher() {
       setIsNavigating(true);
       timersRef.current.push(setTimeout(() => setProgress(65), 120));
       timersRef.current.push(setTimeout(() => setProgress(85), 350));
+
+      // Safety fallback for custom navigation
+      const customFallback = setTimeout(() => {
+        if (activeNavRef.current) {
+          completeTransition();
+        }
+      }, 2000);
+      timersRef.current.push(customFallback);
     };
 
     document.addEventListener("click", handleAnchorClick, true);
@@ -161,7 +172,7 @@ export function PageTransitionWatcher() {
       window.removeEventListener("app:navigating", handleCustomNav);
       clearTimers();
     };
-  }, [clearTimers, startLoading, resetLoading, setIsNavigating]);
+  }, [clearTimers, startLoading, completeTransition, setIsNavigating]);
 
   if (!isVisible && progress === null) return null;
 

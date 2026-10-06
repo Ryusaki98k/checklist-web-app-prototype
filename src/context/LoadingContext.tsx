@@ -42,7 +42,7 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       setIsPageTransition(false);
       setIsNavigating(false);
-    }, 10000);
+    }, isTransition ? 2500 : 8000);
   }, []);
 
   const stopLoading = useCallback(() => {
