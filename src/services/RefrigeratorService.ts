@@ -364,6 +364,67 @@ export class RefrigeratorService implements IRefrigeratorService {
     }
   }
 
+  async batchToggleRefrigeratorDisableCheck(params: {
+    refrigeratorIds: string[];
+    disableCheck: boolean;
+    branchId?: string;
+  }): Promise<{ success: boolean; count?: number; error?: string }> {
+    try {
+      const { refrigeratorIds, disableCheck, branchId } = params;
+      if (!refrigeratorIds || refrigeratorIds.length === 0) {
+        return { success: true, count: 0 };
+      }
+
+      let effectiveBranchId = branchId;
+      if (!effectiveBranchId && refrigeratorIds.length > 0) {
+        const [firstRef] = await this.db
+          .select({ branch_id: refrigerators.branch_id })
+          .from(refrigerators)
+          .where(eq(refrigerators.id, refrigeratorIds[0]))
+          .limit(1);
+        if (firstRef?.branch_id) {
+          effectiveBranchId = firstRef.branch_id;
+        }
+      }
+
+      // Update disable_check for the selected refrigerators
+      await this.db
+        .update(refrigerators)
+        .set({ disable_check: disableCheck })
+        .where(inArray(refrigerators.id, refrigeratorIds));
+
+      const targetDate = getThaiDateString();
+
+      if (disableCheck) {
+        // If disabled, delete incomplete tasks for today so they disappear live
+        await this.db
+          .delete(refrigeratorTasks)
+          .where(
+            and(
+              inArray(refrigeratorTasks.refrigerator_id, refrigeratorIds),
+              eq(refrigeratorTasks.task_date, targetDate),
+              sql`${refrigeratorTasks.completed_at} IS NULL`
+            )
+          );
+      } else if (effectiveBranchId) {
+        // If re-enabled, ensure daily tasks exist
+        await this.ensureDailyRefrigeratorTasks(effectiveBranchId, targetDate);
+      }
+
+      if (effectiveBranchId) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, effectiveBranchId));
+      }
+
+      return { success: true, count: refrigeratorIds.length };
+    } catch (err: unknown) {
+      console.error("RefrigeratorService.batchToggleRefrigeratorDisableCheck error:", err);
+      return { success: false, error: (err as Error)?.message || "เกิดข้อผิดพลาดในการเปลี่ยนสถานะตู้แช่แบบกลุ่ม" };
+    }
+  }
+
   async ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const targetDate = dateStr || getThaiDateString();

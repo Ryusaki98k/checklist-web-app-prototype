@@ -30,7 +30,7 @@ import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
 import { LeaderboardWidget } from "./LeaderboardWidget";
 import { ErrorBoundary } from "../common/ErrorBoundary";
-import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ArrowLeft } from "lucide-react";
+import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ArrowLeft, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
 export type ExecutiveRole = "manager" | "committee" | "general_manager";
@@ -522,7 +522,17 @@ export function ExecutiveDashboard({
   });
 
   if (isAssistant) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)] p-4 font-sans">
+        <div className="bg-[var(--color-surface)] border border-rose-300 dark:border-rose-900 rounded-2xl p-6 text-center max-w-md shadow-lg space-y-3">
+          <ShieldAlert size={48} className="text-rose-500 mx-auto" />
+          <h2 className="text-lg font-bold text-[var(--color-text)]">ไม่มีสิทธิ์เข้าถึงหน้านี้ (Access Denied)</h2>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            ผู้ช่วยผู้จัดการร้านไม่มีสิทธิ์เข้าถึงระบบตรวจสอบระดับผู้บริหาร กำลังพาท่านกลับสู่หน้าหลัก...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

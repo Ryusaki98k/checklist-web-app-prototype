@@ -50,7 +50,7 @@ export default function ManagerDashboardPage() {
         const params = new URLSearchParams(window.location.search);
         const v = params.get("view");
         if (v === "executive") {
-          if (isAssistantRole) {
+          if (isAssistantRole || !isExecutiveRole) {
             setForceView("manager");
             const url = new URL(window.location.href);
             url.searchParams.delete("view");
@@ -69,7 +69,7 @@ export default function ManagerDashboardPage() {
       window.addEventListener("popstate", parseViewParam);
       return () => window.removeEventListener("popstate", parseViewParam);
     }
-  }, [isAssistantRole]);
+  }, [isAssistantRole, isExecutiveRole]);
 
   // Defensive clean-up: if assistant somehow has forceView === "executive", reset to manager
   useEffect(() => {
@@ -117,7 +117,8 @@ export default function ManagerDashboardPage() {
 
   const showExecutiveDashboard =
     !isAssistantRole &&
-    (forceView === "executive" || (isExecutiveRole && forceView !== "manager"));
+    isExecutiveRole &&
+    forceView !== "manager";
 
   if (showExecutiveDashboard) {
     return (
@@ -143,7 +144,6 @@ export default function ManagerDashboardPage() {
       onUpdateSession={updateSession}
       onEndShift={endShift}
       onOpenChecklistPage={() => navigate("/checklist", "กำลังเปิดรายการเช็คลิสต์...")}
-      onSwitchToExecutiveView={isAssistantRole ? undefined : handleSwitchToExecutive}
     />
   );
 }

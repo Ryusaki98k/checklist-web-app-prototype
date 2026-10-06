@@ -6,6 +6,7 @@ import {
     RefrigeratorConfig,
     getRefrigeratorsAction,
     updateRefrigeratorAction,
+    batchToggleRefrigeratorDisableCheckAction,
 } from "../../actions/refrigerator";
 import { Snowflake, AlertOctagon, ClipboardCheck, Settings, Pencil, X } from "lucide-react";
 import { BranchRefrigeratorLiveView } from "./BranchRefrigeratorLiveView";
@@ -18,6 +19,10 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
 
     const [editId, setEditId] = useState<string | null>(null);
 
+    // Batch Action State
+    const [selectedRefIds, setSelectedRefIds] = useState<Set<string>>(new Set());
+    const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+
     // Form State
     const [formName, setFormName] = useState("ตู้แช่");
     const [formMinTemp, setFormMinTemp] = useState(0);
@@ -29,6 +34,49 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
     const [liveRefreshKey, setLiveRefreshKey] = useState(0);
 
     const editorRef = useRef<HTMLDivElement>(null);
+
+    const handleToggleSelectRef = (id: string) => {
+        setSelectedRefIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const handleSelectAll = () => {
+        if (selectedRefIds.size === refrigerators.length) {
+            setSelectedRefIds(new Set());
+        } else {
+            setSelectedRefIds(new Set(refrigerators.map((r) => r.id)));
+        }
+    };
+
+    const handleBatchToggleDisableCheck = async (disableCheck: boolean) => {
+        if (selectedRefIds.size === 0) return;
+        try {
+            setIsBatchUpdating(true);
+            setError("");
+            const ids = Array.from(selectedRefIds);
+            const res = await batchToggleRefrigeratorDisableCheckAction({
+                refrigeratorIds: ids,
+                disableCheck,
+                branchId: user.branchId,
+            });
+
+            if (res.success) {
+                setSelectedRefIds(new Set());
+                await loadData();
+                setLiveRefreshKey((k) => k + 1);
+            } else {
+                setError(res.error || "เกิดข้อผิดพลาดในการเปลี่ยนสถานะแบบกลุ่ม");
+            }
+        } catch {
+            setError("เกิดข้อผิดพลาดในการเปลี่ยนสถานะแบบกลุ่ม");
+        } finally {
+            setIsBatchUpdating(false);
+        }
+    };
 
     async function loadData() {
         setLoading(true);
@@ -336,6 +384,67 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
 
                         {/* ─── Right Column: Refrigerator Cards Grid ─── */}
                         <div className="flex-1 min-w-0 w-full space-y-3">
+                            {/* Summary & Batch Actions Bar */}
+                            {!loading && refrigerators.length > 0 && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2 p-2.5 bg-[var(--color-surface-2)]/60 rounded-xl border border-[var(--color-border)] text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <label className="inline-flex items-center gap-1.5 cursor-pointer font-bold text-[var(--color-text)] select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={refrigerators.length > 0 && selectedRefIds.size === refrigerators.length}
+                                                    onChange={handleSelectAll}
+                                                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer"
+                                                />
+                                                <span>เลือกทั้งหมด ({selectedRefIds.size}/{refrigerators.length})</span>
+                                            </label>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-[var(--color-text-muted)]">
+                                            <span>เปิดตรวจ {refrigerators.filter((r) => !r.disable_check).length}</span>
+                                            <span>•</span>
+                                            <span>ปิดตรวจ {refrigerators.filter((r) => r.disable_check).length}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Batch Action Bar */}
+                                    {selectedRefIds.size > 0 && (
+                                        <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-[var(--color-surface-2)] border-2 border-amber-500/40 p-2.5 sm:p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs animate-fade-in">
+                                            <span className="text-xs font-bold text-[var(--color-text)]">
+                                                เลือกอยู่ <strong className="text-amber-900 dark:text-amber-200 underline font-black">{selectedRefIds.size}</strong> ตู้:
+                                            </span>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <button
+                                                    type="button"
+                                                    disabled={isBatchUpdating}
+                                                    onClick={() => void handleBatchToggleDisableCheck(true)}
+                                                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-900 dark:text-amber-200 hover:bg-amber-500/30 border border-amber-500/40 transition-all cursor-pointer disabled:opacity-50"
+                                                    title="ปิดการตรวจชั่วคราวสำหรับตู้ที่เลือกทั้งหมด"
+                                                >
+                                                    ✕ ปิดตรวจที่เลือก ({selectedRefIds.size})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={isBatchUpdating}
+                                                    onClick={() => void handleBatchToggleDisableCheck(false)}
+                                                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                                                    title="เปิดการตรวจประจำวันสำหรับตู้ที่เลือกทั้งหมด"
+                                                >
+                                                    ✓ เปิดตรวจที่เลือก ({selectedRefIds.size})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={isBatchUpdating}
+                                                    onClick={() => setSelectedRefIds(new Set())}
+                                                    className="px-2 py-1 text-xs font-semibold rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] border border-transparent hover:border-[var(--color-border)] transition-all cursor-pointer"
+                                                >
+                                                    ยกเลิก
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {loading && <div className="text-center py-8 text-xs text-[var(--color-text-muted)]">กำลังโหลดข้อมูลตู้แช่...</div>}
 
                             {!loading && refrigerators.length === 0 && (
@@ -354,11 +463,14 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                 <div className={`grid grid-cols-1 sm:grid-cols-2 ${editId ? "" : "lg:grid-cols-3"} gap-3`}>
                                     {refrigerators.map((ref) => {
                                         const isEditingThis = editId === ref.id;
+                                        const isSelected = selectedRefIds.has(ref.id);
                                         return (
                                             <div
                                                 key={ref.id}
                                                 className={`p-4 rounded-xl border transition-all ${
-                                                    isEditingThis
+                                                    isSelected
+                                                        ? "ring-2 ring-amber-400 border-amber-500 bg-amber-50/60 dark:bg-amber-950/30 shadow-md"
+                                                        : isEditingThis
                                                         ? "ring-2 ring-amber-400 border-amber-500 shadow-md bg-amber-50/60 dark:bg-amber-950/30"
                                                         : ref.disable_check
                                                         ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)]"
@@ -367,6 +479,13 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             >
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => handleToggleSelectRef(ref.id)}
+                                                            aria-label={`เลือกตู้แช่ ${ref.name}`}
+                                                            className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer shrink-0"
+                                                        />
                                                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shadow-2xs ${
                                                             isEditingThis
                                                                 ? "bg-amber-400 text-amber-950 border-amber-500"

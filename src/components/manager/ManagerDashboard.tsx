@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, useCallback, useTransition } from "react";
+import { useEffect, useMemo, useState, useCallback, useTransition, useRef } from "react";
 import { Notification, ShiftSession, ShiftType, User, ChecklistItem } from "../../types";
-import { fmtTime } from "../../data/storage";
+import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, getShiftBadge, getShiftName } from "../common/Badge";
 import { BrandLogo } from "../common/BrandLogo";
 import { SessionDetailModal } from "../admin/SessionDetailModal";
@@ -23,6 +23,7 @@ import { LeaderboardWidget } from "./LeaderboardWidget";
 import { RefrigeratorConfigView } from "./RefrigeratorConfigView";
 import { ErrorBoundary } from "../common/ErrorBoundary";
 import { LateReasonModal } from "../common/LateReasonModal";
+import { DbSyncNotification } from "../common/DbSyncNotification";
 import {
   ClipboardCheck,
   ShieldCheck,
@@ -42,6 +43,7 @@ import {
   Lock,
   Layers,
   Snowflake,
+  Calendar,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -57,7 +59,6 @@ export function ManagerDashboard({
   onUpdateSession: _onUpdateSession,
   onEndShift: _onEndShift,
   onOpenChecklistPage: _onOpenChecklistPage,
-  onSwitchToExecutiveView,
 }: {
   user: User;
   onLogout: () => void;
@@ -66,7 +67,6 @@ export function ManagerDashboard({
   onUpdateSession: (session: ShiftSession) => void;
   onEndShift: () => void;
   onOpenChecklistPage?: () => void;
-  onSwitchToExecutiveView?: () => void;
 }) {
   const isAssistant = user.role === "manager_assistant" || (user.position?.includes("ผู้ช่วย") ?? false);
   const isManager = user.role === "manager" || (!isAssistant && (user.position?.includes("ผู้จัดการ") ?? false));
@@ -104,6 +104,7 @@ export function ManagerDashboard({
   } | null>(null);
 
   // --- Task Checklist Buffer & Cache ---
+  const loadChecklistRef = useRef<((shift: ShiftType, isSilent?: boolean) => Promise<void>) | null>(null);
   const checklistCacheKey = `mgr_${user.id}_${myChecklistShift}`;
   const {
     enqueueToggle,
@@ -111,6 +112,8 @@ export function ManagerDashboard({
     reconcile: reconcileChecklist,
     saveToCache: saveChecklistCache,
     loadFromCache: loadChecklistCache,
+    dbSyncNotification,
+    clearDbSyncNotification,
   } = useTaskChecklistBuffer({
     cacheKey: checklistCacheKey,
     onBatchSuccess: (results) => {
@@ -123,6 +126,10 @@ export function ManagerDashboard({
           return item;
         })
       );
+      // Trigger prompt DB cache check to verify and notify user
+      setTimeout(() => {
+        void loadChecklistRef.current?.(myChecklistShift, true);
+      }, 1000);
     },
     onBatchError: (err) => {
       console.error("Batch checklist error:", err);
@@ -133,12 +140,16 @@ export function ManagerDashboard({
   // --- Approvals & Live Sessions State ---
   const [sessions, setSessions] = useState<ShiftSession[]>([]);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
+  const [hasAssistantLoggedInToday, setHasAssistantLoggedInToday] = useState(true);
   const [approvals, setApprovals] = useState<Record<string, { assistantApproved?: boolean; managerApproved?: boolean }>>({});
   const [shiftQueueStatusFilter, setShiftQueueStatusFilter] = useState<"all" | "pending" | "approved">("all");
   const [selectedSession, setSelectedSession] = useState<ShiftSession | null>(null);
 
   // --- History State ---
   const [historySessions, setHistorySessions] = useState<ShiftSession[]>([]);
+  const [specificDaySessions, setSpecificDaySessions] = useState<ShiftSession[] | null>(null);
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState<string>("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "pending" | "approved">("all");
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyShiftFilter, setHistoryShiftFilter] = useState<"all" | ShiftType>("all");
@@ -192,6 +203,10 @@ export function ManagerDashboard({
     }
   }, [isManager, user, loadChecklistCache, reconcileChecklist, saveChecklistCache]);
 
+  useEffect(() => {
+    loadChecklistRef.current = loadChecklist;
+  }, [loadChecklist]);
+
   const handleSelectShiftTab = useCallback((tab: ManagerTaskShiftTab) => {
     void flushChecklistBuffer();
     setSelectedTaskShiftTab(tab);
@@ -206,6 +221,9 @@ export function ManagerDashboard({
       if (isManual) setIsLoadingDb(true);
       const res = await getManagerShiftSessionsAction();
       if (res.success && res.sessions) {
+        if (res.hasAssistantLoggedInToday !== undefined) {
+          setHasAssistantLoggedInToday(res.hasAssistantLoggedInToday);
+        }
         const mappedSessions: ShiftSession[] = res.sessions.map((s) => ({
           id: s.id,
           userId: s.userId,
@@ -243,7 +261,7 @@ export function ManagerDashboard({
     } finally {
       if (isManual) setIsLoadingDb(false);
     }
-  }, [setIsLoadingDb, setSessions, setApprovals]);
+  }, [setIsLoadingDb, setSessions, setApprovals, setHasAssistantLoggedInToday]);
 
   // Load history sessions
   const loadHistory = useCallback(async () => {
@@ -281,6 +299,46 @@ export function ManagerDashboard({
     }
   }, [setIsLoadingHistory, setHistorySessions]);
 
+  // Fetch specific history date (for Manager Audit)
+  const fetchSpecificHistoryDate = useCallback(async (dateStr: string) => {
+    if (!dateStr) {
+      setSpecificDaySessions(null);
+      return;
+    }
+    try {
+      setIsLoadingHistory(true);
+      const res = await getHistoryShiftSessionsAction(14, dateStr);
+      if (res.success && res.sessions) {
+        const mapped: ShiftSession[] = res.sessions.map((s) => ({
+          id: s.id,
+          userId: s.userId,
+          userName: s.userName,
+          userPosition: s.userPosition,
+          taskRole: s.taskRole,
+          shift: s.shift,
+          startedAt: s.startedAt,
+          completedAt: s.completedAt,
+          items: s.items.map((it) => ({
+            id: it.id,
+            label: it.label,
+            category: it.category,
+            completedAt: it.completedAt,
+            taskWorkId: it.taskWorkId,
+            isLate: it.isLate,
+            comment: it.comment,
+          })),
+          notified: true,
+          branchName: s.branchName,
+        }));
+        setSpecificDaySessions(mapped);
+      }
+    } catch (err) {
+      console.error("Failed to load specific history date:", err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [setIsLoadingHistory, setSpecificDaySessions]);
+
   // Initial and recurring fetch
   useEffect(() => {
     void loadChecklist(myChecklistShift);
@@ -312,7 +370,9 @@ export function ManagerDashboard({
       await Promise.all([
         loadChecklist(myChecklistShift, false),
         loadDbSessions(true),
-        activeTab === "history" ? loadHistory() : Promise.resolve(),
+        activeTab === "history"
+          ? (selectedHistoryDate ? fetchSpecificHistoryDate(selectedHistoryDate) : loadHistory())
+          : Promise.resolve(),
       ]);
       setNavbarLastRefreshedAt(new Date());
       setNavbarLastRefreshType("cache");
@@ -322,7 +382,7 @@ export function ManagerDashboard({
     } finally {
       setIsNavbarRefreshing(false);
     }
-  }, [flushChecklistBuffer, loadChecklist, myChecklistShift, loadDbSessions, activeTab, loadHistory]);
+  }, [flushChecklistBuffer, loadChecklist, myChecklistShift, loadDbSessions, activeTab, selectedHistoryDate, fetchSpecificHistoryDate, loadHistory]);
 
   const handleNavbarRefreshFromDb = useCallback(async () => {
     try {
@@ -335,7 +395,9 @@ export function ManagerDashboard({
       await Promise.all([
         loadChecklist(myChecklistShift, false),
         loadDbSessions(true),
-        activeTab === "history" ? loadHistory() : Promise.resolve(),
+        activeTab === "history"
+          ? (selectedHistoryDate ? fetchSpecificHistoryDate(selectedHistoryDate) : loadHistory())
+          : Promise.resolve(),
       ]);
       setNavbarLastRefreshedAt(new Date());
       setNavbarLastRefreshType("db");
@@ -345,7 +407,25 @@ export function ManagerDashboard({
     } finally {
       setIsNavbarDbRefreshing(false);
     }
-  }, [flushChecklistBuffer, loadChecklist, myChecklistShift, loadDbSessions, activeTab, loadHistory]);
+  }, [flushChecklistBuffer, loadChecklist, myChecklistShift, loadDbSessions, activeTab, selectedHistoryDate, fetchSpecificHistoryDate, loadHistory]);
+
+  const handleDateSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSelectedHistoryDate(val);
+    void fetchSpecificHistoryDate(val);
+  };
+
+  const handleQuickDateSelect = (dateStr: string) => {
+    setSelectedHistoryDate(dateStr);
+    void fetchSpecificHistoryDate(dateStr);
+  };
+
+  const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const yesterdayIso = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
+  }, []);
 
   // Toggle item in task work with buffer & collective batch sync
   async function executeToggleItem(itemId: string, willBeDone: boolean, comment?: string) {
@@ -500,6 +580,16 @@ export function ManagerDashboard({
     return !app?.managerApproved;
   }).length;
 
+  // Executive audit metrics for Manager
+  const completedSessions = sessions.filter((s) => s.completedAt);
+  const totalChecklistItems = sessions.reduce((acc, s) => acc + s.items.length, 0);
+  const completedChecklistItems = sessions.reduce(
+    (acc, s) => acc + s.items.filter((i) => i.completedAt).length,
+    0
+  );
+  const complianceRate =
+    totalChecklistItems > 0 ? Math.round((completedChecklistItems / totalChecklistItems) * 100) : 100;
+
   return (
     <div className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] pb-20 font-sans">
       {/* ─── Top Brand Navigation Bar ────────────────────────────────────────── */}
@@ -531,18 +621,6 @@ export function ManagerDashboard({
               <HeartPulse size={16} className="text-rose-500 shrink-0" />
               <span className="hidden sm:inline">การลา & สถานะพนักงาน</span>
             </Link>
-
-            {!isAssistant && onSwitchToExecutiveView && (
-              <button
-                type="button"
-                onClick={onSwitchToExecutiveView}
-                className="text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-border)] px-2.5 py-1.5 rounded-xl transition-colors inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
-                title="สลับไปยังแดชบอร์ดผู้บริหาร (Executive Audit View)"
-              >
-                <span className="hidden sm:inline">มุมมองผู้บริหาร ↗</span>
-                <span className="sm:hidden">ผู้บริหาร ↗</span>
-              </button>
-            )}
 
             <ThemeToggle />
 
@@ -615,6 +693,143 @@ export function ManagerDashboard({
             />
           </div>
         </header>
+
+        {/* ─── Store Manager Operations & Audit Pulse (Strictly Manager Only) ── */}
+        {isManager && !isAssistant && (
+          <section className="space-y-4 animate-fade-in" aria-label="ภาพรวมการกำกับดูแลสาขาสำหรับผู้จัดการร้าน">
+            {/* Assistant Manager Attendance Alert */}
+            {!hasAssistantLoggedInToday && (
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <AlertCircle size={20} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  <div>
+                    <p className="text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200">
+                      ⚠️ วันนี้ยังไม่มีผู้ช่วยผู้จัดการร้านเข้าสู่ระบบ
+                    </p>
+                    <p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-0.5">
+                      ระบบเปิดให้ผู้จัดการร้านตรวจสอบและอนุมัติกะงานได้โดยตรง (ข้ามขั้นตอนการลงนามของผู้ช่วยฯ เพื่อไม่ให้การส่งมอบกะล่าช้า)
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3 Executive Audit Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+              {/* Card 1: Store Shift Operations */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-xs" aria-hidden="true" />
+                      <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                        กะปฏิบัติงานวันนี้
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                      วันนี้
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl sm:text-3xl font-extrabold font-mono text-[var(--color-text)] tracking-tight">
+                      {sessions.length}
+                    </span>
+                    <span className="text-xs text-[var(--color-text-muted)] font-semibold">
+                      กะงานทั้งหมด
+                    </span>
+                  </div>
+                </div>
+                <div className="pt-2.5 border-t border-[var(--color-border)] flex items-center justify-between">
+                  <p className="text-xs text-[var(--color-text-muted)] font-medium">
+                    {completedSessions.length} กะส่งมอบเรียบร้อยแล้ว
+                  </p>
+                  <span className="text-xs font-mono font-bold text-[var(--color-text)] bg-[var(--color-surface-2)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
+                    {sessions.length > 0 ? Math.round((completedSessions.length / sessions.length) * 100) : 0}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 2: Store Compliance Rate */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs" aria-hidden="true" />
+                      <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                        ความสอดคล้องมาตรฐานสาขา
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      {complianceRate}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-[var(--color-surface-2)] h-2 rounded-full overflow-hidden border border-[var(--color-border)] mt-2">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                      style={{ width: `${complianceRate}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="pt-2.5 border-t border-[var(--color-border)] flex items-center justify-between">
+                  <p className="text-xs text-[var(--color-text-muted)] font-medium">
+                    บันทึกแล้ว {completedChecklistItems} จาก {totalChecklistItems || 1} ข้อเช็คลิสต์
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 3: Direct Approval Action Callout */}
+              <div
+                onClick={() => {
+                  setActiveTab("approvals");
+                  if (pendingApprovalsCount > 0) {
+                    setShiftQueueStatusFilter((prev) => (prev === "pending" ? "all" : "pending"));
+                  }
+                }}
+                className={`rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-3 transition-all cursor-pointer group hover:shadow-md border ${
+                  pendingApprovalsCount > 0
+                    ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800 hover:border-amber-500"
+                    : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-emerald-400"
+                }`}
+                title="คลิกเพื่อไปยังคิวรับรองกะงาน"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${pendingApprovalsCount > 0 ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`} aria-hidden="true" />
+                      <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                        สถานะการลงนามรับรอง
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-200 group-hover:underline flex items-center gap-1">
+                      <span>คิวรับรอง</span>
+                      <span>→</span>
+                    </span>
+                  </div>
+                  <div className="pt-0.5">
+                    {pendingApprovalsCount > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 px-2.5 py-1 rounded-full shadow-2xs">
+                        <AlertCircle size={13} className="text-amber-700 dark:text-amber-400" />
+                        <span>ค้างรับรอง {pendingApprovalsCount} กะ</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 px-2.5 py-1 rounded-full shadow-2xs">
+                        <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
+                        <span>รับรองครบทุกกะ (100%)</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="pt-2.5 border-t border-[var(--color-border)]">
+                  <p className="text-xs text-[var(--color-text-muted)] font-medium">
+                    {pendingApprovalsCount > 0
+                      ? "คลิกเพื่อไปตรวจรับรองกะที่รอดำเนินการทันที"
+                      : "สาขาพร้อมเปิดทำการเต็มมาตรฐาน รับรองครบทุกกะงานแล้ว"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ─── Navigation Tabs ──────────────────────────────────────────────── */}
         <div className="bg-[var(--color-surface-2)] p-1.5 rounded-2xl border border-[var(--color-border)] shadow-2xs">
@@ -1244,81 +1459,270 @@ export function ManagerDashboard({
         {/* ═══════════════════════════════════════════════════════════════════════
             TAB 4: HISTORY & AUDIT LOGS
         ═══════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "history" && (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm space-y-5 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] flex items-center gap-2">
-                  <History size={20} className="text-amber-600 shrink-0" />
-                  <span>ประวัติการตรวจกะย้อนหลัง ({historySessions.length})</span>
-                </h2>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  แสดงข้อมูลบันทึกผลการปฏิบัติงานและการส่งมอบกะย้อนหลัง 14 วัน
-                </p>
-              </div>
+        {activeTab === "history" && (() => {
+          const activeHistorySource = specificDaySessions ?? historySessions;
+          const pendingHistoryCount = activeHistorySource.filter((s) => {
+            const app = approvals[s.id] || {};
+            return !app.managerApproved;
+          }).length;
+          const approvedHistoryCount = activeHistorySource.length - pendingHistoryCount;
 
-              {/* Shift Filter */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="ค้นหาชื่อหรือตำแหน่ง..."
-                  value={historySearch}
-                  onChange={(e) => setHistorySearch(e.target.value)}
-                  className="px-3 py-1.5 text-xs bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
+          const filteredHistory = activeHistorySource.filter((s) => {
+            const matches =
+              s.userName.toLowerCase().includes(historySearch.toLowerCase()) ||
+              (s.userPosition || "").toLowerCase().includes(historySearch.toLowerCase());
+            const shiftMatch = historyShiftFilter === "all" || s.shift === historyShiftFilter;
+            if (!matches || !shiftMatch) return false;
 
-            {isLoadingHistory ? (
-              <div className="py-16 text-center text-[var(--color-text-muted)] text-xs flex flex-col items-center justify-center gap-2">
-                <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                <span>กำลังโหลดประวัติย้อนหลัง...</span>
-              </div>
-            ) : historySessions.length === 0 ? (
-              <div className="py-12 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-2)]/40 p-6">
-                ยังไม่มีข้อมูลประวัติการตรวจกะย้อนหลังในระบบ
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {historySessions
-                  .filter((s) => {
-                    const matches =
-                      s.userName.toLowerCase().includes(historySearch.toLowerCase()) ||
-                      (s.userPosition || "").toLowerCase().includes(historySearch.toLowerCase());
-                    const shiftMatch = historyShiftFilter === "all" || s.shift === historyShiftFilter;
-                    return matches && shiftMatch;
-                  })
-                  .map((sess) => (
-                    <button
-                      key={sess.id}
-                      type="button"
-                      onClick={() => setSelectedSession(sess)}
-                      className="w-full text-left p-3.5 sm:p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)]/50 hover:border-amber-400 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-sm text-[var(--color-text)]">{sess.userName}</span>
-                          {sess.userPosition && <Badge color="muted">{sess.userPosition}</Badge>}
-                          {getShiftBadge(sess.shift)}
-                          <Badge color="muted">
-                            {sess.items.filter((i) => i.completedAt).length}/{sess.items.length} รายการ
-                          </Badge>
-                        </div>
-                        <p className="text-[11px] font-mono text-[var(--color-text-muted)]">
-                          เริ่ม {fmtTime(sess.startedAt)} น. {sess.completedAt ? `→ เสร็จ ${fmtTime(sess.completedAt)} น.` : ""}
-                        </p>
-                      </div>
+            if (isManager && !isAssistant) {
+              const app = approvals[s.id] || {};
+              const isPending = !app.managerApproved;
+              if (historyStatusFilter === "pending") return isPending;
+              if (historyStatusFilter === "approved") return !isPending;
+            }
+            return true;
+          });
 
-                      <span className="text-xs text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1 shrink-0">
-                        <span>ดูผลตรวจ</span>
-                        <ChevronRight size={14} />
+          return (
+            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm space-y-5 animate-fade-in">
+              {/* Header Toolbar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] flex items-center gap-2">
+                    <History size={20} className="text-amber-600 shrink-0" />
+                    <span>
+                      {isManager && !isAssistant
+                        ? "ประวัติการตรวจกะและการตรวจสอบย้อนหลัง (Store Audit Logs)"
+                        : `ประวัติการตรวจกะย้อนหลัง (${historySessions.length})`}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5 flex flex-wrap items-center gap-1.5">
+                    {selectedHistoryDate ? (
+                      <span className="text-amber-800 dark:text-amber-300 font-semibold">
+                        กำลังแสดงข้อมูลประจำวันที่: {fmtDate(selectedHistoryDate)} ({filteredHistory.length} กะ)
                       </span>
-                    </button>
-                  ))}
+                    ) : (
+                      <span>แสดงข้อมูลบันทึกผลการปฏิบัติงานและการส่งมอบกะย้อนหลัง 14 วัน</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Shift & Search Bar */}
+                <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                  <input
+                    type="text"
+                    placeholder="ค้นหาชื่อหรือตำแหน่ง..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    className="px-3 py-1.5 text-xs bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {/* ─── Manager Audit Filter Toolbar (Strictly Manager Only) ───── */}
+              {isManager && !isAssistant && (
+                <div className="space-y-3 bg-[var(--color-surface-2)]/50 p-3 sm:p-4 rounded-xl border border-[var(--color-border)]">
+                  {/* Row 1: Status Filters & Shift Filter Pills */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    {/* Status Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto max-w-full no-scrollbar pb-1 sm:pb-0">
+                      <button
+                        type="button"
+                        onClick={() => setHistoryStatusFilter("all")}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                          historyStatusFilter === "all"
+                            ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
+                            : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
+                        }`}
+                      >
+                        ทั้งหมด ({activeHistorySource.length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setHistoryStatusFilter("pending")}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                          historyStatusFilter === "pending"
+                            ? "bg-amber-400 text-amber-950 font-bold shadow-2xs"
+                            : pendingHistoryCount > 0
+                            ? "bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200"
+                            : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
+                        }`}
+                      >
+                        <span>รอการตรวจรับรอง</span>
+                        {pendingHistoryCount > 0 && (
+                          <span className={`px-1.5 py-0.2 rounded-full text-xs font-extrabold ${
+                            historyStatusFilter === "pending" ? "bg-amber-950 text-amber-200" : "bg-amber-400 text-amber-950"
+                          }`}>
+                            {pendingHistoryCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setHistoryStatusFilter("approved")}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                          historyStatusFilter === "approved"
+                            ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
+                            : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
+                        }`}
+                      >
+                        อนุมัติแล้ว ({approvedHistoryCount})
+                      </button>
+                    </div>
+
+                    {/* Shift Filter Pills */}
+                    <div className="flex items-center gap-1 self-start sm:self-auto overflow-x-auto max-w-full no-scrollbar pb-1 sm:pb-0">
+                      {(["all", "morning", "afternoon", "night"] as const).map((sh) => (
+                        <button
+                          key={sh}
+                          type="button"
+                          onClick={() => setHistoryShiftFilter(sh)}
+                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer shrink-0 ${
+                            historyShiftFilter === sh
+                              ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
+                              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]"
+                          }`}
+                        >
+                          {sh === "all" ? "ทุกกะ" : sh === "morning" ? "กะเช้า" : sh === "afternoon" ? "กะบ่าย" : "กะดึก"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Date Picker & Quick Date Buttons */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--color-border)]/60">
+                    <div className="flex items-center gap-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-2.5 py-1">
+                      <Calendar size={14} className="text-amber-600 shrink-0" />
+                      <span className="text-xs text-[var(--color-text-muted)] font-medium">ระบุวันที่:</span>
+                      <input
+                        type="date"
+                        value={selectedHistoryDate}
+                        onChange={handleDateSelection}
+                        className="bg-transparent text-xs text-[var(--color-text)] focus:outline-none cursor-pointer"
+                      />
+                      {selectedHistoryDate && (
+                        <button
+                          type="button"
+                          onClick={() => handleQuickDateSelect("")}
+                          className="text-xs text-rose-500 hover:text-rose-700 font-bold px-1.5 py-0.5 rounded cursor-pointer"
+                          title="ล้างวันที่เฉพาะเจาะจงและกลับไปแสดงย้อนหลัง 14 วัน"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Quick Date Shortcuts */}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDateSelect(todayIso)}
+                      className={`px-2.5 py-1 text-xs rounded-xl font-semibold border transition-all cursor-pointer ${
+                        selectedHistoryDate === todayIso
+                          ? "bg-amber-400 text-amber-950 border-amber-500 font-bold"
+                          : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      }`}
+                    >
+                      วันนี้
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDateSelect(yesterdayIso)}
+                      className={`px-2.5 py-1 text-xs rounded-xl font-semibold border transition-all cursor-pointer ${
+                        selectedHistoryDate === yesterdayIso
+                          ? "bg-amber-400 text-amber-950 border-amber-500 font-bold"
+                          : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      }`}
+                    >
+                      เมื่อวาน
+                    </button>
+
+                    {selectedHistoryDate && (
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDateSelect("")}
+                        className="px-2.5 py-1 text-xs rounded-xl font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 transition-all cursor-pointer"
+                      >
+                        ย้อนหลัง 14 วันล่าสุด
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* History List Rendering */}
+              {isLoadingHistory ? (
+                <div className="py-16 text-center text-[var(--color-text-muted)] text-xs flex flex-col items-center justify-center gap-2">
+                  <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                  <span>กำลังโหลดประวัติย้อนหลัง...</span>
+                </div>
+              ) : filteredHistory.length === 0 ? (
+                <div className="py-12 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-2)]/40 p-6">
+                  {selectedHistoryDate
+                    ? `ไม่พบข้อมูลประวัติการตรวจกะในวันที่ ${fmtDate(selectedHistoryDate)}`
+                    : "ยังไม่มีข้อมูลประวัติการตรวจกะย้อนหลังในระบบ"}
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {filteredHistory.map((sess) => {
+                    const app = approvals[sess.id] || {};
+                    const isFullyApproved = Boolean(app.managerApproved);
+                    const isAssistantApproved = Boolean(app.assistantApproved);
+
+                    return (
+                      <button
+                        key={sess.id}
+                        type="button"
+                        onClick={() => setSelectedSession(sess)}
+                        className="w-full text-left p-3.5 sm:p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)]/50 hover:border-amber-400 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs"
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-[var(--color-text)]">{sess.userName}</span>
+                            {sess.userPosition && <Badge color="muted">{sess.userPosition}</Badge>}
+                            {getShiftBadge(sess.shift)}
+                            <Badge color="muted">
+                              {sess.items.filter((i) => i.completedAt).length}/{sess.items.length} รายการ
+                            </Badge>
+
+                            {/* Manager audit approval status badge */}
+                            {isManager && !isAssistant && (
+                              isFullyApproved ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-md">
+                                  <CheckCircle2 size={12} className="text-emerald-600" />
+                                  <span>อนุมัติแล้ว</span>
+                                </span>
+                              ) : isAssistantApproved ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 px-2 py-0.5 rounded-md">
+                                  <AlertCircle size={12} className="text-amber-600" />
+                                  <span>รอผู้จัดการรับรอง</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--color-text-muted)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 py-0.5 rounded-md">
+                                  <span>รอดำเนินการรับรอง</span>
+                                </span>
+                              )
+                            )}
+                          </div>
+                          <p className="text-[11px] font-mono text-[var(--color-text-muted)]">
+                            เริ่ม {fmtTime(sess.startedAt)} น. {sess.completedAt ? `→ เสร็จ ${fmtTime(sess.completedAt)} น.` : ""}
+                          </p>
+                        </div>
+
+                        <span className="text-xs text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1 shrink-0">
+                          <span>ดูผลตรวจ</span>
+                          <ChevronRight size={14} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Team Leaderboard Widget */}
         <ErrorBoundary fallbackTitle="ไม่สามารถโหลดข้อมูลอันดับผลงานได้">
@@ -1341,6 +1745,12 @@ export function ManagerDashboard({
         onClose={() => setSelectedSession(null)}
         reviewerId={user.id}
         canReviewIncomplete={isManager}
+      />
+
+      {/* Local notification on DB cache check verification */}
+      <DbSyncNotification
+        notification={dbSyncNotification}
+        onClose={clearDbSyncNotification}
       />
     </div>
   );

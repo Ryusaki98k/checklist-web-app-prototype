@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { ChecklistItem } from "../types";
 import { batchToggleTaskWorksAction } from "../actions/checklist";
 import { secureGetItem, secureSetItem, secureRemoveItem } from "./crypto";
@@ -175,6 +175,10 @@ export class TaskChecklistBufferController {
   private debounceMs: number;
   private graceLockMs: number;
 
+  // Track if changes were flushed to DB and awaiting verification from the next DB cache check
+  private awaitingDbCheckConfirmation = false;
+  private lastFlushedCount = 0;
+
   private onBatchSuccess?: (
     results: Array<{
       taskId?: string;
@@ -184,6 +188,11 @@ export class TaskChecklistBufferController {
     }>
   ) => void;
   private onBatchError?: (error: string) => void;
+  private onDbVerified?: (info: {
+    count: number;
+    timestamp: number;
+    message: string;
+  }) => void;
 
   constructor(options?: {
     debounceMs?: number;
@@ -197,11 +206,17 @@ export class TaskChecklistBufferController {
       }>
     ) => void;
     onBatchError?: (error: string) => void;
+    onDbVerified?: (info: {
+      count: number;
+      timestamp: number;
+      message: string;
+    }) => void;
   }) {
     this.debounceMs = options?.debounceMs ?? 400;
     this.graceLockMs = options?.graceLockMs ?? 6000;
     this.onBatchSuccess = options?.onBatchSuccess;
     this.onBatchError = options?.onBatchError;
+    this.onDbVerified = options?.onDbVerified;
   }
 
   public getPendingMap(): Map<string, TaskBufferToggle> {
@@ -290,6 +305,10 @@ export class TaskChecklistBufferController {
           });
         }
 
+        // Mark that submitted changes are awaiting confirmation in the next DB cache check
+        this.awaitingDbCheckConfirmation = true;
+        this.lastFlushedCount = itemsToFlush.length;
+
         if (this.onBatchSuccess && res.results) {
           this.onBatchSuccess(res.results);
         }
@@ -323,9 +342,40 @@ export class TaskChecklistBufferController {
       }>
     ) => void;
     onBatchError?: (error: string) => void;
+    onDbVerified?: (info: {
+      count: number;
+      timestamp: number;
+      message: string;
+    }) => void;
   }): void {
     this.onBatchSuccess = callbacks.onBatchSuccess;
     this.onBatchError = callbacks.onBatchError;
+    this.onDbVerified = callbacks.onDbVerified;
+  }
+
+  public markAwaitingDbCheck(count = 1): void {
+    this.awaitingDbCheckConfirmation = true;
+    this.lastFlushedCount = count;
+  }
+
+  public verifyDbCheck(serverItems: ChecklistItem[]): boolean {
+    if (!this.awaitingDbCheckConfirmation) {
+      return false;
+    }
+    if (Array.isArray(serverItems) && serverItems.length > 0) {
+      this.awaitingDbCheckConfirmation = false;
+      const count = this.lastFlushedCount;
+      const info = {
+        count,
+        timestamp: Date.now(),
+        message: "อัปเดตข้อมูลลงฐานข้อมูลเรียบร้อยแล้ว ✓",
+      };
+      if (this.onDbVerified) {
+        this.onDbVerified(info);
+      }
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -357,6 +407,11 @@ export function useTaskChecklistBuffer(options: {
     }>
   ) => void;
   onBatchError?: (error: string) => void;
+  onDbVerified?: (info: {
+    count: number;
+    timestamp: number;
+    message: string;
+  }) => void;
   debounceMs?: number;
   graceLockMs?: number;
 }) {
@@ -368,18 +423,66 @@ export function useTaskChecklistBuffer(options: {
       })
   );
 
+  const [dbSyncNotification, setDbSyncNotification] = useState<{
+    message: string;
+    timestamp: number;
+    count?: number;
+  } | null>(null);
+
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDbVerified = useCallback(
+    (info: { count: number; timestamp: number; message: string }) => {
+      setDbSyncNotification({
+        message: info.message,
+        timestamp: info.timestamp,
+        count: info.count,
+      });
+
+      if (options.onDbVerified) {
+        options.onDbVerified(info);
+      }
+
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+      toastTimerRef.current = setTimeout(() => {
+        setDbSyncNotification(null);
+      }, 3500);
+    },
+    [options]
+  );
+
   useEffect(() => {
     controller.setCallbacks({
       onBatchSuccess: options.onBatchSuccess,
       onBatchError: options.onBatchError,
+      onDbVerified: handleDbVerified,
     });
-  }, [controller, options.onBatchSuccess, options.onBatchError]);
+  }, [controller, options.onBatchSuccess, options.onBatchError, handleDbVerified]);
 
   useEffect(() => {
     return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
       controller.destroy();
     };
   }, [controller]);
+
+  const clearDbSyncNotification = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setDbSyncNotification(null);
+  }, []);
+
+  const markAwaitingDbCheck = useCallback(
+    (count = 1) => {
+      controller.markAwaitingDbCheck(count);
+    },
+    [controller]
+  );
 
   const enqueueToggle = useCallback(
     (toggle: {
@@ -400,6 +503,9 @@ export function useTaskChecklistBuffer(options: {
 
   const reconcile = useCallback(
     (serverItems: ChecklistItem[], currentLocalItems: ChecklistItem[]) => {
+      // Confirm that database cache check verified recent submitted changes
+      controller.verifyDbCheck(serverItems);
+
       return reconcileTasksWithBuffer(
         serverItems,
         currentLocalItems,
@@ -437,5 +543,8 @@ export function useTaskChecklistBuffer(options: {
     isItemPending,
     saveToCache,
     loadFromCache,
+    dbSyncNotification,
+    clearDbSyncNotification,
+    markAwaitingDbCheck,
   };
 }

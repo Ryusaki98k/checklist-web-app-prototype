@@ -417,6 +417,11 @@ export interface IRefrigeratorService {
     refrigeratorId: string;
     targetBranchId: string;
   }): Promise<{ success: boolean; error?: string }>;
+  batchToggleRefrigeratorDisableCheck(params: {
+    refrigeratorIds: string[];
+    disableCheck: boolean;
+    branchId?: string;
+  }): Promise<{ success: boolean; count?: number; error?: string }>;
   ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }>;
   getBranchRefrigeratorTasks(params: {
     userId?: string;

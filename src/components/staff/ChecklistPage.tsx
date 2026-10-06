@@ -24,6 +24,7 @@ import { BranchRefrigeratorChecklist } from "./BranchRefrigeratorChecklist";
 import { LateReasonModal } from "../common/LateReasonModal";
 import { getOrCreateShiftSessionAction, validateShiftCompletionAction } from "../../actions/checklist";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
+import { DbSyncNotification } from "../common/DbSyncNotification";
 
 function getCategoryColor(category?: string) {
   if (!category) {
@@ -134,12 +135,15 @@ export function ChecklistPage({
   });
 
   // Task Checklist Buffer & Cache for collective DB sync
+  const syncTasksRef = useRef<(() => Promise<void>) | null>(null);
   const checklistCacheKey = `staff_${session.userId}_${session.shift}`;
   const {
     enqueueToggle,
     flush: flushChecklistBuffer,
     reconcile: reconcileChecklist,
     saveToCache: saveChecklistCache,
+    dbSyncNotification,
+    clearDbSyncNotification,
   } = useTaskChecklistBuffer({
     cacheKey: checklistCacheKey,
     onBatchSuccess: (results) => {
@@ -152,6 +156,10 @@ export function ChecklistPage({
           return item;
         })
       );
+      // Trigger the next DB cache checking to verify and notify user
+      setTimeout(() => {
+        void syncTasksRef.current?.();
+      }, 1000);
     },
     onBatchError: (err) => {
       console.error("Batch checklist error in staff checklist:", err);
@@ -203,6 +211,8 @@ export function ChecklistPage({
         console.warn("Live task sync error in ChecklistPage:", err);
       }
     }
+
+    syncTasksRef.current = syncTasksFromDb;
 
     const handleDateRollover = () => {
       if (isMounted) syncTasksFromDb();
@@ -1055,6 +1065,12 @@ export function ChecklistPage({
         deadlineText={lateModalTarget?.deadlineText}
         onSubmit={handleLateReasonSubmit}
         onCancel={() => setLateModalTarget(null)}
+      />
+
+      {/* Local notification on DB cache check verification */}
+      <DbSyncNotification
+        notification={dbSyncNotification}
+        onClose={clearDbSyncNotification}
       />
     </div>
   );

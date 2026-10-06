@@ -21,6 +21,7 @@ import {
   updateRefrigeratorAction,
   deleteRefrigeratorAction,
   transferRefrigeratorAction,
+  batchToggleRefrigeratorDisableCheckAction,
 } from "../../actions/refrigerator";
 
 interface AdminManageRefrigeratorsModalProps {
@@ -38,13 +39,6 @@ interface AdminManageRefrigeratorsModalProps {
   onClose: () => void;
   onUpdated?: () => void;
 }
-
-const PRESETS = [
-  { label: "❄️ ตู้แช่เย็นเครื่องดื่ม / อาหาร", name: "ตู้แช่เย็น ", min: 0, max: 4 },
-  { label: "🧊 ตู้แช่แข็งเนื้อสัตว์ / ไอศกรีม", name: "ตู้แช่แข็ง ", min: -22, max: -18 },
-  { label: "🍰 ตู้โชว์เค้กและเบเกอรี่", name: "ตู้โชว์เค้ก ", min: 2, max: 6 },
-  { label: "🥬 ตู้แช่ผักและผลไม้สด", name: "ตู้แช่ผักผลไม้ ", min: 4, max: 8 },
-];
 
 export function AdminManageRefrigeratorsModal({
   isOpen,
@@ -84,6 +78,10 @@ export function AdminManageRefrigeratorsModal({
   const [selectedTargetBranchId, setSelectedTargetBranchId] = useState<string>("");
   const [isTransferring, setIsTransferring] = useState(false);
 
+  // Batch Action State
+  const [selectedRefIds, setSelectedRefIds] = useState<Set<string>>(new Set());
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
@@ -120,6 +118,7 @@ export function AdminManageRefrigeratorsModal({
       setEditingId(null);
       setDeletingRef(null);
       setTransferringRef(null);
+      setSelectedRefIds(new Set());
     }
   }, [isOpen, branch, loadRefrigerators]);
 
@@ -296,6 +295,54 @@ export function AdminManageRefrigeratorsModal({
     }
   }
 
+  // Batch Action Handlers
+  const handleToggleSelectRef = (id: string) => {
+    setSelectedRefIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedRefIds.size === refrigerators.length) {
+      setSelectedRefIds(new Set());
+    } else {
+      setSelectedRefIds(new Set(refrigerators.map((r) => r.id)));
+    }
+  };
+
+  const handleBatchToggleDisableCheck = async (disableCheck: boolean) => {
+    if (selectedRefIds.size === 0 || !branch?.id) return;
+    try {
+      setIsBatchUpdating(true);
+      const ids = Array.from(selectedRefIds);
+      const res = await batchToggleRefrigeratorDisableCheckAction({
+        refrigeratorIds: ids,
+        disableCheck,
+        branchId: branch.id,
+      });
+
+      if (res.success) {
+        showToast(
+          disableCheck
+            ? `ปิดตรวจชั่วคราว ${ids.length} ตู้เรียบร้อยแล้ว`
+            : `เปิดตรวจประจำวัน ${ids.length} ตู้เรียบร้อยแล้ว`
+        );
+        setSelectedRefIds(new Set());
+        await loadRefrigerators(true);
+        onUpdated?.();
+      } else {
+        showToast(res.error || "ไม่สามารถเปลี่ยนสถานะแบบกลุ่มได้");
+      }
+    } catch {
+      showToast("เกิดข้อผิดพลาดในการเปลี่ยนสถานะแบบกลุ่ม");
+    } finally {
+      setIsBatchUpdating(false);
+    }
+  };
+
   if (!isOpen || !branch) return null;
 
   const totalCount = refrigerators.length;
@@ -351,6 +398,17 @@ export function AdminManageRefrigeratorsModal({
           {/* Summary Strip & Actions Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface-2)]/70 p-3.5 rounded-2xl border border-[var(--color-border)]">
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap text-xs">
+              {totalCount > 0 && (
+                <label className="inline-flex items-center gap-1.5 cursor-pointer font-bold text-[var(--color-text)] select-none bg-[var(--color-surface)] px-2.5 py-1 rounded-xl border border-[var(--color-border)] hover:border-amber-400 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={totalCount > 0 && selectedRefIds.size === totalCount}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer"
+                  />
+                  <span>เลือกทั้งหมด</span>
+                </label>
+              )}
               <span className="font-bold text-[var(--color-text)]">
                 ตู้แช่ทั้งหมด: <span className="font-mono text-sm">{totalCount}</span> ตู้
               </span>
@@ -400,6 +458,46 @@ export function AdminManageRefrigeratorsModal({
             </div>
           </div>
 
+          {/* Batch Action Bar (When 1 or more refrigerators selected) */}
+          {selectedRefIds.size > 0 && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-[var(--color-surface-2)] border-2 border-amber-500/40 p-3 sm:p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md animate-fade-in">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+                <span className="font-extrabold text-[var(--color-text)]">
+                  จัดการแบบกลุ่ม (Batch Action): เลือกอยู่ <span className="font-mono text-sm underline text-amber-900 dark:text-amber-200 font-black">{selectedRefIds.size}</span> จาก {totalCount} ตู้
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  disabled={isBatchUpdating}
+                  onClick={() => void handleBatchToggleDisableCheck(true)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl bg-amber-500/20 text-amber-900 dark:text-amber-200 hover:bg-amber-500/30 border border-amber-500/40 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  title="ปิดการตรวจประจำวันชั่วคราวสำหรับตู้ที่เลือกทั้งหมด"
+                >
+                  <span>✕ ปิดตรวจที่เลือก ({selectedRefIds.size})</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isBatchUpdating}
+                  onClick={() => void handleBatchToggleDisableCheck(false)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
+                  title="เปิดการตรวจประจำวันสำหรับตู้ที่เลือกทั้งหมด"
+                >
+                  <span>✓ เปิดตรวจที่เลือก ({selectedRefIds.size})</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isBatchUpdating}
+                  onClick={() => setSelectedRefIds(new Set())}
+                  className="px-2.5 py-1.5 text-xs font-semibold rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] border border-transparent hover:border-[var(--color-border)] transition-all cursor-pointer"
+                >
+                  ยกเลิกเลือก
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Add New Refrigerator Form (Collapsible) */}
           {isAddingNew && (
             <div className="bg-gradient-to-br from-amber-500/5 via-[var(--color-surface-2)] to-[var(--color-surface)] border-2 border-amber-500/30 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4 animate-fade-in">
@@ -411,35 +509,6 @@ export function AdminManageRefrigeratorsModal({
                   <h4 className="text-sm font-bold text-[var(--color-text)]">
                     เพิ่มตู้แช่ใหม่ประจำสาขา {branch.name}
                   </h4>
-                </div>
-                <span className="text-[11px] text-[var(--color-text-muted)]">
-                  คลิก Preset เพื่อเติมข้อมูลด่วนได้
-                </span>
-              </div>
-
-              {/* Quick Preset Buttons */}
-              <div>
-                <p className="text-[11px] font-semibold text-[var(--color-text-muted)] mb-1.5">
-                  รูปแบบตู้แช่มาตรฐาน (Quick Presets):
-                </p>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {PRESETS.map((p, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        const existingMatching = refrigerators.filter((r) =>
-                          r.name.startsWith(p.name)
-                        ).length;
-                        setNewName(`${p.name}${existingMatching + 1}`);
-                        setNewMinTemp(p.min);
-                        setNewMaxTemp(p.max);
-                      }}
-                      className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-[var(--color-surface)] hover:bg-amber-500/20 text-[var(--color-text)] border border-[var(--color-border)] hover:border-amber-400 transition-all cursor-pointer"
-                    >
-                      {p.label} ({p.min}°C ~ {p.max}°C)
-                    </button>
-                  ))}
                 </div>
               </div>
 
@@ -622,6 +691,18 @@ export function AdminManageRefrigeratorsModal({
                               ปิดตรวจชั่วคราว (Disable Daily Check)
                             </span>
                           </label>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-[var(--color-border)]">
+                          <button
+                            type="button"
+                            onClick={() => setDeletingRef(ref)}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+                            title="ลบตู้แช่นี้ออกจากสาขา"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>ลบตู้แช่นี้</span>
+                          </button>
 
                           <div className="flex items-center gap-2 self-end sm:self-auto">
                             <button
@@ -650,12 +731,25 @@ export function AdminManageRefrigeratorsModal({
                   <div
                     key={ref.id}
                     className={`p-3.5 sm:p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs ${
-                      isDisabled
+                      selectedRefIds.has(ref.id)
+                        ? "bg-amber-500/10 border-amber-500/60 ring-2 ring-amber-500/20"
+                        : isDisabled
                         ? "bg-[var(--color-surface-2)]/50 border-[var(--color-border)] opacity-85"
                         : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-amber-400"
                     }`}
                   >
                     <div className="flex items-start sm:items-center gap-3">
+                      {/* Multi-Select Checkbox */}
+                      <div className="pt-1 sm:pt-0 shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedRefIds.has(ref.id)}
+                          onChange={() => handleToggleSelectRef(ref.id)}
+                          aria-label={`เลือกตู้แช่ ${ref.name}`}
+                          className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer"
+                        />
+                      </div>
+
                       <div
                         className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-base shrink-0 shadow-2xs ${
                           isDisabled
@@ -739,16 +833,6 @@ export function AdminManageRefrigeratorsModal({
                         aria-label={`แก้ไขตู้แช่ ${ref.name}`}
                       >
                         <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setDeletingRef(ref)}
-                        className="p-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 transition-all cursor-pointer"
-                        title="ลบตู้แช่นี้ออกจากสาขา"
-                        aria-label={`ลบตู้แช่ ${ref.name}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

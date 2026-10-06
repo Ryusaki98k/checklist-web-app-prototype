@@ -69,6 +69,15 @@ export async function transferRefrigeratorAction(params: {
   return await services.refrigerator.transferRefrigerator(params);
 }
 
+export async function batchToggleRefrigeratorDisableCheckAction(params: {
+  refrigeratorIds: string[];
+  disableCheck: boolean;
+  branchId?: string;
+}): Promise<{ success: boolean; count?: number; error?: string }> {
+  const services = getServices();
+  return await services.refrigerator.batchToggleRefrigeratorDisableCheck(params);
+}
+
 export async function getBranchRefrigeratorTasksAction(params: {
   userId?: string;
   branchId?: string;
