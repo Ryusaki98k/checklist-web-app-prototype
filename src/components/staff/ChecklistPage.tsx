@@ -22,7 +22,8 @@ import {
 } from "lucide-react";
 import { BranchRefrigeratorChecklist } from "./BranchRefrigeratorChecklist";
 import { LateReasonModal } from "../common/LateReasonModal";
-import { getOrCreateShiftSessionAction, validateShiftCompletionAction, toggleTaskWorkAction } from "../../actions/checklist";
+import { getOrCreateShiftSessionAction, validateShiftCompletionAction } from "../../actions/checklist";
+import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 
 function getCategoryColor(category?: string) {
   if (!category) {
@@ -132,8 +133,30 @@ export function ChecklistPage({
     onUpdateRef.current = onUpdate;
   });
 
-  // Track in-flight or recently toggled task IDs to prevent background DB sync from reverting them
-  const pendingTogglesRef = useRef<Map<string, { completed: boolean; comment: string | null; timestamp: number }>>(new Map());
+  // Task Checklist Buffer & Cache for collective DB sync
+  const checklistCacheKey = `staff_${session.userId}_${session.shift}`;
+  const {
+    enqueueToggle,
+    flush: flushChecklistBuffer,
+    reconcile: reconcileChecklist,
+    saveToCache: saveChecklistCache,
+  } = useTaskChecklistBuffer({
+    cacheKey: checklistCacheKey,
+    onBatchSuccess: (results) => {
+      setItems((prev) =>
+        prev.map((item) => {
+          const match = results.find((r) => r.taskId === item.id);
+          if (match && match.taskWorkId && match.taskWorkId !== item.taskWorkId) {
+            return { ...item, taskWorkId: match.taskWorkId };
+          }
+          return item;
+        })
+      );
+    },
+    onBatchError: (err) => {
+      console.error("Batch checklist error in staff checklist:", err);
+    },
+  });
 
   // Background sync every 8 seconds to reflect tasks added/disabled by manager live
   useEffect(() => {
@@ -166,36 +189,14 @@ export function ChecklistPage({
             return;
           }
 
-          // Build a safe signature that compares meaningful completion state without millisecond string noise
-          const makeSig = (list: ChecklistItem[]) =>
-            list.map((i) => `${i.id}:${i.label}:${Boolean(i.completedAt)}:${i.comment || ""}:${i.taskWorkId || ""}`).join("|");
-
-          const curSig = makeSig(curItems);
-          const freshSig = makeSig(freshItems);
-
-          if (curSig !== freshSig) {
-            const now = Date.now();
-            const merged = freshItems.map((fItem) => {
-              const localMatch = curItems.find((i) => i.id === fItem.id);
-              const pending = pendingTogglesRef.current.get(fItem.id);
-
-              // 1. If this item has a pending toggle within the lock window (e.g. 8 seconds), preserve local state!
-              if (pending && (now - pending.timestamp < 8000)) {
-                return localMatch || fItem;
-              }
-
-              // 2. Otherwise adopt DB update (handles external manager toggles, shared store closing task updates, etc.)
-              return fItem;
+          const { mergedItems, hasExternalChanges } = reconcileChecklist(freshItems, curItems);
+          if (hasExternalChanges || curItems.length !== freshItems.length) {
+            setItems(mergedItems);
+            saveChecklistCache(mergedItems, currentSess.id);
+            onUpdateRef.current({
+              ...currentSess,
+              items: mergedItems,
             });
-
-            const mergedSig = makeSig(merged);
-            if (mergedSig !== curSig) {
-              setItems(merged);
-              onUpdateRef.current({
-                ...currentSess,
-                items: merged,
-              });
-            }
           }
         }
       } catch (err) {
@@ -216,7 +217,7 @@ export function ChecklistPage({
       window.removeEventListener("app:date-rollover", handleDateRollover);
       window.removeEventListener("focus", handleDateRollover);
     };
-  }, []);
+  }, [reconcileChecklist, saveChecklistCache]);
 
   const total = items.length;
   const done = items.filter((i) => i.completedAt).length;
@@ -238,21 +239,13 @@ export function ChecklistPage({
   } | null>(null);
 
   const executeToggle = useCallback(
-    async (targetItem: ChecklistItem, willBeDone: boolean, comment?: string | null, isLate: boolean = false) => {
+    (targetItem: ChecklistItem, willBeDone: boolean, comment?: string | null, isLate: boolean = false) => {
       const itemId = targetItem.id;
       const nowIso = new Date().toISOString();
       const targetComment = willBeDone ? (comment ?? targetItem.comment ?? null) : null;
       const targetIsLate = willBeDone ? isLate : false;
-      const now = Date.now();
 
-      // 1. Lock in pending toggles with current timestamp
-      pendingTogglesRef.current.set(itemId, {
-        completed: willBeDone,
-        comment: targetComment,
-        timestamp: now,
-      });
-
-      // 2. Optimistic local UI update
+      // 1. Optimistic local UI update + save to cache
       const updated = items.map((item) =>
         item.id === itemId
           ? {
@@ -264,6 +257,8 @@ export function ChecklistPage({
           : item
       );
       setItems(updated);
+      saveChecklistCache(updated, session.id);
+
       if (shiftCompleted) {
         setShiftCompleted(false);
       }
@@ -275,46 +270,16 @@ export function ChecklistPage({
       }
       onUpdate(updatedSession);
 
-      // 3. Direct DB persistence online
-      try {
-        const res = await toggleTaskWorkAction({
-          shiftSessionId: session.id,
-          taskId: itemId,
-          taskWorkId: targetItem.taskWorkId,
-          completed: willBeDone,
-          comment: willBeDone ? (targetComment || undefined) : undefined,
-        });
-
-        if (res.success) {
-          if (res.taskWorkId && res.taskWorkId !== targetItem.taskWorkId) {
-            setItems((prev) =>
-              prev.map((i) => (i.id === itemId ? { ...i, taskWorkId: res.taskWorkId } : i))
-            );
-          }
-        } else {
-          console.error("toggleTaskWorkAction error from DB:", res.error);
-          // Revert local state if DB explicitly failed
-          pendingTogglesRef.current.delete(itemId);
-          setItems((prev) =>
-            prev.map((i) => (i.id === itemId ? targetItem : i))
-          );
-          alert(`บันทึกสถานะงานไม่สำเร็จ: ${res.error || "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล"}`);
-        }
-      } catch (err) {
-        console.error("Failed to execute toggle in DB:", err);
-        pendingTogglesRef.current.delete(itemId);
-        setItems((prev) =>
-          prev.map((i) => (i.id === itemId ? targetItem : i))
-        );
-        alert("ไม่สามารถบันทึกสถานะงานไปยังฐานข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
-      } finally {
-        // Retain lock for a safe buffer (5s) so that background polling doesn't overwrite with stale read
-        setTimeout(() => {
-          pendingTogglesRef.current.delete(itemId);
-        }, 5000);
-      }
+      // 2. Buffer collective update debounced to database
+      enqueueToggle({
+        shiftSessionId: session.id,
+        taskId: itemId,
+        taskWorkId: targetItem.taskWorkId,
+        completed: willBeDone,
+        comment: willBeDone ? (targetComment || undefined) : undefined,
+      });
     },
-    [items, onUpdate, session, shiftCompleted]
+    [enqueueToggle, items, onUpdate, saveChecklistCache, session, shiftCompleted]
   );
 
   function handleLateReasonSubmit(reason: string) {
@@ -381,6 +346,8 @@ export function ChecklistPage({
     if (shiftCompleted || isValidatingDb) return;
     setIsValidatingDb(true);
     try {
+      // Flush buffered toggles to DB before validating
+      await flushChecklistBuffer();
       // Validate live directly from the database online
       const res = await validateShiftCompletionAction(session.id);
       if (res.success) {

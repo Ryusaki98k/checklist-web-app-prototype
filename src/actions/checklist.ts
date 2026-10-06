@@ -24,6 +24,26 @@ export async function toggleTaskWorkAction(params: {
   return await services.checklist.toggleTaskWork(params);
 }
 
+export async function batchToggleTaskWorksAction(items: Array<{
+  taskWorkId?: string;
+  shiftSessionId?: string;
+  taskId?: string;
+  completed: boolean;
+  comment?: string;
+}>): Promise<{
+  success: boolean;
+  results?: Array<{
+    taskId?: string;
+    taskWorkId?: string;
+    completed: boolean;
+    completedAt?: string | null;
+  }>;
+  error?: string;
+}> {
+  const services = getServices();
+  return await services.checklist.batchToggleTaskWorks(items);
+}
+
 export async function validateShiftCompletionAction(shiftSessionId: string): Promise<{
   success: boolean;
   isComplete: boolean;

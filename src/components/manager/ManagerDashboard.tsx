@@ -18,6 +18,7 @@ import { NotificationCenter } from "../common/NotificationCenter";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
+import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 import { LeaderboardWidget } from "./LeaderboardWidget";
 import { ErrorBoundary } from "../common/ErrorBoundary";
 import { LateReasonModal } from "../common/LateReasonModal";
@@ -100,6 +101,33 @@ export function ManagerDashboard({
     deadlineText?: string;
   } | null>(null);
 
+  // --- Task Checklist Buffer & Cache ---
+  const checklistCacheKey = `mgr_${user.id}_${myChecklistShift}`;
+  const {
+    enqueueToggle,
+    flush: flushChecklistBuffer,
+    reconcile: reconcileChecklist,
+    saveToCache: saveChecklistCache,
+    loadFromCache: loadChecklistCache,
+  } = useTaskChecklistBuffer({
+    cacheKey: checklistCacheKey,
+    onBatchSuccess: (results) => {
+      setMyChecklistItems((prev) =>
+        prev.map((item) => {
+          const match = results.find((r) => r.taskId === item.id);
+          if (match && match.taskWorkId && match.taskWorkId !== item.taskWorkId) {
+            return { ...item, taskWorkId: match.taskWorkId };
+          }
+          return item;
+        })
+      );
+    },
+    onBatchError: (err) => {
+      console.error("Batch checklist error:", err);
+      showToast("เกิดข้อผิดพลาดในการบันทึกสถานะงาน");
+    },
+  });
+
   // --- Approvals & Live Sessions State ---
   const [sessions, setSessions] = useState<ShiftSession[]>([]);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
@@ -134,16 +162,23 @@ export function ManagerDashboard({
 
       if (res.success && res.session) {
         setAssistantSession(res.session);
+        const fresh = res.session.items || [];
         setMyChecklistItems((prev) => {
-          const fresh = res.session!.items || [];
-          const curSig = prev
-            .map((i) => `${i.id}:${i.completedAt || ""}:${i.completedByName || ""}:${i.comment || ""}`)
-            .join("|");
-          const freshSig = fresh
-            .map((i) => `${i.id}:${i.completedAt || ""}:${i.completedByName || ""}:${i.comment || ""}`)
-            .join("|");
-          if (curSig !== freshSig || prev.length !== fresh.length) {
+          if (prev.length === 0) {
+            const cached = loadChecklistCache();
+            if (cached && cached.length > 0) {
+              const { mergedItems } = reconcileChecklist(fresh, cached);
+              saveChecklistCache(mergedItems, res.session!.id);
+              return mergedItems;
+            }
+            saveChecklistCache(fresh, res.session!.id);
             return fresh;
+          }
+
+          const { mergedItems, hasExternalChanges } = reconcileChecklist(fresh, prev);
+          if (hasExternalChanges || prev.length !== fresh.length) {
+            saveChecklistCache(mergedItems, res.session!.id);
+            return mergedItems;
           }
           return prev;
         });
@@ -153,14 +188,15 @@ export function ManagerDashboard({
     } finally {
       if (!isSilent) setIsLoadingChecklist(false);
     }
-  }, [isManager, user]);
+  }, [isManager, user, loadChecklistCache, reconcileChecklist, saveChecklistCache]);
 
   const handleSelectShiftTab = useCallback((tab: ManagerTaskShiftTab) => {
+    void flushChecklistBuffer();
     setSelectedTaskShiftTab(tab);
     const backendShift: ShiftType = tab;
     setMyChecklistShift(backendShift);
     void loadChecklist(backendShift);
-  }, [loadChecklist]);
+  }, [flushChecklistBuffer, loadChecklist]);
 
   // Load live shift sessions from Supabase DB for approvals
   const loadDbSessions = useCallback(async (isManual = false) => {
@@ -205,7 +241,7 @@ export function ManagerDashboard({
     } finally {
       if (isManual) setIsLoadingDb(false);
     }
-  }, []);
+  }, [setIsLoadingDb, setSessions, setApprovals]);
 
   // Load history sessions
   const loadHistory = useCallback(async () => {
@@ -241,7 +277,7 @@ export function ManagerDashboard({
     } finally {
       setIsLoadingHistory(false);
     }
-  }, []);
+  }, [setIsLoadingHistory, setHistorySessions]);
 
   // Initial and recurring fetch
   useEffect(() => {
@@ -267,6 +303,7 @@ export function ManagerDashboard({
   const handleNavbarRefresh = useCallback(async () => {
     try {
       setIsNavbarRefreshing(true);
+      await flushChecklistBuffer();
       await Promise.all([
         loadChecklist(myChecklistShift, false),
         loadDbSessions(true),
@@ -280,11 +317,12 @@ export function ManagerDashboard({
     } finally {
       setIsNavbarRefreshing(false);
     }
-  }, [loadChecklist, myChecklistShift, loadDbSessions, activeTab, loadHistory]);
+  }, [flushChecklistBuffer, loadChecklist, myChecklistShift, loadDbSessions, activeTab, loadHistory]);
 
   const handleNavbarRefreshFromDb = useCallback(async () => {
     try {
       setIsNavbarDbRefreshing(true);
+      await flushChecklistBuffer();
       invalidateBranchCache();
       await Promise.all([
         loadChecklist(myChecklistShift, false),
@@ -299,17 +337,17 @@ export function ManagerDashboard({
     } finally {
       setIsNavbarDbRefreshing(false);
     }
-  }, [loadChecklist, myChecklistShift, loadDbSessions, activeTab, loadHistory]);
+  }, [flushChecklistBuffer, loadChecklist, myChecklistShift, loadDbSessions, activeTab, loadHistory]);
 
-  // Toggle item in task work
+  // Toggle item in task work with buffer & collective batch sync
   async function executeToggleItem(itemId: string, willBeDone: boolean, comment?: string) {
     const newCompletedAt = willBeDone ? new Date().toISOString() : null;
     const item = myChecklistItems.find((i) => i.id === itemId);
     const myTitle = user.position || (isManager ? "ผู้จัดการร้าน" : "ผู้ช่วยผู้จัดการร้าน");
 
-    // Optimistic UI update
-    setMyChecklistItems((prev) =>
-      prev.map((i) =>
+    // 1. Optimistic UI update + instant cache
+    setMyChecklistItems((prev) => {
+      const updated = prev.map((i) =>
         i.id === itemId
           ? {
               ...i,
@@ -320,23 +358,19 @@ export function ManagerDashboard({
               isLate: willBeDone ? (comment ? true : i.isLate) : false,
             }
           : i
-      )
-    );
+      );
+      saveChecklistCache(updated, assistantSession?.id);
+      return updated;
+    });
 
-    try {
-      await toggleTaskWorkAction({
-        shiftSessionId: assistantSession?.id,
-        taskId: itemId,
-        taskWorkId: item?.taskWorkId,
-        completed: willBeDone,
-        comment: willBeDone ? (comment || undefined) : undefined,
-      });
-      // Refresh in background
-      void loadChecklist(myChecklistShift, true);
-    } catch (err) {
-      console.error("Failed to toggle task work:", err);
-      showToast("เกิดข้อผิดพลาดในการบันทึกสถานะงาน");
-    }
+    // 2. Buffer collective update debounced to database
+    enqueueToggle({
+      shiftSessionId: assistantSession?.id,
+      taskId: itemId,
+      taskWorkId: item?.taskWorkId,
+      completed: willBeDone,
+      comment: willBeDone ? (comment || undefined) : undefined,
+    });
   }
 
   function handleLateSubmit(reason: string) {

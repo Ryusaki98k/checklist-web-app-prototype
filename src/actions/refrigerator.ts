@@ -14,6 +14,13 @@ export async function getRefrigeratorsAction(
   return await services.refrigerator.getRefrigerators(userId);
 }
 
+export async function getRefrigeratorsByBranchAction(
+  branchId: string
+): Promise<{ success: boolean; data?: RefrigeratorConfig[]; error?: string }> {
+  const services = getServices();
+  return await services.refrigerator.getRefrigeratorsByBranch(branchId);
+}
+
 export async function createRefrigeratorAction(params: {
   userId: string;
   name: string;
@@ -25,6 +32,17 @@ export async function createRefrigeratorAction(params: {
   return await services.refrigerator.createRefrigerator(params);
 }
 
+export async function createBranchRefrigeratorAction(params: {
+  branchId: string;
+  name: string;
+  minTemperature: number;
+  maxTemperature: number;
+  disableCheck?: boolean;
+}): Promise<{ success: boolean; data?: RefrigeratorConfig; error?: string }> {
+  const services = getServices();
+  return await services.refrigerator.createBranchRefrigerator(params);
+}
+
 export async function updateRefrigeratorAction(params: {
   id: string;
   name: string;
@@ -34,6 +52,13 @@ export async function updateRefrigeratorAction(params: {
 }): Promise<{ success: boolean; error?: string }> {
   const services = getServices();
   return await services.refrigerator.updateRefrigerator(params);
+}
+
+export async function deleteRefrigeratorAction(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  const services = getServices();
+  return await services.refrigerator.deleteRefrigerator(id);
 }
 
 export async function getBranchRefrigeratorTasksAction(params: {

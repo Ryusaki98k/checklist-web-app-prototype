@@ -67,6 +67,74 @@ export class RefrigeratorService implements IRefrigeratorService {
     }
   }
 
+  async getRefrigeratorsByBranch(branchId: string): Promise<{ success: boolean; data?: RefrigeratorConfig[]; error?: string }> {
+    try {
+      if (!branchId) {
+        return { success: false, error: "กรุณาระบุรหัสสาขา" };
+      }
+
+      const refs = (await this.db
+        .select()
+        .from(refrigerators)
+        .where(eq(refrigerators.branch_id, branchId))) as Array<{
+        id: string;
+        name: string;
+        min_temperature: number;
+        max_temperature: number;
+        disable_check: boolean;
+      }>;
+
+      refs.sort((a, b) => a.name.localeCompare(b.name, "th", { numeric: true }));
+
+      return { success: true, data: refs.map((r) => ({ ...r, disable_check: !!r.disable_check })) };
+    } catch (err: unknown) {
+      console.error("RefrigeratorService.getRefrigeratorsByBranch error:", err);
+      return { success: false, error: (err as Error)?.message || "เกิดข้อผิดพลาดในการดึงข้อมูลตู้แช่ของสาขา" };
+    }
+  }
+
+  async createBranchRefrigerator(params: {
+    branchId: string;
+    name: string;
+    minTemperature: number;
+    maxTemperature: number;
+    disableCheck?: boolean;
+  }): Promise<{ success: boolean; data?: RefrigeratorConfig; error?: string }> {
+    try {
+      const { branchId, name, minTemperature, maxTemperature, disableCheck = false } = params;
+      if (!branchId || !name.trim()) {
+        return { success: false, error: "กรุณาระบุข้อมูลให้ครบถ้วน" };
+      }
+
+      const [newRef] = await this.db
+        .insert(refrigerators)
+        .values({
+          branch_id: branchId,
+          name: name.trim(),
+          min_temperature: minTemperature,
+          max_temperature: maxTemperature,
+          disable_check: disableCheck,
+        })
+        .returning();
+
+      await this.db
+        .update(branches)
+        .set({
+          last_update: new Date(),
+        })
+        .where(eq(branches.id, branchId));
+
+      if (!disableCheck) {
+        await this.ensureDailyRefrigeratorTasks(branchId);
+      }
+
+      return { success: true, data: newRef };
+    } catch (err: unknown) {
+      console.error("RefrigeratorService.createBranchRefrigerator error:", err);
+      return { success: false, error: (err as Error)?.message || "เกิดข้อผิดพลาดในการเพิ่มตู้แช่" };
+    }
+  }
+
   async createRefrigerator(params: {
     userId: string;
     name: string;
@@ -162,6 +230,53 @@ export class RefrigeratorService implements IRefrigeratorService {
     } catch (err: any) {
       console.error("RefrigeratorService.updateRefrigerator error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการอัปเดตตู้แช่" };
+    }
+  }
+
+  async deleteRefrigerator(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!id) {
+        return { success: false, error: "ไม่พบรหัสตู้แช่" };
+      }
+
+      const [existing] = await this.db
+        .select({ id: refrigerators.id, branch_id: refrigerators.branch_id })
+        .from(refrigerators)
+        .where(eq(refrigerators.id, id))
+        .limit(1);
+
+      if (!existing) {
+        return { success: false, error: "ไม่พบตู้แช่นี้ในระบบ" };
+      }
+
+      const branchId = existing.branch_id;
+      const targetDate = getThaiDateString();
+
+      // Delete today's incomplete tasks for this refrigerator
+      await this.db
+        .delete(refrigeratorTasks)
+        .where(
+          and(
+            eq(refrigeratorTasks.refrigerator_id, id),
+            eq(refrigeratorTasks.task_date, targetDate),
+            sql`${refrigeratorTasks.completed_at} IS NULL`
+          )
+        );
+
+      // Delete the refrigerator itself
+      await this.db.delete(refrigerators).where(eq(refrigerators.id, id));
+
+      if (branchId) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, branchId));
+      }
+
+      return { success: true };
+    } catch (err: unknown) {
+      console.error("RefrigeratorService.deleteRefrigerator error:", err);
+      return { success: false, error: (err as Error)?.message || "เกิดข้อผิดพลาดในการลบตู้แช่" };
     }
   }
 

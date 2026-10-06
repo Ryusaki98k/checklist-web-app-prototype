@@ -106,6 +106,23 @@ export interface IChecklistService {
     comment?: string;
   }): Promise<{ success: boolean; completedAt?: string | null; taskWorkId?: string; error?: string }>;
 
+  batchToggleTaskWorks(items: Array<{
+    taskWorkId?: string;
+    shiftSessionId?: string;
+    taskId?: string;
+    completed: boolean;
+    comment?: string;
+  }>): Promise<{
+    success: boolean;
+    results?: Array<{
+      taskId?: string;
+      taskWorkId?: string;
+      completed: boolean;
+      completedAt?: string | null;
+    }>;
+    error?: string;
+  }>;
+
   validateShiftCompletion(shiftSessionId: string): Promise<{
     success: boolean;
     isComplete: boolean;
@@ -373,12 +390,20 @@ export interface RefrigeratorTaskItem {
 
 export interface IRefrigeratorService {
   getRefrigerators(userId: string): Promise<{ success: boolean; data?: any[]; error?: string }>;
+  getRefrigeratorsByBranch(branchId: string): Promise<{ success: boolean; data?: any[]; error?: string }>;
   createRefrigerator(params: {
     userId: string;
     name: string;
     minTemperature: number;
     maxTemperature: number;
     disableCheck: boolean;
+  }): Promise<{ success: boolean; data?: any; error?: string }>;
+  createBranchRefrigerator(params: {
+    branchId: string;
+    name: string;
+    minTemperature: number;
+    maxTemperature: number;
+    disableCheck?: boolean;
   }): Promise<{ success: boolean; data?: any; error?: string }>;
   updateRefrigerator(params: {
     id: string;
@@ -387,6 +412,7 @@ export interface IRefrigeratorService {
     maxTemperature: number;
     disableCheck: boolean;
   }): Promise<{ success: boolean; error?: string }>;
+  deleteRefrigerator(id: string): Promise<{ success: boolean; error?: string }>;
   ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }>;
   getBranchRefrigeratorTasks(params: {
     userId?: string;

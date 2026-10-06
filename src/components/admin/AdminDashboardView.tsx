@@ -3,7 +3,7 @@ import { User, Role, LeaveQuotaInfo } from "../../types";
 import { BrandLogo } from "../common/BrandLogo";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
-import { LogOut, RefreshCw } from "lucide-react";
+import { LogOut, RefreshCw, Snowflake } from "lucide-react";
 
 import { createBranchAction, assignStaffToBranchAction, assignTasksToBranchAction, updateBranchLeaveQuotaAction, DashboardBranch as Branch } from "../../actions/branch";
 import { fetchBranchesWithCache, invalidateBranchCache } from "../../utils/cache";
@@ -12,6 +12,7 @@ import { getAllTasksAction, createTaskAction, toggleTaskDisabledAction } from ".
 import { getAllUsersLeaveQuotasAction, updateEmployeeLeaveQuotaAction } from "../../actions/manager";
 import { AdminCronSettingsTab } from "./AdminCronSettingsTab";
 import { AdminAddUserModal } from "./AdminAddUserModal";
+import { AdminManageRefrigeratorsModal } from "./AdminManageRefrigeratorsModal";
 
 interface MasterTask {
   id: string;
@@ -114,6 +115,7 @@ export function AdminDashboardView({
   const [selectedBranchForQuota, setSelectedBranchForQuota] = useState<Branch | null>(null);
   const [branchQuotaInput, setBranchQuotaInput] = useState<number>(3);
   const [isUpdatingQuota, setIsUpdatingQuota] = useState<boolean>(false);
+  const [selectedBranchForRefrigerators, setSelectedBranchForRefrigerators] = useState<Branch | null>(null);
 
   const [isManageStaffModalOpen, setIsManageStaffModalOpen] = useState(false);
   const [selectedBranchForStaff, setSelectedBranchForStaff] = useState<string | null>(null);
@@ -805,18 +807,18 @@ export function AdminDashboardView({
                     </div>
                   </div>
 
-                  <div className="pt-2 flex items-center justify-between gap-1.5 flex-wrap">
+                  <div className="pt-2 grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() => openManageStaffModal(b.id)}
-                      className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 bg-[var(--color-surface-2)] hover:bg-amber-100 min-h-[44px] sm:min-h-[34px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-[var(--color-border)] transition-all cursor-pointer flex-1"
+                      className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 bg-[var(--color-surface-2)] hover:bg-amber-100 min-h-[38px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-[var(--color-border)] transition-all cursor-pointer"
                     >
                       จัดการสาขา
                     </button>
                     <button
                       type="button"
                       onClick={() => openManageTasksModal(b.id)}
-                      className="text-xs font-bold text-amber-950 bg-amber-100 hover:bg-amber-200 min-h-[44px] sm:min-h-[34px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-amber-300 transition-all cursor-pointer flex-1"
+                      className="text-xs font-bold text-amber-950 bg-amber-100 hover:bg-amber-200 min-h-[38px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-amber-300 transition-all cursor-pointer"
                     >
                       จัดการงาน
                     </button>
@@ -826,10 +828,19 @@ export function AdminDashboardView({
                         setSelectedBranchForQuota(b);
                         setBranchQuotaInput(b.leaveQuota ?? 3);
                       }}
-                      className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 bg-[var(--color-surface-2)] hover:bg-amber-100 min-h-[44px] sm:min-h-[34px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-[var(--color-border)] transition-all cursor-pointer flex-1"
+                      className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 bg-[var(--color-surface-2)] hover:bg-amber-100 min-h-[38px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-[var(--color-border)] transition-all cursor-pointer"
                       title="ตั้งค่าโควตาการลาเริ่มต้นของสาขานี้"
                     >
                       ตั้งโควตาลา
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBranchForRefrigerators(b)}
+                      className="text-xs font-bold text-cyan-900 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950/40 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl border border-cyan-300 dark:border-cyan-800 transition-all cursor-pointer"
+                      title="กำหนดค่าตู้แช่และช่วงอุณหภูมิประจำสาขานี้"
+                    >
+                      <Snowflake className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                      <span>จัดการตู้แช่</span>
                     </button>
                   </div>
                 </div>
@@ -1744,6 +1755,17 @@ export function AdminDashboardView({
           onUserCreated={async (newUser) => {
             showToast(`เพิ่มผู้ใช้ "${newUser.name}" สำเร็จ`);
             await loadUsers();
+          }}
+        />
+
+        {/* Manage Branch Refrigerators Modal */}
+        <AdminManageRefrigeratorsModal
+          isOpen={Boolean(selectedBranchForRefrigerators)}
+          branch={selectedBranchForRefrigerators}
+          onClose={() => setSelectedBranchForRefrigerators(null)}
+          onUpdated={() => {
+            invalidateBranchCache();
+            void loadBranches(true);
           }}
         />
       </main>

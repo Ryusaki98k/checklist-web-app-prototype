@@ -433,37 +433,91 @@ export class ChecklistService implements IChecklistService {
     }
   }
 
-  async toggleTaskWork(params: {
-    taskWorkId?: string;
-    shiftSessionId?: string;
-    taskId?: string;
-    completed: boolean;
-    comment?: string;
-  }): Promise<{ success: boolean; completedAt?: string | null; taskWorkId?: string; error?: string }> {
+  async batchToggleTaskWorks(
+    items: Array<{
+      taskWorkId?: string;
+      shiftSessionId?: string;
+      taskId?: string;
+      completed: boolean;
+      comment?: string;
+    }>
+  ): Promise<{
+    success: boolean;
+    results?: Array<{
+      taskId?: string;
+      taskWorkId?: string;
+      completed: boolean;
+      completedAt?: string | null;
+    }>;
+    error?: string;
+  }> {
+    if (!items || items.length === 0) {
+      return { success: true, results: [] };
+    }
+
     try {
-      const { taskWorkId, shiftSessionId, taskId, completed, comment } = params;
-      const completedAt = completed ? new Date() : null;
+      const results: Array<{
+        taskId?: string;
+        taskWorkId?: string;
+        completed: boolean;
+        completedAt?: string | null;
+      }> = [];
 
-      let targetShiftSessionId = shiftSessionId;
-      let resolvedTaskWorkId = taskWorkId;
+      const affectedBranches = new Set<string>();
+      const completedSessionsToCheck = new Set<{ sessionId: string; branchId: string; userId: string; shift: string }>();
 
-      if (taskWorkId && isValidUuid(taskWorkId)) {
-        const updatedRows = await this.db
-          .update(taskWork)
-          .set({
-            timestamp: completedAt,
-            comment: completed ? (comment ?? null) : null,
-          })
-          .where(eq(taskWork.id, taskWorkId))
-          .returning({ id: taskWork.id, shift_session: taskWork.shift_session });
+      for (const item of items) {
+        const { taskWorkId, shiftSessionId, taskId, completed, comment } = item;
+        const completedAt = completed ? new Date() : null;
 
-        if (updatedRows && updatedRows.length > 0) {
-          if (!targetShiftSessionId) {
-            targetShiftSessionId = updatedRows[0].shift_session;
+        let targetShiftSessionId = shiftSessionId;
+        let resolvedTaskWorkId = taskWorkId;
+
+        if (taskWorkId && isValidUuid(taskWorkId)) {
+          const updatedRows = await this.db
+            .update(taskWork)
+            .set({
+              timestamp: completedAt,
+              comment: completed ? (comment ?? null) : null,
+            })
+            .where(eq(taskWork.id, taskWorkId))
+            .returning({ id: taskWork.id, shift_session: taskWork.shift_session });
+
+          if (updatedRows && updatedRows.length > 0) {
+            if (!targetShiftSessionId) {
+              targetShiftSessionId = updatedRows[0].shift_session;
+            }
+            resolvedTaskWorkId = updatedRows[0].id;
+          } else if (shiftSessionId && taskId && isValidUuid(shiftSessionId) && isValidUuid(taskId)) {
+            const [existing] = await this.db
+              .select({ id: taskWork.id })
+              .from(taskWork)
+              .where(and(eq(taskWork.shift_session, shiftSessionId), eq(taskWork.task, taskId)))
+              .limit(1);
+
+            if (existing) {
+              await this.db
+                .update(taskWork)
+                .set({
+                  timestamp: completedAt,
+                  comment: completed ? (comment ?? null) : null,
+                })
+                .where(eq(taskWork.id, existing.id));
+              resolvedTaskWorkId = existing.id;
+            } else {
+              const [inserted] = await this.db
+                .insert(taskWork)
+                .values({
+                  shift_session: shiftSessionId,
+                  task: taskId,
+                  timestamp: completedAt,
+                  comment: completed ? (comment ?? null) : null,
+                })
+                .returning({ id: taskWork.id });
+              resolvedTaskWorkId = inserted?.id;
+            }
           }
-          resolvedTaskWorkId = updatedRows[0].id;
         } else if (shiftSessionId && taskId && isValidUuid(shiftSessionId) && isValidUuid(taskId)) {
-          // If taskWorkId didn't match an existing row, fallback to (shift_session, task)
           const [existing] = await this.db
             .select({ id: taskWork.id })
             .from(taskWork)
@@ -492,162 +546,165 @@ export class ChecklistService implements IChecklistService {
             resolvedTaskWorkId = inserted?.id;
           }
         }
-      } else if (shiftSessionId && taskId && isValidUuid(shiftSessionId) && isValidUuid(taskId)) {
-        const [existing] = await this.db
-          .select({ id: taskWork.id })
-          .from(taskWork)
-          .where(and(eq(taskWork.shift_session, shiftSessionId), eq(taskWork.task, taskId)))
-          .limit(1);
 
-        if (existing) {
-          await this.db
-            .update(taskWork)
-            .set({
-              timestamp: completedAt,
-              comment: completed ? (comment ?? null) : null,
-            })
-            .where(eq(taskWork.id, existing.id));
-          resolvedTaskWorkId = existing.id;
-        } else {
-          const [inserted] = await this.db
-            .insert(taskWork)
-            .values({
-              shift_session: shiftSessionId,
-              task: taskId,
-              timestamp: completedAt,
-              comment: completed ? (comment ?? null) : null,
-            })
-            .returning({ id: taskWork.id });
-          resolvedTaskWorkId = inserted?.id;
-        }
-      } else {
-        return { success: false, error: "ข้อมูลระบุรายการไม่ถูกต้อง" };
-      }
+        if (targetShiftSessionId && isValidUuid(targetShiftSessionId)) {
+          const [sess] = await this.db
+            .select({ branch: shiftSession.branch, user: shiftSession.user, shift: shiftSession.shift })
+            .from(shiftSession)
+            .where(eq(shiftSession.id, targetShiftSessionId))
+            .limit(1);
 
-      if (targetShiftSessionId && isValidUuid(targetShiftSessionId)) {
-        const [sess] = await this.db
-          .select({ branch: shiftSession.branch, user: shiftSession.user, shift: shiftSession.shift })
-          .from(shiftSession)
-          .where(eq(shiftSession.id, targetShiftSessionId))
-          .limit(1);
+          if (sess && sess.branch) {
+            affectedBranches.add(sess.branch);
+            if (completed) {
+              completedSessionsToCheck.add({
+                sessionId: targetShiftSessionId,
+                branchId: sess.branch,
+                userId: sess.user,
+                shift: sess.shift,
+              });
+            }
 
-        if (sess && sess.branch) {
-          // Special store closing task shared branch sync
-          let resolvedTaskId = taskId;
-          if (!resolvedTaskId && taskWorkId && isValidUuid(taskWorkId)) {
-            const [w] = await this.db
-              .select({ task: taskWork.task })
-              .from(taskWork)
-              .where(eq(taskWork.id, taskWorkId))
-              .limit(1);
-            if (w) resolvedTaskId = w.task;
-          }
+            let resolvedTaskId = taskId;
+            if (!resolvedTaskId && resolvedTaskWorkId && isValidUuid(resolvedTaskWorkId)) {
+              const [w] = await this.db
+                .select({ task: taskWork.task })
+                .from(taskWork)
+                .where(eq(taskWork.id, resolvedTaskWorkId))
+                .limit(1);
+              if (w) resolvedTaskId = w.task;
+            }
 
-          if (resolvedTaskId && isValidUuid(resolvedTaskId)) {
-            const [tRow] = await this.db
-              .select({ name: tasks.name, for_managers: tasks.for_managers, shift: tasks.shift })
-              .from(tasks)
-              .where(eq(tasks.id, resolvedTaskId))
-              .limit(1);
+            if (resolvedTaskId && isValidUuid(resolvedTaskId)) {
+              const [tRow] = await this.db
+                .select({ name: tasks.name, for_managers: tasks.for_managers, shift: tasks.shift })
+                .from(tasks)
+                .where(eq(tasks.id, resolvedTaskId))
+                .limit(1);
 
-            if (tRow && (tRow.for_managers || tRow.shift === "night")) {
-              const { dateStr, startOfDay, endOfDay } = getThaiStartAndEndOfDay();
-              try {
-                // Sync all today's sessions in this branch for this special task
-                const branchTodaySessions = await this.db
-                  .select({ id: shiftSession.id })
-                  .from(shiftSession)
-                  .where(
-                    and(
-                      eq(shiftSession.branch, sess.branch),
-                      gte(shiftSession.start, startOfDay),
-                      lte(shiftSession.start, endOfDay)
-                    )
-                  );
-                const branchSessIds = branchTodaySessions.map((s: any) => s.id);
-                if (branchSessIds.length > 0) {
-                  await this.db
-                    .update(taskWork)
-                    .set({
-                      timestamp: completedAt,
-                      comment: completed ? (comment ?? null) : null,
-                      completed_by: completed ? sess.user : null,
-                      branch_id: sess.branch,
-                      task_date: dateStr,
-                    })
+              if (tRow && (tRow.for_managers || tRow.shift === "night")) {
+                const { dateStr, startOfDay, endOfDay } = getThaiStartAndEndOfDay();
+                try {
+                  const branchTodaySessions = await this.db
+                    .select({ id: shiftSession.id })
+                    .from(shiftSession)
                     .where(
                       and(
-                        inArray(taskWork.shift_session, branchSessIds),
-                        eq(taskWork.task, resolvedTaskId)
+                        eq(shiftSession.branch, sess.branch),
+                        gte(shiftSession.start, startOfDay),
+                        lte(shiftSession.start, endOfDay)
                       )
                     );
+                  const branchSessIds = branchTodaySessions.map((s: any) => s.id);
+                  if (branchSessIds.length > 0) {
+                    await this.db
+                      .update(taskWork)
+                      .set({
+                        timestamp: completedAt,
+                        comment: completed ? (comment ?? null) : null,
+                        completed_by: completed ? sess.user : null,
+                        branch_id: sess.branch,
+                        task_date: dateStr,
+                      })
+                      .where(
+                        and(
+                          inArray(taskWork.shift_session, branchSessIds),
+                          eq(taskWork.task, resolvedTaskId)
+                        )
+                      );
+                  }
+                } catch (sharedErr) {
+                  console.error("Failed to sync shared special tasks in batch:", sharedErr);
                 }
-              } catch (sharedErr) {
-                console.error("Failed to sync shared special tasks:", sharedErr);
               }
             }
           }
+        }
 
-          await this.db
-            .update(branches)
-            .set({ last_update: new Date() })
-            .where(eq(branches.id, sess.branch));
+        results.push({
+          taskId,
+          taskWorkId: resolvedTaskWorkId,
+          completed,
+          completedAt: completedAt ? completedAt.toISOString() : null,
+        });
+      }
 
-          // Check if all tasks for session are now completed to trigger notification
-          if (completed && this.notificationService) {
-            const works = await this.db
-              .select()
-              .from(taskWork)
-              .where(eq(taskWork.shift_session, targetShiftSessionId));
+      // Update branches last_update
+      for (const branchId of affectedBranches) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, branchId));
+      }
 
-            const allDone = works.length > 0 && works.every((w: any) => w.timestamp !== null);
-            if (allDone) {
-              const [userObj] = await this.db
-                .select({ name: users.name })
-                .from(users)
-                .where(eq(users.id, sess.user))
-                .limit(1);
+      // Check if any affected session is now completely done to trigger notifications
+      if (this.notificationService && completedSessionsToCheck.size > 0) {
+        for (const sessionInfo of completedSessionsToCheck) {
+          const works = await this.db
+            .select()
+            .from(taskWork)
+            .where(eq(taskWork.shift_session, sessionInfo.sessionId));
 
-              const shiftName =
-                sess.shift === "morning"
-                  ? "กะเช้า"
-                  : sess.shift === "afternoon"
-                  ? "กะบ่าย"
-                  : "กะดึก";
+          const allDone = works.length > 0 && works.every((w: any) => w.timestamp !== null);
+          if (allDone) {
+            const [userObj] = await this.db
+              .select({ name: users.name })
+              .from(users)
+              .where(eq(users.id, sessionInfo.userId))
+              .limit(1);
 
-              // Notify manager
-              await this.notificationService.createNotification({
-                branchId: sess.branch,
-                recipientRole: "manager",
-                title: `📋 ส่งงานสำเร็จ: ${shiftName}`,
-                message: `${userObj?.name || "พนักงาน"} ได้เช็ครายการงานครบทุกข้อแล้ว กรุณาตรวจสอบและอนุมัติ`,
-                type: "shift_submitted",
-                shiftSessionId: targetShiftSessionId,
-              });
+            const shiftName =
+              sessionInfo.shift === "morning"
+                ? "กะเช้า"
+                : sessionInfo.shift === "afternoon"
+                ? "กะบ่าย"
+                : "กะดึก";
 
-              // Notify employee
-              await this.notificationService.createNotification({
-                recipientId: sess.user,
-                title: `✨ ทำรายการตรวจครบ 100% แล้ว`,
-                message: `คุณได้ตรวจสอบรายการงานกะ ${shiftName} ครบทุกข้อแล้ว กรุณากด "จบกะงาน" เพื่อส่งรายงานให้ผู้จัดการร้าน`,
-                type: "shift_submitted",
-                shiftSessionId: targetShiftSessionId,
-                branchId: sess.branch,
-              });
-            }
+            await this.notificationService.createNotification({
+              branchId: sessionInfo.branchId,
+              recipientRole: "manager",
+              title: `📋 ส่งงานสำเร็จ: ${shiftName}`,
+              message: `${userObj?.name || "พนักงาน"} ได้เช็ครายการงานครบทุกข้อแล้ว กรุณาตรวจสอบและอนุมัติ`,
+              type: "shift_submitted",
+              shiftSessionId: sessionInfo.sessionId,
+            });
+
+            await this.notificationService.createNotification({
+              recipientId: sessionInfo.userId,
+              title: `✨ ทำรายการตรวจครบ 100% แล้ว`,
+              message: `คุณได้ตรวจสอบรายการงานกะ ${shiftName} ครบทุกข้อแล้ว กรุณากด "จบกะงาน" เพื่อส่งรายงานให้ผู้จัดการร้าน`,
+              type: "shift_submitted",
+              shiftSessionId: sessionInfo.sessionId,
+              branchId: sessionInfo.branchId,
+            });
           }
         }
       }
 
-      return {
-        success: true,
-        completedAt: completedAt ? completedAt.toISOString() : null,
-        taskWorkId: resolvedTaskWorkId,
-      };
+      return { success: true, results };
     } catch (err: any) {
-      console.error("ChecklistService.toggleTaskWork error:", err);
-      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการบันทึกสถานะงาน" };
+      console.error("ChecklistService.batchToggleTaskWorks error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการบันทึกสถานะงานแบบกลุ่ม" };
     }
+  }
+
+  async toggleTaskWork(params: {
+    taskWorkId?: string;
+    shiftSessionId?: string;
+    taskId?: string;
+    completed: boolean;
+    comment?: string;
+  }): Promise<{ success: boolean; completedAt?: string | null; taskWorkId?: string; error?: string }> {
+    const res = await this.batchToggleTaskWorks([params]);
+    if (!res.success || !res.results || res.results.length === 0) {
+      return { success: false, error: res.error || "เกิดข้อผิดพลาดในการบันทึกสถานะงาน" };
+    }
+    const r = res.results[0];
+    return {
+      success: true,
+      completedAt: r.completedAt,
+      taskWorkId: r.taskWorkId,
+    };
   }
 
   async validateShiftCompletion(shiftSessionId: string): Promise<{
