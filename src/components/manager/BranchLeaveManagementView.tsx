@@ -1363,6 +1363,12 @@ export function BranchLeaveManagementView({
                 </div>
               </div>
 
+              {/* Manager Discretion Notice */}
+              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-2">
+                <span className="text-amber-600 font-bold shrink-0">ℹ️</span>
+                <span><strong>สิทธิการออกใบลาของผู้จัดการ:</strong> ผู้จัดการร้านสามารถออกบันทึกการลาให้พนักงานได้โดยไม่มีข้อจำกัด (สามารถระบุวันลาได้หลายวันต่อเนื่อง และออกใบลาเพิ่มเติมได้ตามดุลยพินิจ)</span>
+              </div>
+
               {/* Reason / Comment Textarea */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">

@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, lt, desc, inArray, sql } from "drizzle-orm";
+import { eq, ne, and, gte, lte, lt, desc, inArray, sql } from "drizzle-orm";
 import { tasks, taskWork, shiftSession, users, branches, employeeLeaves, pointTransactions } from "../db/schema";
 import { IManagerService, IPointService, INotificationService, BranchEmployeeStatus } from "./types";
 import { ShiftType, Role, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
@@ -9,6 +9,8 @@ export interface ManagerShiftSummary {
   userId: string;
   userName: string;
   userPosition?: string;
+  userRole?: string;
+  branchId?: string;
   taskRole?: "cashier" | "stock" | "manager_assistant";
   shift: ShiftType;
   startedAt: string;
@@ -38,6 +40,7 @@ export interface ManagerShiftSummary {
   incompleteActionPoints?: number;
   incompleteActionNote?: string | null;
   incompleteReviewedBy?: string | null;
+  incompleteReviewedByName?: string | null;
   incompleteReviewedAt?: string | null;
 }
 
@@ -140,6 +143,16 @@ export class ManagerService implements IManagerService {
       const summaries: ManagerShiftSummary[] = dbSessions.map((sess: any) => {
         const user = dbUsers.find((u: any) => u.id === sess.user);
         const sessionWorks = dbWorks.filter((w: any) => w.shift_session === sess.id);
+        const reviewer = sess.incomplete_reviewed_by
+          ? dbUsers.find((u: any) => u.id === sess.incomplete_reviewed_by)
+          : null;
+
+        let resolvedPosition = mapTaskRoleToTitle(sess.task_role);
+        if (user?.role === "manager") {
+          resolvedPosition = "ผู้จัดการร้าน";
+        } else if (user?.role === "manager_assistant") {
+          resolvedPosition = "ผู้ช่วยผู้จัดการร้าน";
+        }
 
         const managerApproved = sess.manager_approve_timestamp !== null;
         const assistantApproved =
@@ -182,7 +195,9 @@ export class ManagerService implements IManagerService {
           id: sess.id,
           userId: sess.user,
           userName: user ? user.name : "พนักงานสาขา",
-          userPosition: mapTaskRoleToTitle(sess.task_role),
+          userPosition: resolvedPosition,
+          userRole: user?.role,
+          branchId: sess.branch || user?.branch_id,
           taskRole: sess.task_role,
           shift: mapDbShiftToUi(sess.shift),
           startedAt: new Date(sess.start).toISOString(),
@@ -206,6 +221,7 @@ export class ManagerService implements IManagerService {
           incompleteActionPoints: sess.incomplete_action_points || 0,
           incompleteActionNote: sess.incomplete_action_note || null,
           incompleteReviewedBy: sess.incomplete_reviewed_by || null,
+          incompleteReviewedByName: reviewer ? reviewer.name : null,
           incompleteReviewedAt: sess.incomplete_reviewed_at
             ? new Date(sess.incomplete_reviewed_at).toISOString()
             : null,
@@ -225,6 +241,8 @@ export class ManagerService implements IManagerService {
   ): Promise<{
     success: boolean;
     sessions?: ManagerShiftSummary[];
+    branches?: Array<{ id: string; name: string }>;
+    managers?: Array<{ id: string; name: string; branchId?: string; branchName?: string }>;
     error?: string;
   }> {
     try {
@@ -253,7 +271,18 @@ export class ManagerService implements IManagerService {
         .where(and(gte(shiftSession.start, queryStart), lte(shiftSession.start, queryEnd)))
         .orderBy(desc(shiftSession.start));
 
-      const dbUsers = await this.db.select({ id: users.id, name: users.name }).from(users);
+      const dbUsers = await this.db
+        .select({
+          id: users.id,
+          name: users.name,
+          role: users.role,
+          branchId: users.branch_id,
+        })
+        .from(users);
+
+      const allBranches = await this.db
+        .select({ id: branches.id, name: branches.name })
+        .from(branches);
 
       const historySessionIds = dbSessions.map((s: any) => s.id) as string[];
       const dbWorks =
@@ -270,15 +299,19 @@ export class ManagerService implements IManagerService {
           ? await this.db.select().from(tasks).where(inArray(tasks.id, taskIds))
           : [];
 
-      const branchIds = Array.from(new Set(dbSessions.map((s: any) => s.branch).filter(Boolean))) as string[];
-      const dbBranches =
-        branchIds.length > 0
-          ? await this.db.select({ id: branches.id, name: branches.name }).from(branches).where(inArray(branches.id, branchIds))
-          : [];
-
       const summaries: ManagerShiftSummary[] = dbSessions.map((sess: any) => {
         const user = dbUsers.find((u: any) => u.id === sess.user);
         const sessionWorks = dbWorks.filter((w: any) => w.shift_session === sess.id);
+        const reviewer = sess.incomplete_reviewed_by
+          ? dbUsers.find((u: any) => u.id === sess.incomplete_reviewed_by)
+          : null;
+
+        let resolvedPosition = mapTaskRoleToTitle(sess.task_role);
+        if (user?.role === "manager") {
+          resolvedPosition = "ผู้จัดการร้าน";
+        } else if (user?.role === "manager_assistant") {
+          resolvedPosition = "ผู้ช่วยผู้จัดการร้าน";
+        }
 
         const items = sessionWorks.map((work: any) => {
           const t = allTasks.find((item: any) => item.id === work.task);
@@ -317,11 +350,17 @@ export class ManagerService implements IManagerService {
         const assistantApproved =
           managerApproved || sess.manager_assistance_approve_timestamp !== null;
 
+        const branchRecord = allBranches.find(
+          (b: any) => b.id === (sess.branch || user?.branchId)
+        );
+
         return {
           id: sess.id,
           userId: sess.user,
           userName: user ? user.name : "พนักงานสาขา",
-          userPosition: mapTaskRoleToTitle(sess.task_role),
+          userPosition: resolvedPosition,
+          userRole: user?.role,
+          branchId: sess.branch || user?.branchId,
           taskRole: sess.task_role,
           shift: mapDbShiftToUi(sess.shift),
           startedAt: new Date(sess.start).toISOString(),
@@ -338,20 +377,38 @@ export class ManagerService implements IManagerService {
             ? new Date(sess.manager_approve_timestamp).toISOString()
             : null,
           items,
-          branchName: dbBranches.find((b: any) => b.id === sess.branch)?.name,
+          branchName: branchRecord?.name,
           incompleteReason: sess.incomplete_reason || null,
           incompleteStatus: (sess.incomplete_status as any) || "none",
           incompleteAction: sess.incomplete_action || null,
           incompleteActionPoints: sess.incomplete_action_points || 0,
           incompleteActionNote: sess.incomplete_action_note || null,
           incompleteReviewedBy: sess.incomplete_reviewed_by || null,
+          incompleteReviewedByName: reviewer ? reviewer.name : null,
           incompleteReviewedAt: sess.incomplete_reviewed_at
             ? new Date(sess.incomplete_reviewed_at).toISOString()
             : null,
         };
       });
 
-      return { success: true, sessions: summaries };
+      const managerList = dbUsers
+        .filter((u: any) => u.role === "manager")
+        .map((m: any) => {
+          const b = allBranches.find((br: any) => br.id === m.branchId);
+          return {
+            id: m.id,
+            name: m.name,
+            branchId: m.branchId || undefined,
+            branchName: b?.name,
+          };
+        });
+
+      return {
+        success: true,
+        sessions: summaries,
+        branches: allBranches,
+        managers: managerList,
+      };
     } catch (err: any) {
       console.error("ManagerService.getHistoryShiftSessions error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการดึงข้อมูลประวัติ" };
@@ -680,7 +737,8 @@ export class ManagerService implements IManagerService {
                 eq(employeeLeaves.branch_id, activeBranchId),
                 inArray(employeeLeaves.user_id, candidateUsers.map((u: any) => u.id)),
                 lte(employeeLeaves.start_date, thaiTodayStr),
-                gte(employeeLeaves.end_date, thaiTodayStr)
+                gte(employeeLeaves.end_date, thaiTodayStr),
+                eq(employeeLeaves.status, "approved")
               )
             );
 
@@ -930,7 +988,8 @@ export class ManagerService implements IManagerService {
                 eq(employeeLeaves.branch_id, branch.id),
                 inArray(employeeLeaves.user_id, candidateIds),
                 lte(employeeLeaves.start_date, dateStrForLeaves),
-                gte(employeeLeaves.end_date, dateStrForLeaves)
+                gte(employeeLeaves.end_date, dateStrForLeaves),
+                eq(employeeLeaves.status, "approved")
               )
             );
 
@@ -1383,7 +1442,8 @@ export class ManagerService implements IManagerService {
         }
       }
 
-      const remainingDays = Math.max(0, allocatedQuota - usedDays - pendingDays);
+      // Quota for employee leaving is deducted ONLY when the request was accepted (status === 'approved')
+      const remainingDays = Math.max(0, allocatedQuota - usedDays);
 
       return {
         success: true,
@@ -1424,23 +1484,12 @@ export class ManagerService implements IManagerService {
         return { success: false, error: "วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด" };
       }
 
-      // Check quota
-      const quotaRes = await this.getEmployeeLeaveQuota({ userId, branchId });
-      if (quotaRes.success && quotaRes.quota) {
-        if (quotaRes.quota.remainingDays <= 0) {
-          return {
-            success: false,
-            error: `โควตาการลาของคุณหมดแล้ว (ใช้ไปแล้ว ${quotaRes.quota.usedDays}/${quotaRes.quota.allocatedQuota} วัน)`,
-          };
-        }
-      }
-
       const [targetUser] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
       if (!targetUser) return { success: false, error: "ไม่พบข้อมูลพนักงาน" };
       const [requester] = await this.db.select().from(users).where(eq(users.id, requestedBy)).limit(1);
       const [branch] = await this.db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
 
-      // Determine if manager requested -> auto confirm
+      // Determine if manager requested -> auto confirm and exempt from employee limitations
       const isManagerOrAdmin =
         params.isManagerRole ||
         requester?.role === "manager" ||
@@ -1449,8 +1498,75 @@ export class ManagerService implements IManagerService {
         requester?.role === "committee" ||
         requester?.role === "admin";
 
-      const isEmployeeSelf = userId === requestedBy && requester?.role === "employee";
-      const autoApproved = !isEmployeeSelf || isManagerOrAdmin;
+      const isEmployeeSelf = !isManagerOrAdmin;
+
+      // Employee-specific constraints:
+      // 1. Employee request can only be for 1 day per request
+      // 2. Only 1 request can be granted/pending per day for the employee
+      if (isEmployeeSelf) {
+        if (startDate !== endDate) {
+          return {
+            success: false,
+            error: "พนักงานสามารถส่งคำขอลางานได้ครั้งละ 1 วันเท่านั้น (หากต้องการลาต่อเนื่องหลายวัน กรุณาติดต่อผู้จัดการร้านโดยตรง)",
+          };
+        }
+
+        // Check if employee already has an approved or pending leave on this date
+        const existingDateLeaves = await this.db
+          .select({
+            id: employeeLeaves.id,
+            status: employeeLeaves.status,
+            start_date: employeeLeaves.start_date,
+            end_date: employeeLeaves.end_date,
+          })
+          .from(employeeLeaves)
+          .where(
+            and(
+              eq(employeeLeaves.user_id, userId),
+              inArray(employeeLeaves.status, ["approved", "pending"]),
+              lte(employeeLeaves.start_date, endDate),
+              gte(employeeLeaves.end_date, startDate)
+            )
+          );
+
+        const hasApprovedOnDate = existingDateLeaves.some((l: { status: string }) => l.status === "approved");
+        const hasPendingOnDate = existingDateLeaves.some((l: { status: string }) => l.status === "pending");
+
+        if (hasApprovedOnDate) {
+          return {
+            success: false,
+            error: `คุณได้รับการอนุมัติการลาสำหรับวันที่ ${startDate} ไปแล้ว (สามารถอนุมัติการลาได้ 1 รายการต่อวันสำหรับพนักงาน)`,
+          };
+        }
+
+        if (hasPendingOnDate) {
+          return {
+            success: false,
+            error: `คุณมีคำขอลางานสำหรับวันที่ ${startDate} รอการอนุมัติอยู่แล้ว (สามารถส่งคำขอได้ 1 รายการต่อวันสำหรับพนักงาน)`,
+          };
+        }
+
+        // Quota check for employee paid leave request
+        if (isPaidLeave(leaveType)) {
+          const quotaRes = await this.getEmployeeLeaveQuota({ userId, branchId });
+          if (quotaRes.success && quotaRes.quota) {
+            if (quotaRes.quota.remainingDays <= 0) {
+              return {
+                success: false,
+                error: `โควตาการลาของคุณหมดแล้ว (ใช้ไปแล้ว ${quotaRes.quota.usedDays}/${quotaRes.quota.allocatedQuota} วัน)`,
+              };
+            }
+            if (quotaRes.quota.remainingDays - quotaRes.quota.pendingDays <= 0) {
+              return {
+                success: false,
+                error: `โควตาการลาคงเหลือของคุณ (${quotaRes.quota.remainingDays} วัน) มีคำขอรอการอนุมัติอยู่ครบแล้ว (${quotaRes.quota.pendingDays} วัน)`,
+              };
+            }
+          }
+        }
+      }
+
+      const autoApproved = isManagerOrAdmin;
       const initialStatus = autoApproved ? "approved" : "pending";
 
       const previousStreak = targetUser.point_streak ?? 0;
@@ -1567,6 +1683,27 @@ export class ManagerService implements IManagerService {
 
       const [approver] = await this.db.select().from(users).where(eq(users.id, approvedBy)).limit(1);
       const [targetUser] = await this.db.select().from(users).where(eq(users.id, existingLeave.user_id)).limit(1);
+
+      // Enforcement: only 1 request can be granted for each day for the employee
+      const conflictingApprovedLeaves = await this.db
+        .select({ id: employeeLeaves.id })
+        .from(employeeLeaves)
+        .where(
+          and(
+            eq(employeeLeaves.user_id, existingLeave.user_id),
+            eq(employeeLeaves.status, "approved"),
+            ne(employeeLeaves.id, leaveId),
+            lte(employeeLeaves.start_date, existingLeave.end_date),
+            gte(employeeLeaves.end_date, existingLeave.start_date)
+          )
+        );
+
+      if (conflictingApprovedLeaves.length > 0) {
+        return {
+          success: false,
+          error: `ไม่สามารถอนุมัติได้: พนักงานได้รับการอนุมัติการลาสำหรับวันที่ ${existingLeave.start_date} ไปแล้ว (สามารถอนุมัติการลาได้ 1 รายการต่อวันสำหรับพนักงาน)`,
+        };
+      }
 
       const finalPreserveStreak = preserveStreak !== undefined ? preserveStreak : existingLeave.preserve_streak;
       const finalLeaveType = toDbLeaveType(leaveType || existingLeave.leave_type);

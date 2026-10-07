@@ -22,6 +22,7 @@ import { invalidateBranchCache } from "../../utils/cache";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 import { LeaderboardWidget } from "./LeaderboardWidget";
 import { RefrigeratorConfigView } from "./RefrigeratorConfigView";
+import { SubordinateHistoryAuditView } from "./history/SubordinateHistoryAuditView";
 import { ErrorBoundary } from "../common/ErrorBoundary";
 import { LateReasonModal } from "../common/LateReasonModal";
 import { DbSyncNotification } from "../common/DbSyncNotification";
@@ -298,6 +299,8 @@ export function ManagerDashboard({
           userId: s.userId,
           userName: s.userName,
           userPosition: s.userPosition,
+          userRole: s.userRole,
+          branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
           startedAt: s.startedAt,
@@ -313,15 +316,33 @@ export function ManagerDashboard({
           })),
           notified: true,
           branchName: s.branchName,
+          incompleteReason: s.incompleteReason,
+          incompleteStatus: s.incompleteStatus,
+          incompleteAction: s.incompleteAction,
+          incompleteActionPoints: s.incompleteActionPoints,
+          incompleteActionNote: s.incompleteActionNote,
+          incompleteReviewedBy: s.incompleteReviewedBy,
+          incompleteReviewedByName: s.incompleteReviewedByName,
+          incompleteReviewedAt: s.incompleteReviewedAt,
         }));
         setHistorySessions(mapped);
+
+        // Sync approvals state
+        const historyApprovals: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = {};
+        res.sessions.forEach((s) => {
+          historyApprovals[s.id] = {
+            assistantApproved: s.assistantApproved,
+            managerApproved: s.managerApproved,
+          };
+        });
+        setApprovals((prev) => ({ ...prev, ...historyApprovals }));
       }
     } catch (err) {
       console.error("Failed to load history sessions:", err);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [setIsLoadingHistory, setHistorySessions]);
+  }, [setIsLoadingHistory, setHistorySessions, setApprovals]);
 
   // Fetch specific history date (for Manager Audit)
   const fetchSpecificHistoryDate = useCallback(async (dateStr: string) => {
@@ -338,6 +359,8 @@ export function ManagerDashboard({
           userId: s.userId,
           userName: s.userName,
           userPosition: s.userPosition,
+          userRole: s.userRole,
+          branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
           startedAt: s.startedAt,
@@ -353,15 +376,32 @@ export function ManagerDashboard({
           })),
           notified: true,
           branchName: s.branchName,
+          incompleteReason: s.incompleteReason,
+          incompleteStatus: s.incompleteStatus,
+          incompleteAction: s.incompleteAction,
+          incompleteActionPoints: s.incompleteActionPoints,
+          incompleteActionNote: s.incompleteActionNote,
+          incompleteReviewedBy: s.incompleteReviewedBy,
+          incompleteReviewedByName: s.incompleteReviewedByName,
+          incompleteReviewedAt: s.incompleteReviewedAt,
         }));
         setSpecificDaySessions(mapped);
+
+        const historyApprovals: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = {};
+        res.sessions.forEach((s) => {
+          historyApprovals[s.id] = {
+            assistantApproved: s.assistantApproved,
+            managerApproved: s.managerApproved,
+          };
+        });
+        setApprovals((prev) => ({ ...prev, ...historyApprovals }));
       }
     } catch (err) {
       console.error("Failed to load specific history date:", err);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [setIsLoadingHistory, setSpecificDaySessions]);
+  }, [setIsLoadingHistory, setSpecificDaySessions, setApprovals]);
 
   // Initial and recurring fetch
   useEffect(() => {
@@ -1539,272 +1579,27 @@ export function ManagerDashboard({
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            TAB 4: HISTORY & AUDIT LOGS
+            TAB 4: HISTORY & AUDIT LOGS (Subordinate Team Audit Dossier)
         ═══════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "history" && (() => {
-          const activeHistorySource = specificDaySessions ?? historySessions;
-          const pendingHistoryCount = activeHistorySource.filter((s) => {
-            const app = approvals[s.id] || {};
-            return !app.managerApproved;
-          }).length;
-          const approvedHistoryCount = activeHistorySource.length - pendingHistoryCount;
-
-          const filteredHistory = activeHistorySource.filter((s) => {
-            const matches =
-              s.userName.toLowerCase().includes(historySearch.toLowerCase()) ||
-              (s.userPosition || "").toLowerCase().includes(historySearch.toLowerCase());
-            const shiftMatch = historyShiftFilter === "all" || s.shift === historyShiftFilter;
-            if (!matches || !shiftMatch) return false;
-
-            if (isManager && !isAssistant) {
-              const app = approvals[s.id] || {};
-              const isPending = !app.managerApproved;
-              if (historyStatusFilter === "pending") return isPending;
-              if (historyStatusFilter === "approved") return !isPending;
-            }
-            return true;
-          });
-
-          return (
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm space-y-5 animate-fade-in">
-              {/* Header Toolbar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] flex items-center gap-2">
-                    <History size={20} className="text-amber-600 shrink-0" />
-                    <span>
-                      {isManager && !isAssistant
-                        ? "ประวัติการตรวจกะและการตรวจสอบย้อนหลัง (Store Audit Logs)"
-                        : `ประวัติการตรวจกะย้อนหลัง (${historySessions.length})`}
-                    </span>
-                  </h2>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5 flex flex-wrap items-center gap-1.5">
-                    {selectedHistoryDate ? (
-                      <span className="text-amber-800 dark:text-amber-300 font-semibold">
-                        กำลังแสดงข้อมูลประจำวันที่: {fmtDate(selectedHistoryDate)} ({filteredHistory.length} กะ)
-                      </span>
-                    ) : (
-                      <span>แสดงข้อมูลบันทึกผลการปฏิบัติงานและการส่งมอบกะย้อนหลัง 14 วัน</span>
-                    )}
-                  </p>
-                </div>
-
-                {/* Shift & Search Bar */}
-                <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-                  <input
-                    type="text"
-                    placeholder="ค้นหาชื่อหรือตำแหน่ง..."
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                    className="px-3 py-1.5 text-xs bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              {/* ─── Manager Audit Filter Toolbar (Strictly Manager Only) ───── */}
-              {isManager && !isAssistant && (
-                <div className="space-y-3 bg-[var(--color-surface-2)]/50 p-3 sm:p-4 rounded-xl border border-[var(--color-border)]">
-                  {/* Row 1: Status Filters & Shift Filter Pills */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    {/* Status Tabs */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto max-w-full no-scrollbar pb-1 sm:pb-0">
-                      <button
-                        type="button"
-                        onClick={() => setHistoryStatusFilter("all")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                          historyStatusFilter === "all"
-                            ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                            : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                        }`}
-                      >
-                        ทั้งหมด ({activeHistorySource.length})
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setHistoryStatusFilter("pending")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-                          historyStatusFilter === "pending"
-                            ? "bg-amber-400 text-amber-950 font-bold shadow-2xs"
-                            : pendingHistoryCount > 0
-                            ? "bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200"
-                            : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                        }`}
-                      >
-                        <span>รอการตรวจรับรอง</span>
-                        {pendingHistoryCount > 0 && (
-                          <span className={`px-1.5 py-0.2 rounded-full text-xs font-extrabold ${
-                            historyStatusFilter === "pending" ? "bg-amber-950 text-amber-200" : "bg-amber-400 text-amber-950"
-                          }`}>
-                            {pendingHistoryCount}
-                          </span>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setHistoryStatusFilter("approved")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                          historyStatusFilter === "approved"
-                            ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                            : "bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                        }`}
-                      >
-                        อนุมัติแล้ว ({approvedHistoryCount})
-                      </button>
-                    </div>
-
-                    {/* Shift Filter Pills */}
-                    <div className="flex items-center gap-1 self-start sm:self-auto overflow-x-auto max-w-full no-scrollbar pb-1 sm:pb-0">
-                      {(["all", "morning", "afternoon", "night"] as const).map((sh) => (
-                        <button
-                          key={sh}
-                          type="button"
-                          onClick={() => setHistoryShiftFilter(sh)}
-                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer shrink-0 ${
-                            historyShiftFilter === sh
-                              ? "bg-[var(--color-brown)] text-amber-100 shadow-2xs font-bold"
-                              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]"
-                          }`}
-                        >
-                          {sh === "all" ? "ทุกกะ" : sh === "morning" ? "กะเช้า" : sh === "afternoon" ? "กะบ่าย" : "กะดึก"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Row 2: Date Picker & Quick Date Buttons */}
-                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--color-border)]/60">
-                    <div className="flex items-center gap-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-2.5 py-1">
-                      <Calendar size={14} className="text-amber-600 shrink-0" />
-                      <span className="text-xs text-[var(--color-text-muted)] font-medium">ระบุวันที่:</span>
-                      <input
-                        type="date"
-                        value={selectedHistoryDate}
-                        onChange={handleDateSelection}
-                        className="bg-transparent text-xs text-[var(--color-text)] focus:outline-none cursor-pointer"
-                      />
-                      {selectedHistoryDate && (
-                        <button
-                          type="button"
-                          onClick={() => handleQuickDateSelect("")}
-                          className="text-xs text-rose-500 hover:text-rose-700 font-bold px-1.5 py-0.5 rounded cursor-pointer"
-                          title="ล้างวันที่เฉพาะเจาะจงและกลับไปแสดงย้อนหลัง 14 วัน"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Quick Date Shortcuts */}
-                    <button
-                      type="button"
-                      onClick={() => handleQuickDateSelect(todayIso)}
-                      className={`px-2.5 py-1 text-xs rounded-xl font-semibold border transition-all cursor-pointer ${
-                        selectedHistoryDate === todayIso
-                          ? "bg-amber-400 text-amber-950 border-amber-500 font-bold"
-                          : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                      }`}
-                    >
-                      วันนี้
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleQuickDateSelect(yesterdayIso)}
-                      className={`px-2.5 py-1 text-xs rounded-xl font-semibold border transition-all cursor-pointer ${
-                        selectedHistoryDate === yesterdayIso
-                          ? "bg-amber-400 text-amber-950 border-amber-500 font-bold"
-                          : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                      }`}
-                    >
-                      เมื่อวาน
-                    </button>
-
-                    {selectedHistoryDate && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickDateSelect("")}
-                        className="px-2.5 py-1 text-xs rounded-xl font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 transition-all cursor-pointer"
-                      >
-                        ย้อนหลัง 14 วันล่าสุด
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* History List Rendering */}
-              {isLoadingHistory ? (
-                <div className="py-16 text-center text-[var(--color-text-muted)] text-xs flex flex-col items-center justify-center gap-2">
-                  <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                  <span>กำลังโหลดประวัติย้อนหลัง...</span>
-                </div>
-              ) : filteredHistory.length === 0 ? (
-                <div className="py-12 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-2)]/40 p-6">
-                  {selectedHistoryDate
-                    ? `ไม่พบข้อมูลประวัติการตรวจกะในวันที่ ${fmtDate(selectedHistoryDate)}`
-                    : "ยังไม่มีข้อมูลประวัติการตรวจกะย้อนหลังในระบบ"}
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {filteredHistory.map((sess) => {
-                    const app = approvals[sess.id] || {};
-                    const isFullyApproved = Boolean(app.managerApproved);
-                    const isAssistantApproved = Boolean(app.assistantApproved);
-
-                    return (
-                      <button
-                        key={sess.id}
-                        type="button"
-                        onClick={() => setSelectedSession(sess)}
-                        className="w-full text-left p-3.5 sm:p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)]/50 hover:border-amber-400 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs"
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-[var(--color-text)]">{sess.userName}</span>
-                            {sess.userPosition && <Badge color="muted">{sess.userPosition}</Badge>}
-                            {getShiftBadge(sess.shift)}
-                            <Badge color="muted">
-                              {sess.items.filter((i) => i.completedAt).length}/{sess.items.length} รายการ
-                            </Badge>
-
-                            {/* Manager audit approval status badge */}
-                            {isManager && !isAssistant && (
-                              isFullyApproved ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-md">
-                                  <CheckCircle2 size={12} className="text-emerald-600" />
-                                  <span>อนุมัติแล้ว</span>
-                                </span>
-                              ) : isAssistantApproved ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 px-2 py-0.5 rounded-md">
-                                  <AlertCircle size={12} className="text-amber-600" />
-                                  <span>รอผู้จัดการรับรอง</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--color-text-muted)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-2 py-0.5 rounded-md">
-                                  <span>รอดำเนินการรับรอง</span>
-                                </span>
-                              )
-                            )}
-                          </div>
-                          <p className="text-[11px] font-mono text-[var(--color-text-muted)]">
-                            เริ่ม {fmtTime(sess.startedAt)} น. {sess.completedAt ? `→ เสร็จ ${fmtTime(sess.completedAt)} น.` : ""}
-                          </p>
-                        </div>
-
-                        <span className="text-xs text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1 shrink-0">
-                          <span>ดูผลตรวจ</span>
-                          <ChevronRight size={14} />
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {activeTab === "history" && (
+          <SubordinateHistoryAuditView
+            sessions={specificDaySessions ?? historySessions}
+            approvals={approvals}
+            onSelectSession={setSelectedSession}
+            selectedDate={selectedHistoryDate}
+            onSelectDate={(dateStr) => {
+              setSelectedHistoryDate(dateStr);
+              void fetchSpecificHistoryDate(dateStr);
+            }}
+            todayIso={todayIso}
+            yesterdayIso={yesterdayIso}
+            isLoading={isLoadingHistory}
+            isManager={isManager}
+            isAssistant={isAssistant}
+            currentUserId={user.id}
+            branchName={user.branchName}
+          />
+        )}
 
         {/* Team Leaderboard Widget */}
         <ErrorBoundary fallbackTitle="ไม่สามารถโหลดข้อมูลอันดับผลงานได้">

@@ -50,6 +50,7 @@ export function PositionSelectPage({
   const [leaveError, setLeaveError] = useState<string | null>(null);
   const [leaveSuccess, setLeaveSuccess] = useState<string | null>(null);
   const [autoApproved, setAutoApproved] = useState(false);
+  const [leaveDate, setLeaveDate] = useState<string>("");
 
   // Today in YYYY-MM-DD (Asia/Bangkok)
   const todayStr = useMemo(() => {
@@ -92,6 +93,7 @@ export function PositionSelectPage({
     setLeaveError(null);
     setLeaveSuccess(null);
     setLeaveReason("");
+    setLeaveDate(todayStr);
     setIsLeaveModalOpen(true);
     loadQuota();
   };
@@ -108,8 +110,15 @@ export function PositionSelectPage({
       return;
     }
 
+    const targetDate = leaveDate.trim() || todayStr;
+
     if (quota && quota.remainingDays <= 0) {
       setLeaveError("โควตาการลาของคุณหมดแล้ว ไม่สามารถส่งคำขอเพิ่มได้");
+      return;
+    }
+
+    if (quota && (quota.remainingDays - quota.pendingDays <= 0)) {
+      setLeaveError(`โควตาการลาคงเหลือของคุณ (${quota.remainingDays} วัน) มีคำขอลางานรอการอนุมัติอยู่ครบแล้ว (${quota.pendingDays} วัน)`);
       return;
     }
 
@@ -122,8 +131,8 @@ export function PositionSelectPage({
         userId: user.id,
         branchId: user.branchId,
         leaveType: "paid",
-        startDate: todayStr,
-        endDate: todayStr,
+        startDate: targetDate,
+        endDate: targetDate,
         reason: leaveReason.trim(),
         requestedBy: user.id,
         preserveStreak: true,
@@ -138,8 +147,8 @@ export function PositionSelectPage({
       setAutoApproved(!!res.autoApproved);
       setLeaveSuccess(
         res.autoApproved
-          ? "บันทึกการลางานสำหรับวันนี้เรียบร้อยแล้ว (อนุมัติอัตโนมัติ)"
-          : "ส่งคำขอลางานวันนี้เรียบร้อยแล้ว กรุณารอผู้จัดการร้านหรือผู้ช่วยผู้จัดการร้านอนุมัติ"
+          ? `บันทึกการลางานสำหรับวันที่ ${targetDate} เรียบร้อยแล้ว (อนุมัติอัตโนมัติ)`
+          : `ส่งคำขอลางานวันที่ ${targetDate} เรียบร้อยแล้ว กรุณารอผู้จัดการร้านอนุมัติ (ระบบจะหักโควตาเมื่อได้รับอนุมัติ)`
       );
       loadQuota();
     } catch (err: unknown) {
@@ -490,6 +499,24 @@ export function PositionSelectPage({
                     )}
                   </div>
 
+                  {/* Date Selection */}
+                  <div>
+                    <label htmlFor="leave-date" className="block text-xs font-bold text-[var(--color-text)] mb-1.5">
+                      วันที่ต้องการลา <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      id="leave-date"
+                      type="date"
+                      value={leaveDate}
+                      onChange={(e) => setLeaveDate(e.target.value)}
+                      className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs sm:text-sm text-[var(--color-text)] focus:outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-400/50"
+                      required
+                    />
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                      * พนักงานสามารถส่งคำขอลางานได้ครั้งละ 1 วัน (หากต้องการลาหลายวันต่อเนื่อง กรุณาติดต่อผู้จัดการร้าน)
+                    </p>
+                  </div>
+
                   {/* Reason Textarea */}
                   <div>
                     <label htmlFor="leave-reason" className="block text-xs font-bold text-[var(--color-text)] mb-2">
@@ -516,7 +543,7 @@ export function PositionSelectPage({
                         </span>
                       ) : (
                         <span>
-                          <strong>ขั้นตอนการอนุมัติ:</strong> เมื่อส่งคำขอแล้ว ผู้จัดการร้านจะเป็นผู้พิจารณากำหนดประเภทการลา (ได้เงิน / ไม่ได้รับเงิน) และอนุมัติการลาให้โดยตรง
+                          <strong>เงื่อนไขการลาและโควตา:</strong> โควตาวันลาจะถูกหักเมื่อผู้จัดการร้านอนุมัติรับรองคำขอเรียบร้อยแล้ว • พนักงานสามารถส่งคำขอได้ 1 รายการต่อวัน (หากต้องการลาต่อเนื่องหลายวัน กรุณาแจ้งผู้จัดการร้านโดยตรงเพื่อออกใบลาให้)
                         </span>
                       )}
                     </div>

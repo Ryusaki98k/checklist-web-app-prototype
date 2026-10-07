@@ -78,6 +78,8 @@ export interface ShiftSession {
   userId: string;
   userName: string;
   userPosition?: string;
+  userRole?: string;
+  branchId?: string;
   taskRole?: "cashier" | "stock" | "manager_assistant";
   shift: ShiftType;
   startedAt: string;

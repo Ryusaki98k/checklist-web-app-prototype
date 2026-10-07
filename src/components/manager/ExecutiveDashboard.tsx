@@ -23,6 +23,7 @@ import {
   resetTodayChecklistDataAction,
 } from "../../actions/checklist";
 import { RefrigeratorConfigView } from "./RefrigeratorConfigView";
+import { ManagerAuditHistoryView } from "./history/ManagerAuditHistoryView";
 import { NotificationCenter } from "../common/NotificationCenter";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
@@ -71,6 +72,15 @@ export function ExecutiveDashboard({
   const [selectedSession, setSelectedSession] = useState<ShiftSession | null>(null);
   const [historySearch, setHistorySearch] = useState("");
   const [historyShiftFilter, setHistoryShiftFilter] = useState<"all" | ShiftType>("all");
+  const [historyBranches, setHistoryBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [historyManagers, setHistoryManagers] = useState<Array<{ id: string; name: string; branchId?: string; branchName?: string }>>([]);
+
+  const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const yesterdayIso = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
+  }, []);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [isLiveFromDb, setIsLiveFromDb] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
@@ -234,6 +244,8 @@ export function ExecutiveDashboard({
           userId: s.userId,
           userName: s.userName,
           userPosition: s.userPosition,
+          userRole: s.userRole,
+          branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
           startedAt: s.startedAt,
@@ -255,16 +267,30 @@ export function ExecutiveDashboard({
           incompleteActionPoints: s.incompleteActionPoints,
           incompleteActionNote: s.incompleteActionNote,
           incompleteReviewedBy: s.incompleteReviewedBy,
+          incompleteReviewedByName: s.incompleteReviewedByName,
           incompleteReviewedAt: s.incompleteReviewedAt,
         }));
         setHistorySessions(mappedSessions);
+
+        if (res.branches) setHistoryBranches(res.branches);
+        if (res.managers) setHistoryManagers(res.managers);
+
+        // Sync approvals
+        const historyApprovals: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = {};
+        res.sessions.forEach((s) => {
+          historyApprovals[s.id] = {
+            assistantApproved: s.assistantApproved,
+            managerApproved: s.managerApproved,
+          };
+        });
+        setApprovals((prev) => ({ ...prev, ...historyApprovals }));
       }
     } catch (err) {
       console.error("Failed to fetch history sessions:", err);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, []);
+  }, [isAssistant]);
 
   // Fetch history when tab becomes active
   useEffect(() => {
@@ -289,6 +315,8 @@ export function ExecutiveDashboard({
           userId: s.userId,
           userName: s.userName,
           userPosition: s.userPosition,
+          userRole: s.userRole,
+          branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
           startedAt: s.startedAt,
@@ -310,9 +338,23 @@ export function ExecutiveDashboard({
           incompleteActionPoints: s.incompleteActionPoints,
           incompleteActionNote: s.incompleteActionNote,
           incompleteReviewedBy: s.incompleteReviewedBy,
+          incompleteReviewedByName: s.incompleteReviewedByName,
           incompleteReviewedAt: s.incompleteReviewedAt,
         }));
         setSpecificDaySessions(mappedSessions);
+
+        if (res.branches) setHistoryBranches(res.branches);
+        if (res.managers) setHistoryManagers(res.managers);
+
+        // Sync approvals
+        const historyApprovals: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = {};
+        res.sessions.forEach((s) => {
+          historyApprovals[s.id] = {
+            assistantApproved: s.assistantApproved,
+            managerApproved: s.managerApproved,
+          };
+        });
+        setApprovals((prev) => ({ ...prev, ...historyApprovals }));
       }
     } catch (err) {
       console.error("Failed to fetch specific date history:", err);
@@ -1396,317 +1438,23 @@ export function ExecutiveDashboard({
         )}
 
 
-        {/* ─── TAB 3: AUDIT HISTORY & SHIFT REPORTS ───────────────────────────── */}
+        {/* ─── TAB 3: AUDIT HISTORY & STORE MANAGERS GOVERNANCE ───────────────────────────── */}
         {activeTab === "history" && (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 sm:p-6 shadow-sm space-y-5 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-[var(--color-text)] flex items-center gap-2">
-                  <History size={18} className="text-amber-700" />
-                  <span>ประวัติและรายงานการตรวจสอบย้อนหลัง (Audit Inspection History)</span>
-                </h3>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5 flex flex-wrap items-center gap-1.5">
-                  <span>ค้นหาและเรียกดูรายละเอียดของแต่ละกะที่ปฏิบัติงานแล้ว</span>
-                  <span className="inline-flex items-center text-xs bg-amber-500/15 text-amber-950 dark:text-amber-200 font-bold px-2 py-0.5 rounded border border-amber-500/30">
-                    <svg className="w-3 h-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    แสดงข้อมูลย้อนหลัง 14 วัน (2 สัปดาห์)
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            {/* ─── Audit History Quick Filters & Search ─── */}
-            {(() => {
-              const baseHistoryForRole = activeHistorySource;
-
-              const pendingHistoryCount = baseHistoryForRole.filter((s) => {
-                const app = approvals[s.id] || {};
-                return !app.managerApproved;
-              }).length;
-
-              const approvedHistoryCount = baseHistoryForRole.length - pendingHistoryCount;
-
-              return (
-                <div className="space-y-3 pt-1">
-                  {/* Row 1: Quick Status Filter Pills & Shift Selector */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    {/* Status Tabs */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto max-w-full no-scrollbar pb-1 sm:pb-0">
-                      <button
-                        type="button"
-                        onClick={() => setHistoryStatusFilter("all")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${historyStatusFilter === "all"
-                          ? "bg-[var(--color-brown)] text-amber-300 shadow-2xs font-bold"
-                          : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                          }`}
-                      >
-                        ทั้งหมด ({baseHistoryForRole.length})
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setHistoryStatusFilter("pending")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${historyStatusFilter === "pending"
-                          ? "bg-amber-400 text-amber-950 font-bold shadow-2xs"
-                          : pendingHistoryCount > 0
-                            ? "bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200"
-                            : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                          }`}
-                      >
-                        <span>รอการตรวจรับรอง</span>
-                        {pendingHistoryCount > 0 && (
-                          <span className={`px-1.5 py-0.2 rounded-full text-xs font-extrabold ${historyStatusFilter === "pending" ? "bg-amber-950 text-amber-200" : "bg-amber-400 text-amber-950"}`}>
-                            {pendingHistoryCount}
-                          </span>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setHistoryStatusFilter("approved")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${historyStatusFilter === "approved"
-                          ? "bg-[var(--color-brown)] text-amber-300 shadow-2xs font-bold"
-                          : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]"
-                          }`}
-                      >
-                        อนุมัติแล้ว ({approvedHistoryCount})
-                      </button>
-                    </div>
-
-                    {/* Shift Filter Pills */}
-                    <div className="flex items-center gap-1 self-start sm:self-auto overflow-x-auto max-w-full no-scrollbar pb-1 sm:pb-0">
-                      <span className="text-xs text-[var(--color-text-muted)] hidden lg:inline mr-1">กะ:</span>
-                      {(["all", "morning", "afternoon"] as const).map((sh) => (
-                        <button
-                          key={sh}
-                          type="button"
-                          onClick={() => setHistoryShiftFilter(sh)}
-                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer shrink-0 ${historyShiftFilter === sh
-                            ? "bg-[var(--color-text)] text-[var(--color-surface)] shadow-2xs font-bold"
-                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
-                            }`}
-                        >
-                          {sh === "all" ? "ทุกกะ" : sh === "morning" ? "กะเช้า" : "กะบ่าย"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Row 2: Search Input & Specific Date Fetcher */}
-                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                    <div className="flex-1 min-w-[180px]">
-                      <input
-                        type="text"
-                        placeholder="ค้นหาชื่อ หรือตำแหน่งในประวัติ..."
-                        value={historySearch}
-                        onChange={(e) => setHistorySearch(e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] placeholder:text-[var(--color-text-subtle)] rounded-xl focus:border-amber-400 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between sm:justify-start gap-1.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-2.5 py-1 w-full sm:w-auto">
-                      <span className="text-xs text-[var(--color-text-muted)]">วันที่:</span>
-                      <input
-                        type="date"
-                        value={selectedHistoryDate}
-                        onChange={handleDateSelection}
-                        className="bg-transparent text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-subtle)] focus:outline-none cursor-pointer"
-                      />
-                      {selectedHistoryDate && (
-                        <button
-                          type="button"
-                          onClick={() => handleDateSelection({ target: { value: "" } } as React.ChangeEvent<HTMLInputElement>)}
-                          className="text-xs text-rose-500 hover:text-rose-700 font-bold px-1.5 py-0.5 rounded hover:bg-rose-50 transition-colors cursor-pointer"
-                          title="ล้างวันที่เฉพาะเจาะจงและกลับไปแสดงย้อนหลัง 14 วัน"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ─── Render History: Responsive Dual View (Cards on Mobile, Table on Desktop) ─── */}
-            {(() => {
-              const visibleHistory = filteredHistory;
-
-              if (visibleHistory.length === 0) {
-                return (
-                  <div className="py-10 text-center text-xs text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/40 rounded-2xl border border-dashed border-[var(--color-border)] p-6">
-                    <p className="font-semibold text-[var(--color-text)]">ไม่พบประวัติการตรวจสอบตามเงื่อนไขที่เลือก</p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                      ลองเปลี่ยนคำค้นหา หรือเลือกวันที่อื่นเพื่อดูบันทึกย้อนหลัง
-                    </p>
-                  </div>
-                );
-              }
-
-              const renderHistoryStatusBadge = (sess: ShiftSession) => {
-                const app = approvals[sess.id] || {};
-                const isAssistantSession =
-                  sess.taskRole === "manager_assistant" || sess.userPosition === "ผู้ช่วยผู้จัดการร้าน";
-
-                if (app.managerApproved) {
-                  return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
-                      <CheckCircle2 size={12} className="text-emerald-600" />
-                      <span>อนุมัติสมบูรณ์</span>
-                    </span>
-                  );
-                }
-
-                if (isAssistantSession) {
-                  return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
-                      <span>รอผู้จัดการอนุมัติ (งานผู้ช่วย)</span>
-                    </span>
-                  );
-                }
-
-                if (app.assistantApproved) {
-                  return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
-                      <span>ผู้ช่วยตรวจแล้ว → รอผู้จัดการ</span>
-                    </span>
-                  );
-                }
-
-                return (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)]">
-                    <span>รอดำเนินการ</span>
-                  </span>
-                );
-              };
-
-              return (
-                <>
-                  {/* 1. Mobile Cards View (< sm: 640px) */}
-                  <div className="block sm:hidden space-y-3">
-                    {visibleHistory.map((sess) => {
-                      const doneCount = sess.items.filter((i) => i.completedAt).length;
-                      const pct = Math.round((doneCount / (sess.items.length || 1)) * 100);
-
-                      return (
-                        <div
-                          key={sess.id}
-                          className="p-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <span className="font-bold text-sm text-[var(--color-text)]">
-                                {sess.userName}
-                              </span>
-                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                <span className="px-2 py-0.5 rounded-md font-semibold text-xs bg-[var(--color-surface-2)] text-[var(--color-text-muted)] border border-[var(--color-border)]">
-                                  {sess.userPosition || "พนักงาน"}
-                                </span>
-                                {getShiftBadge(sess.shift)}
-                              </div>
-                            </div>
-                            <div className="text-right text-xs text-[var(--color-text-muted)]">
-                              <span className="font-semibold text-[var(--color-text)] block">{fmtDate(sess.startedAt)}</span>
-                              <span className="text-[10px] text-[var(--color-text-subtle)] font-mono">
-                                {fmtTime(sess.startedAt)}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Progress bar */}
-                          <div className="space-y-1.5 bg-[var(--color-surface-2)]/60 p-2.5 rounded-xl border border-[var(--color-border)]">
-                            <div className="flex items-center justify-between text-xs font-mono">
-                              <span className="text-[var(--color-text-muted)]">ข้อที่สำเร็จ</span>
-                              <span className="font-bold text-[var(--color-text)]">
-                                {doneCount}/{sess.items.length} ข้อ ({pct}%)
-                              </span>
-                            </div>
-                            <div className="w-full bg-[var(--color-border-subtle)] h-2 rounded-full overflow-hidden border border-[var(--color-border)]">
-                              <div
-                                className={`h-full rounded-full transition-all duration-300 ${pct === 100 ? "bg-emerald-500" : "bg-amber-400"
-                                  }`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Status & Action */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                            <div className="min-w-0">{renderHistoryStatusBadge(sess)}</div>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedSession(sess)}
-                              className="min-h-[44px] px-4 py-2 shrink-0 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-xl transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5"
-                            >
-                              <span>เปิดดูข้อตรวจ</span>
-                              <span>→</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* 2. Desktop / Tablet Table View (>= sm: 640px) */}
-                  <div className="hidden sm:block overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)] font-semibold bg-[var(--color-surface-2)]">
-                          <th className="py-2.5 px-3 rounded-l-lg">วันที่ / เวลาเริ่ม</th>
-                          <th className="py-2.5 px-3">ผู้ปฏิบัติงาน</th>
-                          <th className="py-2.5 px-3">ตำแหน่ง</th>
-                          <th className="py-2.5 px-3">กะงาน</th>
-                          <th className="py-2.5 px-3">ข้อที่สำเร็จ</th>
-                          <th className="py-2.5 px-3 text-center">สถานะรับรอง</th>
-                          <th className="py-2.5 px-3 text-right rounded-r-lg">การจัดการ</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--color-border)]/70">
-                        {visibleHistory.map((sess) => {
-                          const doneCount = sess.items.filter((i) => i.completedAt).length;
-                          const pct = Math.round((doneCount / sess.items.length) * 100);
-
-                          return (
-                            <tr key={sess.id} className="hover:bg-[var(--color-background)] transition-colors">
-                              <td className="py-3 px-3 text-[var(--color-text-muted)]">
-                                <span className="font-semibold text-[var(--color-text)] block">{fmtDate(sess.startedAt)}</span>
-                                <span className="text-xs text-[var(--color-text-subtle)] font-mono">{fmtTime(sess.startedAt)}</span>
-                              </td>
-                              <td className="py-3 px-3 font-semibold text-[var(--color-text)]">
-                                {sess.userName}
-                              </td>
-                              <td className="py-3 px-3 text-[var(--color-text-muted)]">
-                                {sess.userPosition || "-"}
-                              </td>
-                              <td className="py-3 px-3">
-                                {getShiftBadge(sess.shift)}
-                              </td>
-                              <td className="py-3 px-3 font-mono">
-                                <span className="font-bold text-[var(--color-text)]">{doneCount}/{sess.items.length}</span>
-                                <span className="text-xs font-semibold text-[var(--color-text-muted)] ml-1">({pct}%)</span>
-                              </td>
-                              <td className="py-3 px-3 text-center">
-                                {renderHistoryStatusBadge(sess)}
-                              </td>
-                              <td className="py-3 px-3 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedSession(sess)}
-                                  className="min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-0 inline-flex items-center justify-center px-4 py-2 sm:px-3.5 sm:py-1.5 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
-                                >
-                                  เปิดดูข้อตรวจ →
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+          <ManagerAuditHistoryView
+            sessions={activeHistorySource}
+            approvals={approvals}
+            onSelectSession={setSelectedSession}
+            selectedDate={selectedHistoryDate}
+            onSelectDate={(dateStr) => {
+              setSelectedHistoryDate(dateStr);
+              void fetchSpecificHistoryDate(dateStr);
+            }}
+            todayIso={todayIso}
+            yesterdayIso={yesterdayIso}
+            isLoading={isLoadingHistory}
+            branches={historyBranches}
+            managers={historyManagers}
+          />
         )}
 
 

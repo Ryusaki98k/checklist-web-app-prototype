@@ -230,6 +230,8 @@ export interface IManagerService {
   getHistoryShiftSessions(daysOffset?: number, specificDate?: string): Promise<{
     success: boolean;
     sessions?: any[];
+    branches?: Array<{ id: string; name: string }>;
+    managers?: Array<{ id: string; name: string; branchId?: string; branchName?: string }>;
     error?: string;
   }>;
 

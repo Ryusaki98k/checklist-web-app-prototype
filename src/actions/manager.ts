@@ -23,6 +23,8 @@ export async function getHistoryShiftSessionsAction(
 ): Promise<{
   success: boolean;
   sessions?: ManagerShiftSummary[];
+  branches?: Array<{ id: string; name: string }>;
+  managers?: Array<{ id: string; name: string; branchId?: string; branchName?: string }>;
   error?: string;
 }> {
   const services = getServices();
