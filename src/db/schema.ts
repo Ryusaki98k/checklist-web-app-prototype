@@ -12,6 +12,11 @@ export const leaveTypeEnum = checklistSchema.enum('leave_type', [
     'paid',
     'unpaid',
 ]);
+export const leaveStatusEnum = checklistSchema.enum('leave_status', [
+    'pending',
+    'approved',
+    'rejected',
+]);
 
 export const branches = checklistSchema.table.withRLS("branches", {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -190,7 +195,7 @@ export const employeeLeaves = checklistSchema.table.withRLS("employee_leaves", {
     preserve_streak: boolean("preserve_streak").notNull().default(true),
     previous_streak: integer("previous_streak"),
     recorded_by: uuid("recorded_by").notNull().references(() => users.id, { onDelete: 'set null' }),
-    status: text("status").notNull().default("approved"),
+    status: leaveStatusEnum("status").notNull().default("approved"),
     approved_by: uuid("approved_by").references(() => users.id, { onDelete: 'set null' }),
     approved_at: timestamp("approved_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

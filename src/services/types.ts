@@ -100,6 +100,15 @@ export interface IPointService {
     totalPointsReset: number;
     error?: string;
   }>;
+
+  evaluateDailyStreaks(targetDateStr?: string): Promise<{
+    success: boolean;
+    evaluatedCount: number;
+    perfectCount: number;
+    flawedCount: number;
+    preservedCount: number;
+    error?: string;
+  }>;
 }
 
 export interface IChecklistService {
@@ -578,6 +587,7 @@ export interface CleanupDataConfig {
 export interface EndShiftsConfig {
   sendAttendanceAlerts: boolean;
   autoEndUnclosedShifts: boolean;
+  evaluateDailyStreaks?: boolean;
 }
 
 export interface DailyRefrigeratorsConfig {

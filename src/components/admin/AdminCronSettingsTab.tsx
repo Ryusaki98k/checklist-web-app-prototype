@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   ChevronRight,
   Award,
+  Flame,
 } from "lucide-react";
 import { CronSetting, CleanupDataConfig, EndShiftsConfig, DailyRefrigeratorsConfig, ResetScoresConfig } from "../../services/types";
 import {
@@ -391,6 +392,27 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                           </span>
                           <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed">
                             กะที่ยังเปิดค้างอยู่ทั้งหมดจะถูกปิดโดยอัตโนมัติเมื่อสิ้นวัน เพื่อไม่ให้ข้ามไปยังวันถัดไป
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Evaluate Daily Streaks Toggle */}
+                      <label className="flex items-start gap-3 p-3.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 hover:bg-[var(--color-surface-2)] transition-all cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(draft.config as unknown as Partial<EndShiftsConfig>)?.evaluateDailyStreaks !== false}
+                          onChange={(e) =>
+                            handleConfigChange(job.id, "evaluateDailyStreaks", e.target.checked)
+                          }
+                          className="mt-1 h-4 w-4 rounded-sm border-gray-300 text-amber-600 focus:ring-amber-500"
+                        />
+                        <div className="space-y-0.5">
+                          <span className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1.5">
+                            <Flame size={13} className="text-rose-600 dark:text-rose-400" />
+                            ประเมินสถานะสตรีคประจำวัน (Perfect / Flawed)
+                          </span>
+                          <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed">
+                            ตรวจสอบผลงานประจำวัน: หากงานไม่สมบูรณ์ หรือขาดงานโดยไม่มีใบลา/ไม่รักษาสตรีค จะปรับเป็น Flawed อัตโนมัติ
                           </p>
                         </div>
                       </label>

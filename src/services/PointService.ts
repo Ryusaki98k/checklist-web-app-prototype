@@ -1,8 +1,9 @@
-import { eq, desc, sql, inArray, and } from "drizzle-orm";
-import { users, pointTransactions, shiftSession, taskWork, tasks, branches } from "../db/schema";
+import { eq, desc, sql, inArray, and, lte, gte } from "drizzle-orm";
+import { users, pointTransactions, shiftSession, taskWork, tasks, branches, employeeLeaves } from "../db/schema";
 import { IPointService, INotificationService } from "./types";
 import { PointTransaction, LeaderboardEntry, ActiveRole } from "../types";
-import { getUserAvailableRoles } from "../utils/roles";
+import { getUserAvailableRoles, isScoreboardEligible } from "../utils/roles";
+import { getThaiStartAndEndOfDay } from "../utils/date";
 
 export class PointService implements IPointService {
   constructor(private db: any, private notificationService?: INotificationService) {}
@@ -443,6 +444,212 @@ export class PointService implements IPointService {
         success: false,
         affectedUsersCount: 0,
         totalPointsReset: 0,
+        error: message,
+      };
+    }
+  }
+
+  /**
+   * Daily Streak Evaluation Cron Routine
+   * Evaluates all frontline employees and assistant managers for targetDateStr (default today):
+   * 1. If worked:
+   *    - Checks all shift tasks and completion status.
+   *    - If all completed without issues and on time -> perfect streak.
+   *    - If not perfect -> changes streak type to "flawed".
+   * 2. If did NOT work:
+   *    - Checks employeeLeaves for approved leave notice covering the date:
+   *      - If has approved leave AND preserve_streak = true -> streak is preserved.
+   *      - If has approved leave BUT preserve_streak = false -> changes streak type to "flawed".
+   *      - If NO approved leave notice (absent) -> changes streak type to "flawed".
+   */
+  async evaluateDailyStreaks(targetDateStr?: string): Promise<{
+    success: boolean;
+    evaluatedCount: number;
+    perfectCount: number;
+    flawedCount: number;
+    preservedCount: number;
+    error?: string;
+  }> {
+    try {
+      const { startOfDay, endOfDay, dateStr } = targetDateStr
+        ? getThaiStartAndEndOfDay(new Date(targetDateStr + "T12:00:00+07:00"))
+        : getThaiStartAndEndOfDay();
+
+      // 1. Fetch frontline participating staff (only employees & assistant managers)
+      const allUsers = await this.db.select().from(users);
+      const participatingStaff = allUsers.filter((u: any) => isScoreboardEligible(u));
+
+      if (participatingStaff.length === 0) {
+        return {
+          success: true,
+          evaluatedCount: 0,
+          perfectCount: 0,
+          flawedCount: 0,
+          preservedCount: 0,
+        };
+      }
+
+      // 2. Fetch all shift sessions for target date
+      const dateSessions = await this.db
+        .select()
+        .from(shiftSession)
+        .where(
+          and(
+            gte(shiftSession.start, startOfDay),
+            lte(shiftSession.start, endOfDay)
+          )
+        );
+
+      const sessionIds = dateSessions.map((s: any) => s.id);
+      const dateWorks =
+        sessionIds.length > 0
+          ? await this.db
+              .select()
+              .from(taskWork)
+              .where(inArray(taskWork.shift_session, sessionIds))
+          : [];
+
+      const allTasks = await this.db.select().from(tasks);
+
+      // 3. Fetch approved leaves covering target date
+      const dateLeaves = await this.db
+        .select()
+        .from(employeeLeaves)
+        .where(
+          and(
+            lte(employeeLeaves.start_date, dateStr),
+            gte(employeeLeaves.end_date, dateStr),
+            eq(employeeLeaves.status, "approved")
+          )
+        );
+
+      let perfectCount = 0;
+      let flawedCount = 0;
+      let preservedCount = 0;
+
+      const userUpdates: Array<{
+        userId: string;
+        streakType: "none" | "flawed" | "perfect";
+      }> = [];
+
+      for (const staff of participatingStaff) {
+        const staffSessions = dateSessions.filter((s: any) => s.user === staff.id);
+        const staffLeave = dateLeaves.find((l: any) => l.user_id === staff.id);
+
+        if (staffSessions.length > 0) {
+          // --- Case 1: Staff worked one or more shifts today ---
+          let isDayPerfect = true;
+
+          for (const sess of staffSessions) {
+            // Incomplete shift under penalty
+            if (sess.incomplete_status === "reviewed" && sess.incomplete_action && sess.incomplete_action !== "no_penalty") {
+              isDayPerfect = false;
+              break;
+            }
+            if (sess.incomplete_status === "pending" || (!sess.end && sess.incomplete_reason)) {
+              isDayPerfect = false;
+              break;
+            }
+
+            const sessWorks = dateWorks.filter((w: any) => w.shift_session === sess.id);
+            for (const work of sessWorks) {
+              const t = allTasks.find((task: any) => task.id === work.task);
+              // Manager/night closing tasks don't penalize normal checklist streak
+              if (t && (t.for_managers || t.shift === "night")) {
+                continue;
+              }
+              if (!work.timestamp) {
+                isDayPerfect = false;
+                break;
+              }
+              if (t?.end) {
+                const completedDate = new Date(work.timestamp);
+                const [endHour, endMinute] = t.end.split(":").map(Number);
+                const deadlineDate = new Date(sess.start);
+                deadlineDate.setHours(endHour, endMinute, 0, 0);
+                if (completedDate > deadlineDate) {
+                  isDayPerfect = false;
+                  break;
+                }
+              }
+            }
+
+            if (!isDayPerfect) break;
+          }
+
+          if (isDayPerfect) {
+            perfectCount++;
+            if (staff.point_streak_type !== "perfect") {
+              userUpdates.push({
+                userId: staff.id,
+                streakType: "perfect",
+              });
+            }
+          } else {
+            flawedCount++;
+            if (staff.point_streak_type !== "flawed") {
+              userUpdates.push({
+                userId: staff.id,
+                streakType: "flawed",
+              });
+            }
+          }
+        } else {
+          // --- Case 2: Staff did NOT work today ---
+          if (staffLeave) {
+            // Has approved leave notice
+            if (staffLeave.preserve_streak) {
+              // Manager enabled preserve streak -> streak is preserved
+              preservedCount++;
+            } else {
+              // Manager did not enable preserve streak -> change to flawed
+              flawedCount++;
+              if (staff.point_streak_type !== "flawed") {
+                userUpdates.push({
+                  userId: staff.id,
+                  streakType: "flawed",
+                });
+              }
+            }
+          } else {
+            // Absent without leave notice -> change to flawed
+            flawedCount++;
+            if (staff.point_streak_type !== "flawed") {
+              userUpdates.push({
+                userId: staff.id,
+                streakType: "flawed",
+              });
+            }
+          }
+        }
+      }
+
+      // Execute updates
+      for (const update of userUpdates) {
+        await this.db
+          .update(users)
+          .set({
+            point_streak_type: update.streakType,
+          })
+          .where(eq(users.id, update.userId));
+      }
+
+      return {
+        success: true,
+        evaluatedCount: participatingStaff.length,
+        perfectCount,
+        flawedCount,
+        preservedCount,
+      };
+    } catch (err: unknown) {
+      console.error("evaluateDailyStreaks error:", err);
+      const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการประเมินสตรีคประจำวัน";
+      return {
+        success: false,
+        evaluatedCount: 0,
+        perfectCount: 0,
+        flawedCount: 0,
+        preservedCount: 0,
         error: message,
       };
     }

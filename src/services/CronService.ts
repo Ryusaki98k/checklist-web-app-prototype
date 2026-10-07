@@ -20,6 +20,7 @@ const DEFAULT_CRON_JOBS: CronSetting[] = [
     config: {
       sendAttendanceAlerts: true,
       autoEndUnclosedShifts: true,
+      evaluateDailyStreaks: true,
     },
     last_run_at: null,
     last_run_status: null,
@@ -332,6 +333,7 @@ export class CronService implements ICronService {
 
         const sendAlerts = mergedConfig.sendAttendanceAlerts !== false;
         const autoEnd = mergedConfig.autoEndUnclosedShifts !== false;
+        const evalStreaks = mergedConfig.evaluateDailyStreaks !== false;
         const dateStr = overrides?.dateStr as string | undefined;
 
         let alertsResult = null;
@@ -344,11 +346,17 @@ export class CronService implements ICronService {
           endShiftsResult = await this.checklistService.autoEndUnfinishedShifts();
         }
 
+        let streakResult = null;
+        if (evalStreaks && this.pointService) {
+          streakResult = await this.pointService.evaluateDailyStreaks(dateStr);
+        }
+
         const endedCount = endShiftsResult?.endedCount ?? 0;
         const absentCount = alertsResult?.totalAbsentStaff ?? 0;
         const unendedCount = alertsResult?.totalUnendedShifts ?? 0;
+        const evaluatedStreaksCount = streakResult?.evaluatedCount ?? 0;
 
-        const summaryMsg = `ประมวลผลสิ้นวันสำเร็จ: บังคับปิดกะค้าง ${endedCount} กะ, ตรวจพบกะค้างเตือน ${unendedCount} กะ, พนักงานขาดงาน ${absentCount} คน (ส่งแจ้งเตือน: ${sendAlerts ? "เปิด" : "ปิด"}, บังคับปิดกะ: ${autoEnd ? "เปิด" : "ปิด"})`;
+        const summaryMsg = `ประมวลผลสิ้นวันสำเร็จ: บังคับปิดกะค้าง ${endedCount} กะ, ประเมินสตรีคประจำวัน ${evaluatedStreaksCount} คน (สมบูรณ์ ${streakResult?.perfectCount ?? 0}, ปรับ Flawed ${streakResult?.flawedCount ?? 0}, รักษาสตรีคจากใบลา ${streakResult?.preservedCount ?? 0}), ตรวจพบกะค้างเตือน ${unendedCount} กะ, พนักงานขาดงาน ${absentCount} คน`;
 
         await this.recordExecution(id, {
           status: "success",
@@ -357,7 +365,7 @@ export class CronService implements ICronService {
 
         return {
           success: true,
-          result: { alerts: alertsResult, endShifts: endShiftsResult },
+          result: { alerts: alertsResult, endShifts: endShiftsResult, streakEvaluation: streakResult },
           message: summaryMsg,
         };
       }
