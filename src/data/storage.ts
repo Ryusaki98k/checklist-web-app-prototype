@@ -117,14 +117,14 @@ export function seedSampleData(force = false) {
 
   if (needsUsers) {
     users = [
-      { id: "u-admin", name: "คุณสมเกียรติ บริหารกิจ", username: "admin", password: "admin123", role: "admin", position: "ผู้ดูแลระบบส่วนกลาง" },
-      { id: "u-manager", name: "คุณวิภาดา สุขเจริญ", username: "manager", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
-      { id: "u-asst", name: "คุณธนากร เกียรติไพบูลย์", username: "assistant", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
-      { id: "u-director", name: "คุณกิตติศักดิ์ พัฒนกิจ", username: "director", password: "director123", role: "committee", position: "กรรมการ" },
-      { id: "u-cashier", name: "สมศรี ใจดี", username: "cashier", password: "123", role: "employee", position: "แคชเชียร์" },
-      { id: "u-stock", name: "สมชาย มั่นคง", username: "stock", password: "123", role: "employee", position: "พนักงานสต็อก/จัดเรียง" },
-      { id: "u-qc", name: "กัญญาภัทร พิมพา", username: "kanya", password: "123", role: "employee", position: "แคชเชียร์" },
-      { id: "u-tech", name: "ศุภชัย มีสุข", username: "suphachai", password: "123", role: "employee" },
+      { id: "u-admin", name: "คุณสมเกียรติ บริหารกิจ", username: "admin", password: "admin123", role: "admin", position: "ผู้ดูแลระบบส่วนกลาง", managerType: "none", executiveType: "none", isAdmin: true, activeRole: "admin" },
+      { id: "u-manager", name: "คุณวิภาดา สุขเจริญ", username: "manager", password: "manager123", role: "manager", position: "ผู้จัดการร้าน", managerType: "store", executiveType: "none", isAdmin: false, activeRole: "manager" },
+      { id: "u-asst", name: "คุณธนากร เกียรติไพบูลย์", username: "assistant", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน", managerType: "assistant", executiveType: "none", isAdmin: false, activeRole: "manager_assistant" },
+      { id: "u-director", name: "คุณกิตติศักดิ์ พัฒนกิจ", username: "director", password: "director123", role: "committee", position: "กรรมการ", managerType: "none", executiveType: "committee", isAdmin: false, activeRole: "committee" },
+      { id: "u-cashier", name: "สมศรี ใจดี", username: "cashier", password: "123", role: "employee", position: "แคชเชียร์", managerType: "none", executiveType: "none", isAdmin: false, activeRole: "employee" },
+      { id: "u-stock", name: "สมชาย มั่นคง", username: "stock", password: "123", role: "employee", position: "พนักงานสต็อก/จัดเรียง", managerType: "none", executiveType: "none", isAdmin: false, activeRole: "employee" },
+      { id: "u-qc", name: "กัญญาภัทร พิมพา", username: "kanya", password: "123", role: "employee", position: "แคชเชียร์", managerType: "none", executiveType: "none", isAdmin: false, activeRole: "employee" },
+      { id: "u-tech", name: "ศุภชัย มีสุข", username: "suphachai", password: "123", role: "employee", managerType: "none", executiveType: "none", isAdmin: false, activeRole: "employee" },
     ];
     saveUsers(users);
   }
@@ -234,7 +234,22 @@ export function getCurrentUser(): User | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = secureGetItem("app_current_user");
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    if (!u) return null;
+    if (!u.managerType) {
+      u.managerType = u.role === "manager" ? "store" : u.role === "manager_assistant" ? "assistant" : "none";
+    }
+    if (!u.executiveType) {
+      u.executiveType = u.role === "committee" ? "committee" : u.role === "general_manager" ? "executive" : "none";
+    }
+    if (u.isAdmin === undefined) {
+      u.isAdmin = u.role === "admin";
+    }
+    if (!u.activeRole) {
+      u.activeRole = u.role || "employee";
+    }
+    return u;
   } catch {
     return null;
   }

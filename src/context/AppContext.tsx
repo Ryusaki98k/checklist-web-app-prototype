@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ShiftSession, ShiftType, User } from "../types";
+import { ShiftSession, ShiftType, User, ActiveRole } from "../types";
+import { getUserAvailableRoles, canAccessRole } from "../utils/roles";
 import { STAFF_POSITIONS } from "../types";
 import {
   getActiveSession,
@@ -35,8 +36,10 @@ interface AppContextType {
   activeSession: ShiftSession | null;
   sessions: ShiftSession[];
   isReady: boolean;
-  login: (user: User, shift?: ShiftType, redirectPath?: string) => Promise<void> | void;
+  login: (user: User, shift?: ShiftType, redirectPath?: string, roleToActivate?: ActiveRole) => Promise<void> | void;
   logout: (redirectTo?: string) => void;
+  switchRole: (newRole: ActiveRole) => void;
+  availableRoles: ActiveRole[];
   selectShift: (shift: ShiftType) => Promise<void>;
   selectPosition: (position: string) => void;
   updateSession: (updated: ShiftSession) => void;
@@ -369,7 +372,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     saveActiveSession(session);
   }
 
-  async function login(user: User, shift?: ShiftType, redirectPath?: unknown) {
+  const availableRoles = React.useMemo(() => {
+    return getUserAvailableRoles(currentUser);
+  }, [currentUser]);
+
+  const switchRole = React.useCallback(
+    (newRole: ActiveRole) => {
+      if (!currentUser) return;
+      if (!canAccessRole(currentUser, newRole)) {
+        console.warn(`User does not have permission to switch to role ${newRole}`);
+        return;
+      }
+
+      const updatedUser: User = {
+        ...currentUser,
+        activeRole: newRole,
+        role: newRole,
+        position:
+          newRole === "manager"
+            ? "ผู้จัดการร้าน"
+            : newRole === "manager_assistant"
+            ? "ผู้ช่วยผู้จัดการร้าน"
+            : newRole === "committee"
+            ? "กรรมการ"
+            : newRole === "general_manager"
+            ? "ผู้จัดการทั่วไป"
+            : newRole === "admin"
+            ? "ผู้ดูแลระบบส่วนกลาง"
+            : undefined,
+      };
+
+      setCurrentUser(updatedUser);
+
+      startTransition(() => {
+        if (newRole === "admin") {
+          router.push("/admin/dashboard");
+        } else if (newRole === "manager" || newRole === "manager_assistant") {
+          if (!updatedUser.branchName) {
+            router.push("/awaiting-assignment");
+          } else {
+            router.push("/manager/dashboard");
+          }
+        } else if (newRole === "committee" || newRole === "general_manager") {
+          router.push("/manager/dashboard");
+        } else {
+          // Employee role
+          if (!updatedUser.branchName) {
+            router.push("/awaiting-assignment");
+          } else {
+            router.push("/position");
+          }
+        }
+      });
+    },
+    [currentUser, router]
+  );
+
+  async function login(user: User, shift?: ShiftType, redirectPath?: unknown, roleToActivate?: ActiveRole) {
     startLoading("กำลังเข้าสู่ระบบ...", true);
     const targetPath = typeof redirectPath === "string" ? redirectPath : null;
 
@@ -386,6 +445,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       (prevEnteredDate && prevEnteredDate !== todayDateStr);
 
     let activeUser = user;
+    if (roleToActivate && canAccessRole(user, roleToActivate)) {
+      activeUser = {
+        ...activeUser,
+        activeRole: roleToActivate,
+        role: roleToActivate,
+      };
+    }
 
     if (isFromAnotherDate) {
       console.info("User login from another date detected. Clearing localStorage and reloading from DB...");
@@ -397,7 +463,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const dbUserRes = await getUserByIdAction(user.id);
         if (dbUserRes.success && dbUserRes.user) {
-          activeUser = dbUserRes.user;
+          activeUser = {
+            ...dbUserRes.user,
+            activeRole: roleToActivate && canAccessRole(dbUserRes.user, roleToActivate) ? roleToActivate : dbUserRes.user.activeRole || dbUserRes.user.role,
+            role: roleToActivate && canAccessRole(dbUserRes.user, roleToActivate) ? roleToActivate : dbUserRes.user.role,
+          };
           setCurrentUserState(activeUser);
           saveCurrentUser(activeUser);
         }
@@ -682,6 +752,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isReady,
         login,
         logout,
+        switchRole,
+        availableRoles,
         selectShift,
         selectPosition,
         updateSession,

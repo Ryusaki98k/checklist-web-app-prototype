@@ -2,17 +2,19 @@ import { useState, useEffect } from "react";
 import { User, Role, LeaveQuotaInfo } from "../../types";
 import { BrandLogo } from "../common/BrandLogo";
 import { ThemeToggle } from "../common/ThemeToggle";
+import { RoleSwitcher } from "../common/RoleSwitcher";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
-import { LogOut, RefreshCw, Snowflake } from "lucide-react";
+import { LogOut, RefreshCw, Snowflake, ShieldCheck, Settings2 } from "lucide-react";
 
 import { createBranchAction, assignStaffToBranchAction, assignTasksToBranchAction, updateBranchLeaveQuotaAction, DashboardBranch as Branch } from "../../actions/branch";
 import { fetchBranchesWithCache, invalidateBranchCache } from "../../utils/cache";
-import { getAllUsersAction, updateUserRoleAction } from "../../actions/auth";
+import { getAllUsersAction, updateUserRoleAction, updateUserPermissionsAction } from "../../actions/auth";
 import { getAllTasksAction, createTaskAction, toggleTaskDisabledAction } from "../../actions/task";
 import { getAllUsersLeaveQuotasAction, updateEmployeeLeaveQuotaAction } from "../../actions/manager";
 import { AdminCronSettingsTab } from "./AdminCronSettingsTab";
 import { AdminAddUserModal } from "./AdminAddUserModal";
 import { AdminManageRefrigeratorsModal } from "./AdminManageRefrigeratorsModal";
+import { AdminUserPermissionsModal } from "./AdminUserPermissionsModal";
 
 interface MasterTask {
   id: string;
@@ -151,6 +153,7 @@ export function AdminDashboardView({
   const [customQuotaInput, setCustomQuotaInput] = useState<number | string>("");
   const [isSavingQuota, setIsSavingQuota] = useState(false);
   const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null);
+  const [editingPermissionsUser, setEditingPermissionsUser] = useState<User | null>(null);
 
   function togglePassword(userId: string) {
     setVisiblePasswords(prev => {
@@ -559,6 +562,7 @@ export function AdminDashboardView({
             </div>
           </div>
 
+          <RoleSwitcher />
           <ThemeToggle />
           <button
             type="button"
@@ -1052,20 +1056,48 @@ export function AdminDashboardView({
                           )}
                         </td>
                         <td className="py-3.5 px-3 text-right">
-                          <select
-                            value={u.role}
-                            disabled={isUpdatingRole === u.id || u.id === user.id}
-                            onChange={(e) => handlePromoteUser(u.id, e.target.value as Role)}
-                            title={u.id === user.id ? "ไม่สามารถเปลี่ยนสิทธิ์ของตนเองได้" : undefined}
-                            className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl min-h-[44px] sm:min-h-[34px] px-3 py-2 sm:px-2.5 sm:py-1 text-xs text-[var(--color-text)] focus:outline-none focus:border-amber-400 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <option value="employee">Staff (พนักงานทั่วไป)</option>
-                            <option value="manager_assistant">Assistant (ผู้ช่วยผู้จัดการร้าน)</option>
-                            <option value="manager">Store Manager (ผู้จัดการร้าน)</option>
-                            <option value="general_manager">General Manager (ผู้จัดการทั่วไป)</option>
-                            <option value="committee">Committee (กรรมการบริหาร)</option>
-                            <option value="admin">Admin (ผู้ดูแลระบบส่วนกลาง)</option>
-                          </select>
+                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                            <div className="flex items-center gap-1 flex-wrap justify-end">
+                              <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700/60" title="พนักงานสาขา">
+                                Staff
+                              </span>
+                              {u.managerType === "assistant" && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-400 dark:border-emerald-700/60" title="ผู้ช่วยผู้จัดการร้าน">
+                                  ผู้ช่วย ผจก.
+                                </span>
+                              )}
+                              {u.managerType === "store" && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white shadow-2xs" title="ผู้จัดการร้าน">
+                                  ผจก.ร้าน
+                                </span>
+                              )}
+                              {u.executiveType === "committee" && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/15 text-blue-800 dark:text-blue-300 border border-blue-400 dark:border-blue-700/60" title="กรรมการบริหาร">
+                                  กรรมการ
+                                </span>
+                              )}
+                              {u.executiveType === "executive" && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-600 text-white shadow-2xs" title="ผู้จัดการทั่วไป (GM)">
+                                  GM
+                                </span>
+                              )}
+                              {u.isAdmin && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-600 text-white shadow-2xs" title="ผู้ดูแลระบบส่วนกลาง">
+                                  Admin
+                                </span>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setEditingPermissionsUser(u)}
+                              className="px-2 py-1 rounded-xl bg-[var(--color-surface-2)] hover:bg-amber-500/15 text-[var(--color-text)] hover:text-amber-900 dark:hover:text-amber-200 border border-[var(--color-border)] hover:border-amber-400 text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer shrink-0"
+                              title={`กำหนดสิทธิ์แบบละเอียดสำหรับ ${u.name}`}
+                            >
+                              <Settings2 size={12} />
+                              <span>ตั้งค่าสิทธิ์</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1754,6 +1786,21 @@ export function AdminDashboardView({
           branches={branches}
           onUserCreated={async (newUser) => {
             showToast(`เพิ่มผู้ใช้ "${newUser.name}" สำเร็จ`);
+            await loadUsers();
+          }}
+        />
+
+        {/* Edit User Permissions Modal */}
+        <AdminUserPermissionsModal
+          isOpen={Boolean(editingPermissionsUser)}
+          targetUser={editingPermissionsUser}
+          currentAdminId={user.id}
+          onClose={() => setEditingPermissionsUser(null)}
+          showToast={showToast}
+          onPermissionsUpdated={async (updated) => {
+            setUsersList((prev) =>
+              prev.map((u) => (u.id === updated.id ? { ...u, ...updated } : u))
+            );
             await loadUsers();
           }}
         />

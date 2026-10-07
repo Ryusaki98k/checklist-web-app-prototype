@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { getServices } from "../../../services/container";
+import { canAccessAdminPortal, canAccessManagerPortal, canAccessExecutivePortal } from "../../../utils/roles";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -57,23 +58,15 @@ export async function GET(request: NextRequest) {
 
       if (user) {
         // Redirect according to role & branch
-        const requiresBranch =
-          user.role === "employee" ||
-          user.role === "manager_assistant" ||
-          user.role === "manager";
+        const requiresBranch = !canAccessAdminPortal(user) && !canAccessExecutivePortal(user);
 
         if (requiresBranch && !user.branchName) {
           return NextResponse.redirect(new URL("/awaiting-assignment", request.url));
         }
 
-        if (user.role === "admin") {
+        if (canAccessAdminPortal(user)) {
           return NextResponse.redirect(new URL("/admin/dashboard", request.url));
-        } else if (
-          user.role === "manager" ||
-          user.role === "manager_assistant" ||
-          user.role === "committee" ||
-          user.role === "general_manager"
-        ) {
+        } else if (canAccessManagerPortal(user) || canAccessExecutivePortal(user)) {
           return NextResponse.redirect(new URL("/manager/dashboard", request.url));
         } else {
           return NextResponse.redirect(new URL("/position", request.url));

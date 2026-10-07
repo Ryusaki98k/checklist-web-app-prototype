@@ -26,6 +26,7 @@ import { RefrigeratorConfigView } from "./RefrigeratorConfigView";
 import { ManagerAuditHistoryView } from "./history/ManagerAuditHistoryView";
 import { NotificationCenter } from "../common/NotificationCenter";
 import { ThemeToggle } from "../common/ThemeToggle";
+import { RoleSwitcher } from "../common/RoleSwitcher";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
 import { LeaderboardWidget } from "./LeaderboardWidget";
@@ -573,6 +574,7 @@ export function ExecutiveDashboard({
               lastRefreshedAt={navbarLastRefreshedAt}
               lastRefreshType={navbarLastRefreshType}
             />
+            <RoleSwitcher />
             <NotificationCenter />
             <ThemeToggle />
 

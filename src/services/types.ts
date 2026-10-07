@@ -1,12 +1,15 @@
-import { Role, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
+import { Role, ManagerType, ExecutiveType, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
 
 export interface IAuthService {
-  login(username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }>;
+  login(username: string, password: string, requestedRole?: Role): Promise<{ success: boolean; user?: User; error?: string }>;
   register(data: {
     name: string;
     username: string;
     password?: string;
     role?: Role;
+    managerType?: ManagerType;
+    executiveType?: ExecutiveType;
+    isAdmin?: boolean;
     position?: string;
     branchId?: string;
     leaveQuota?: number | null;
@@ -18,8 +21,17 @@ export interface IAuthService {
     username?: string;
     name?: string;
     role?: Role;
+    managerType?: ManagerType;
+    executiveType?: ExecutiveType;
+    isAdmin?: boolean;
   }): Promise<{ success: boolean; user?: User; error?: string }>;
   updateUserRole(userId: string, role: Role): Promise<{ success: boolean; error?: string }>;
+  updateUserPermissions(userId: string, permissions: {
+    managerType?: ManagerType;
+    executiveType?: ExecutiveType;
+    isAdmin?: boolean;
+    role?: Role;
+  }): Promise<{ success: boolean; error?: string }>;
   seedUsersIfEmpty(): Promise<void>;
 }
 

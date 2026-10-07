@@ -12,18 +12,17 @@ export default function ManagerLoginPage() {
     useEffect(() => {
         if (!isReady) return;
         if (currentUser) {
-            if (currentUser.role === "manager" || currentUser.role === "manager_assistant") {
+            const role = currentUser.activeRole || currentUser.role;
+            if (role === "manager" || role === "manager_assistant") {
                 if (!currentUser.branchName) {
                     router.replace("/awaiting-assignment");
                 } else {
                     router.replace("/manager/dashboard");
                 }
-            } else if (currentUser.role === "committee" || currentUser.role === "general_manager") {
+            } else if (role === "committee" || role === "general_manager") {
                 router.replace("/manager/dashboard");
-            } else if (currentUser.role === "admin") {
+            } else if (role === "admin") {
                 router.replace("/admin/dashboard");
-            } else if (currentUser.role === "employee") {
-                router.replace("/position");
             }
         }
     }, [currentUser, isReady, router]);

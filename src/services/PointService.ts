@@ -1,7 +1,8 @@
-import { eq, desc, sql, inArray } from "drizzle-orm";
+import { eq, desc, sql, inArray, and } from "drizzle-orm";
 import { users, pointTransactions, shiftSession, taskWork, tasks, branches } from "../db/schema";
 import { IPointService, INotificationService } from "./types";
-import { PointTransaction, LeaderboardEntry, Role } from "../types";
+import { PointTransaction, LeaderboardEntry, ActiveRole } from "../types";
+import { getUserAvailableRoles } from "../utils/roles";
 
 export class PointService implements IPointService {
   constructor(private db: any, private notificationService?: INotificationService) {}
@@ -293,37 +294,37 @@ export class PointService implements IPointService {
   }> {
     try {
       const allBranches = await this.db.select().from(branches);
-      let allUsers: any[] = [];
+
+      // Only employees and assistant managers participate in the scoreboard.
+      // Managers (manager_type = 'store'), executives (executive_type = 'executive'),
+      // committee (executive_type = 'committee'), and admins (is_admin = true) are excluded
+      // from the leaderboard display, while their scores remain intact in the database.
+      const conditions = [
+        eq(users.is_admin, false),
+        eq(users.executive_type, "none"),
+        inArray(users.manager_type, ["none", "assistant"]),
+      ];
 
       if (branchId) {
-        allUsers = await this.db
-          .select()
-          .from(users)
-          .where(eq(users.branch_id, branchId))
-          .orderBy(desc(users.point))
-          .limit(30);
-      } else {
-        allUsers = await this.db
-          .select()
-          .from(users)
-          .orderBy(desc(users.point))
-          .limit(30);
+        conditions.push(eq(users.branch_id, branchId));
       }
+
+      const allUsers = await this.db
+        .select()
+        .from(users)
+        .where(and(...conditions))
+        .orderBy(desc(users.point))
+        .limit(30);
 
       const mapped: LeaderboardEntry[] = allUsers.map((u: any) => {
         const userBranch = allBranches.find((b: any) => b.id === u.branch_id);
-
-        let defaultPosition: string | undefined = undefined;
-        if (u.role === "manager") defaultPosition = "ผู้จัดการร้าน";
-        else if (u.role === "committee") defaultPosition = "กรรมการ";
-        else if (u.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
-        else if (u.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
-        else defaultPosition = "พนักงานสาขา";
+        const role: ActiveRole = u.manager_type === "assistant" ? "manager_assistant" : "employee";
+        const defaultPosition = u.manager_type === "assistant" ? "ผู้ช่วยผู้จัดการร้าน" : "พนักงานสาขา";
 
         return {
           userId: u.id,
           name: u.name,
-          role: u.role as Role,
+          role,
           position: defaultPosition,
           branchName: userBranch ? userBranch.name : undefined,
           point: u.point || 0,
@@ -359,11 +360,12 @@ export class PointService implements IPointService {
       const shouldNotify = params?.notifyEmployees !== false;
       const shouldResetStreaks = Boolean(params?.resetStreaks);
 
-      // Find all target users with points > 0 or streaks > 0 if resetting streaks
-      const targetUsers = await this.db
-        .select()
-        .from(users)
-        .where(inArray(users.role, targetRoles as ("admin" | "committee" | "general_manager" | "manager" | "manager_assistant" | "employee")[]));
+      // Find all target users matching roles
+      const allUsers = await this.db.select().from(users);
+      const targetUsers = allUsers.filter((u: any) => {
+        const availableRoles = getUserAvailableRoles(u);
+        return targetRoles.some((r: any) => availableRoles.includes(r as ActiveRole));
+      });
 
       const usersToReset = targetUsers.filter(
         (u: typeof users.$inferSelect) =>
@@ -398,7 +400,7 @@ export class PointService implements IPointService {
           }
         }
 
-        // 2. Reset points in database for all users with target roles
+        // 2. Reset points in database for affected users
         const updatePayload: {
           point: number;
           point_streak?: number;
@@ -410,10 +412,13 @@ export class PointService implements IPointService {
           updatePayload.point_streak_type = "none";
         }
 
-        await this.db
-          .update(users)
-          .set(updatePayload)
-          .where(inArray(users.role, targetRoles as ("admin" | "committee" | "general_manager" | "manager" | "manager_assistant" | "employee")[]));
+        const userIdsToUpdate = usersToReset.map((u: any) => u.id);
+        if (userIdsToUpdate.length > 0) {
+          await this.db
+            .update(users)
+            .set(updatePayload)
+            .where(inArray(users.id, userIdsToUpdate));
+        }
       }
 
       // 3. Send broadcast notification if enabled

@@ -42,6 +42,10 @@ export function AddStaffModal({
       name: form.name.trim(),
       username: form.username.trim().toLowerCase(),
       password: form.password.trim(),
+      managerType: "none",
+      executiveType: "none",
+      isAdmin: false,
+      activeRole: "employee",
       role: "employee",
       position: form.position || undefined,
     };

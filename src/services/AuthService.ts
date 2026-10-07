@@ -1,25 +1,29 @@
 import { eq, or, sql } from "drizzle-orm";
 import { users, branches } from "../db/schema";
 import { IAuthService } from "./types";
-import { User, Role } from "../types";
+import { User, Role, ActiveRole, ManagerType, ExecutiveType } from "../types";
+import { getUserAvailableRoles, canAccessRole, computePrimaryRole } from "../utils/roles";
 
 const INITIAL_USERS: Array<{
   name: string;
   username: string;
   password: string;
   role: 'admin' | 'committee' | 'general_manager' | 'manager' | 'manager_assistant' | 'employee';
+  managerType: ManagerType;
+  executiveType: ExecutiveType;
+  isAdmin: boolean;
   position?: string;
 }> = [
-  { name: "คุณวิภาดา สุขเจริญ", username: "manager", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
-  { name: "คุณกิตติศักดิ์ พัฒนกิจ", username: "director", password: "director123", role: "committee", position: "กรรมการ" },
-  { name: "คุณธนากร เกียรติไพบูลย์", username: "assistant", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
-  { name: "คุณอนุรักษ์ วงศ์สวัสดิ์", username: "manager2", password: "manager123", role: "manager", position: "ผู้จัดการร้าน" },
-  { name: "คุณพรทิพย์ สุขเจริญ", username: "asst", password: "123", role: "manager_assistant", position: "ผู้ช่วยผู้จัดการร้าน" },
-  { name: "สมศรี ใจดี", username: "cashier", password: "123", role: "employee", position: "แคชเชียร์" },
-  { name: "สมชาย มั่นคง", username: "stock", password: "123", role: "employee", position: "พนักงานสต็อก/จัดเรียง" },
-  { name: "กัญญาภัทร พิมพา", username: "kanya", password: "123", role: "employee", position: "แคชเชียร์" },
-  { name: "ศุภชัย มีสุข", username: "suphachai", password: "123", role: "employee", position: "พนักงานทั่วไป" },
-  { name: "คุณสมเกียรติ บริหารกิจ", username: "admin", password: "admin123", role: "admin", position: "ผู้ดูแลระบบส่วนกลาง" },
+  { name: "คุณวิภาดา สุขเจริญ", username: "manager", password: "manager123", role: "manager", managerType: "store", executiveType: "none", isAdmin: false, position: "ผู้จัดการร้าน" },
+  { name: "คุณกิตติศักดิ์ พัฒนกิจ", username: "director", password: "director123", role: "committee", managerType: "none", executiveType: "committee", isAdmin: false, position: "กรรมการ" },
+  { name: "คุณธนากร เกียรติไพบูลย์", username: "assistant", password: "123", role: "manager_assistant", managerType: "assistant", executiveType: "none", isAdmin: false, position: "ผู้ช่วยผู้จัดการร้าน" },
+  { name: "คุณอนุรักษ์ วงศ์สวัสดิ์", username: "manager2", password: "manager123", role: "manager", managerType: "store", executiveType: "none", isAdmin: false, position: "ผู้จัดการร้าน" },
+  { name: "คุณพรทิพย์ สุขเจริญ", username: "asst", password: "123", role: "manager_assistant", managerType: "assistant", executiveType: "none", isAdmin: false, position: "ผู้ช่วยผู้จัดการร้าน" },
+  { name: "สมศรี ใจดี", username: "cashier", password: "123", role: "employee", managerType: "none", executiveType: "none", isAdmin: false, position: "แคชเชียร์" },
+  { name: "สมชาย มั่นคง", username: "stock", password: "123", role: "employee", managerType: "none", executiveType: "none", isAdmin: false, position: "พนักงานสต็อก/จัดเรียง" },
+  { name: "กัญญาภัทร พิมพา", username: "kanya", password: "123", role: "employee", managerType: "none", executiveType: "none", isAdmin: false, position: "แคชเชียร์" },
+  { name: "ศุภชัย มีสุข", username: "suphachai", password: "123", role: "employee", managerType: "none", executiveType: "none", isAdmin: false, position: "พนักงานทั่วไป" },
+  { name: "คุณสมเกียรติ บริหารกิจ", username: "admin", password: "admin123", role: "admin", managerType: "store", executiveType: "executive", isAdmin: true, position: "ผู้ดูแลระบบส่วนกลาง" },
 ];
 
 export class AuthService implements IAuthService {
@@ -35,6 +39,9 @@ export class AuthService implements IAuthService {
             username: u.username.toLowerCase(),
             password: u.password,
             role: u.role,
+            manager_type: u.managerType,
+            executive_type: u.executiveType,
+            is_admin: u.isAdmin,
           }))
         );
         console.log("Seeded initial users to database.");
@@ -44,7 +51,11 @@ export class AuthService implements IAuthService {
     }
   }
 
-  async login(username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
+  async login(
+    username: string,
+    password: string,
+    requestedRole?: Role
+  ): Promise<{ success: boolean; user?: User; error?: string }> {
     const cleanUsername = (username || "").trim().toLowerCase();
     const cleanPassword = (password || "").trim();
 
@@ -76,11 +87,33 @@ export class AuthService implements IAuthService {
         .set({ last_login: new Date() })
         .where(eq(users.id, foundUser.id));
 
+      const managerType: ManagerType = foundUser.manager_type || "none";
+      const executiveType: ExecutiveType = foundUser.executive_type || "none";
+      const isAdmin: boolean = Boolean(foundUser.is_admin);
+
+      // Determine active role
+      let activeRole: ActiveRole;
+      if (requestedRole) {
+        // Check if user has permission to assume requested role
+        const hasAccess = canAccessRole({ managerType, executiveType, isAdmin }, requestedRole);
+        if (!hasAccess) {
+          return {
+            success: false,
+            error: `บัญชีนี้ไม่มีสิทธิ์เข้าใช้งานในบทบาทดังกล่าว`,
+          };
+        }
+        activeRole = requestedRole;
+      } else {
+        // Fallback: pick the highest privilege role
+        activeRole = computePrimaryRole(managerType, executiveType, isAdmin);
+      }
+
       let defaultPosition: string | undefined = undefined;
-      if (foundUser.role === "manager") defaultPosition = "ผู้จัดการร้าน";
-      else if (foundUser.role === "committee") defaultPosition = "กรรมการ";
-      else if (foundUser.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
-      else if (foundUser.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
+      if (activeRole === "manager") defaultPosition = "ผู้จัดการร้าน";
+      else if (activeRole === "committee") defaultPosition = "กรรมการ";
+      else if (activeRole === "general_manager") defaultPosition = "ผู้จัดการทั่วไป";
+      else if (activeRole === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
+      else if (activeRole === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
 
       const branchQuery = foundUser.branch_id
         ? await this.db
@@ -97,7 +130,11 @@ export class AuthService implements IAuthService {
         id: foundUser.id,
         name: foundUser.name,
         username: foundUser.username || foundUser.name,
-        role: foundUser.role as Role,
+        managerType,
+        executiveType,
+        isAdmin,
+        activeRole,
+        role: activeRole, // Keeps 100% backward compatibility
         position: defaultPosition,
         branchName,
         branchId,
@@ -105,6 +142,7 @@ export class AuthService implements IAuthService {
         pointStreak: foundUser.point_streak || 0,
         pointStreakType: foundUser.point_streak_type as any,
         longestStreak: foundUser.longest_streak || 0,
+        leaveQuota: typeof foundUser.leave_quota === "number" ? foundUser.leave_quota : null,
       };
 
       return { success: true, user: userObj };
@@ -119,6 +157,9 @@ export class AuthService implements IAuthService {
     username: string;
     password?: string;
     role?: Role;
+    managerType?: ManagerType;
+    executiveType?: ExecutiveType;
+    isAdmin?: boolean;
     position?: string;
     branchId?: string;
     leaveQuota?: number | null;
@@ -127,18 +168,32 @@ export class AuthService implements IAuthService {
     const cleanUsername = (data.username || "").trim().toLowerCase();
     const cleanPassword = data.password ? data.password.trim() : null;
 
-    let dbRole: Role = "employee";
-    if (data.role === "manager") {
-      if (data.position?.includes("กรรมการ")) dbRole = "committee";
-      else if (data.position?.includes("ผู้ช่วย")) dbRole = "manager_assistant";
-      else dbRole = "manager";
-    } else if (data.role) {
-      dbRole = data.role;
-    }
-
     if (!cleanName || !cleanUsername) {
       return { success: false, error: "กรุณากรอกชื่อ-นามสกุล และชื่อผู้ใช้ให้ครบถ้วน" };
     }
+
+    // Resolve permissions from either direct fields or legacy role/position
+    let managerType: ManagerType = data.managerType || "none";
+    let executiveType: ExecutiveType = data.executiveType || "none";
+    let isAdmin: boolean = Boolean(data.isAdmin);
+
+    if (data.role) {
+      if (data.role === "admin") {
+        isAdmin = true;
+      } else if (data.role === "manager") {
+        if (data.position?.includes("กรรมการ")) executiveType = "committee";
+        else if (data.position?.includes("ผู้ช่วย")) managerType = "assistant";
+        else managerType = "store";
+      } else if (data.role === "manager_assistant") {
+        managerType = "assistant";
+      } else if (data.role === "committee") {
+        executiveType = "committee";
+      } else if (data.role === "general_manager") {
+        executiveType = "executive";
+      }
+    }
+
+    const computedRole = computePrimaryRole(managerType, executiveType, isAdmin);
 
     try {
       const existing = await this.db
@@ -157,7 +212,9 @@ export class AuthService implements IAuthService {
           name: cleanName,
           username: cleanUsername,
           password: cleanPassword,
-          role: dbRole as any,
+          manager_type: managerType,
+          executive_type: executiveType,
+          is_admin: isAdmin,
           branch_id: data.branchId || null,
           leave_quota: typeof data.leaveQuota === "number" ? Math.max(0, Math.floor(data.leaveQuota)) : null,
           last_login: new Date(),
@@ -177,16 +234,18 @@ export class AuthService implements IAuthService {
         }
       }
 
-      const isManagement = ["admin", "committee", "general_manager", "manager", "manager_assistant"].includes(
-        created.role
-      );
+      const isManagement = managerType !== "none" || executiveType !== "none" || isAdmin;
 
       const userObj: User = {
         id: created.id,
         name: created.name,
         username: created.username,
-        role: created.role as Role,
-        position: isManagement ? data.position ?? "ผู้จัดการร้าน" : undefined,
+        managerType,
+        executiveType,
+        isAdmin,
+        activeRole: computedRole,
+        role: computedRole,
+        position: isManagement ? data.position ?? (managerType === "assistant" ? "ผู้ช่วยผู้จัดการร้าน" : "ผู้จัดการร้าน") : undefined,
         branchName: assignedBranchName,
         branchId: data.branchId,
         point: 0,
@@ -218,12 +277,18 @@ export class AuthService implements IAuthService {
       }
 
       const foundUser = result[0];
+      const managerType: ManagerType = foundUser.manager_type || "none";
+      const executiveType: ExecutiveType = foundUser.executive_type || "none";
+      const isAdmin: boolean = Boolean(foundUser.is_admin);
+      const computedRole = computePrimaryRole(managerType, executiveType, isAdmin);
+      const effectiveRole: ActiveRole = computedRole;
 
       let defaultPosition: string | undefined = undefined;
-      if (foundUser.role === "manager") defaultPosition = "ผู้จัดการร้าน";
-      else if (foundUser.role === "committee") defaultPosition = "กรรมการ";
-      else if (foundUser.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
-      else if (foundUser.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
+      if (effectiveRole === "manager") defaultPosition = "ผู้จัดการร้าน";
+      else if (effectiveRole === "committee") defaultPosition = "กรรมการ";
+      else if (effectiveRole === "general_manager") defaultPosition = "ผู้จัดการทั่วไป";
+      else if (effectiveRole === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
+      else if (effectiveRole === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
 
       const branchQuery = foundUser.branch_id
         ? await this.db
@@ -240,7 +305,11 @@ export class AuthService implements IAuthService {
         id: foundUser.id,
         name: foundUser.name,
         username: foundUser.username || foundUser.name,
-        role: foundUser.role as Role,
+        managerType,
+        executiveType,
+        isAdmin,
+        activeRole: effectiveRole,
+        role: effectiveRole,
         position: defaultPosition,
         branchName,
         branchId,
@@ -248,6 +317,7 @@ export class AuthService implements IAuthService {
         pointStreak: foundUser.point_streak || 0,
         pointStreakType: foundUser.point_streak_type as any,
         longestStreak: foundUser.longest_streak || 0,
+        leaveQuota: typeof foundUser.leave_quota === "number" ? foundUser.leave_quota : null,
       };
 
       return { success: true, user: userObj };
@@ -263,11 +333,18 @@ export class AuthService implements IAuthService {
       const allBranches = await this.db.select().from(branches);
 
       const formatted: User[] = allUsers.map((u: any) => {
+        const managerType: ManagerType = u.manager_type || "none";
+        const executiveType: ExecutiveType = u.executive_type || "none";
+        const isAdmin: boolean = Boolean(u.is_admin);
+        const computedRole = computePrimaryRole(managerType, executiveType, isAdmin);
+        const effectiveRole: ActiveRole = computedRole;
+
         let defaultPosition: string | undefined = undefined;
-        if (u.role === "manager") defaultPosition = "ผู้จัดการร้าน";
-        else if (u.role === "committee") defaultPosition = "กรรมการ";
-        else if (u.role === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
-        else if (u.role === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
+        if (effectiveRole === "manager") defaultPosition = "ผู้จัดการร้าน";
+        else if (effectiveRole === "committee") defaultPosition = "กรรมการ";
+        else if (effectiveRole === "general_manager") defaultPosition = "ผู้จัดการทั่วไป";
+        else if (effectiveRole === "manager_assistant") defaultPosition = "ผู้ช่วยผู้จัดการร้าน";
+        else if (effectiveRole === "admin") defaultPosition = "ผู้ดูแลระบบส่วนกลาง";
 
         const userBranch = allBranches.find((b: any) => b.id === u.branch_id);
 
@@ -276,7 +353,11 @@ export class AuthService implements IAuthService {
           name: u.name,
           username: u.username || u.name,
           password: u.password || undefined,
-          role: u.role as Role,
+          managerType,
+          executiveType,
+          isAdmin,
+          activeRole: effectiveRole,
+          role: effectiveRole,
           position: defaultPosition,
           branchName: userBranch ? userBranch.name : undefined,
           branchId: userBranch ? userBranch.id : undefined,
@@ -300,6 +381,9 @@ export class AuthService implements IAuthService {
     username?: string;
     name?: string;
     role?: Role;
+    managerType?: ManagerType;
+    executiveType?: ExecutiveType;
+    isAdmin?: boolean;
   }): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
       const cleanUsername = (userData.username || `user_${userData.id.substring(0, 6)}`).trim().toLowerCase();
@@ -327,6 +411,11 @@ export class AuthService implements IAuthService {
         return this.getUserById(existing.id);
       }
 
+      const managerType: ManagerType = userData.managerType || "none";
+      const executiveType: ExecutiveType = userData.executiveType || "none";
+      const isAdmin: boolean = Boolean(userData.isAdmin);
+      const computedRole = computePrimaryRole(managerType, executiveType, isAdmin);
+
       // 2. Insert new OAuth user with the Supabase auth ID
       const [created] = await this.db
         .insert(users)
@@ -335,7 +424,9 @@ export class AuthService implements IAuthService {
           name: displayName,
           username: cleanUsername,
           password: null,
-          role: (userData.role as any) || "employee",
+          manager_type: managerType,
+          executive_type: executiveType,
+          is_admin: isAdmin,
           last_login: new Date(),
         })
         .returning();
@@ -355,14 +446,64 @@ export class AuthService implements IAuthService {
         return { success: false, error: "บทบาทไม่ถูกต้อง" };
       }
 
+      // Convert legacy role selection to new granular fields
+      let managerType: ManagerType = "none";
+      let executiveType: ExecutiveType = "none";
+      let isAdmin = false;
+
+      if (role === "admin") {
+        isAdmin = true;
+      } else if (role === "manager") {
+        managerType = "store";
+      } else if (role === "manager_assistant") {
+        managerType = "assistant";
+      } else if (role === "general_manager") {
+        executiveType = "executive";
+      } else if (role === "committee") {
+        executiveType = "committee";
+      }
+
       await this.db
         .update(users)
-        .set({ role: role as any })
+        .set({
+          manager_type: managerType,
+          executive_type: executiveType,
+          is_admin: isAdmin,
+        })
         .where(eq(users.id, userId));
 
       return { success: true };
     } catch (err: unknown) {
       console.error("AuthService.updateUserRole error:", err);
+      return { success: false, error: "ไม่สามารถปรับปรุงสิทธิ์ของผู้ใช้ในฐานข้อมูลได้" };
+    }
+  }
+
+  async updateUserPermissions(
+    userId: string,
+    permissions: {
+      managerType?: ManagerType;
+      executiveType?: ExecutiveType;
+      isAdmin?: boolean;
+      role?: Role;
+    }
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!userId) return { success: false, error: "ไม่พบรหัสผู้ใช้" };
+
+      const updateData: any = {};
+      if (permissions.managerType !== undefined) updateData.manager_type = permissions.managerType;
+      if (permissions.executiveType !== undefined) updateData.executive_type = permissions.executiveType;
+      if (permissions.isAdmin !== undefined) updateData.is_admin = permissions.isAdmin;
+
+      await this.db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, userId));
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("AuthService.updateUserPermissions error:", err);
       return { success: false, error: "ไม่สามารถปรับปรุงสิทธิ์ของผู้ใช้ในฐานข้อมูลได้" };
     }
   }

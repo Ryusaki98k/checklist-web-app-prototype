@@ -17,6 +17,7 @@ import {
   BranchShiftProgress,
 } from "./types";
 import { getThaiStartAndEndOfDay } from "../utils/date";
+import { computePrimaryRole } from "../utils/roles";
 
 export interface DashboardBranch {
   id: string;
@@ -172,7 +173,7 @@ export class BranchService implements IBranchService {
         }
 
         const branchUsers = allUsers.filter((u: any) => u.branch_id === b.id);
-        const manager = branchUsers.find((u: any) => u.role === "manager" || u.role === "general_manager");
+        const manager = branchUsers.find((u: any) => u.manager_type === "store" || u.executive_type === "executive");
         const managerName = manager ? manager.name : "กำลังสรรหา";
 
         // Generate clean branch code: e.g. "BR-001" or preserve explicit code without cutting Thai characters
@@ -402,12 +403,12 @@ export class BranchService implements IBranchService {
       let totalWorkingStaffCompany = 0;
       let totalOnLeaveStaffCompany = 0;
       const totalStaffCompany = allUsers.filter(
-        (u: any) => u.branch_id && !["admin", "committee", "general_manager"].includes(u.role)
+        (u: any) => u.branch_id && !u.is_admin && u.executive_type === "none"
       ).length;
 
       const branchSummaries: BranchOperationsSummaryItem[] = allBranches.map((b: any, index: number) => {
         const branchUsers = allUsers.filter((u: any) => u.branch_id === b.id);
-        const manager = branchUsers.find((u: any) => u.role === "manager" || u.role === "general_manager");
+        const manager = branchUsers.find((u: any) => u.role === "manager" || u.role === "general_manager" || u.manager_type === "store");
         const managerName = manager ? manager.name : "กำลังสรรหา";
 
         const branchCode = /^[A-Z0-9_-]{2,8}$/i.test(b.name)
@@ -508,13 +509,14 @@ export class BranchService implements IBranchService {
             const uDone = uWorks.filter((w: any) => w.timestamp !== null).length;
             const taskCompletionRate = uTotal > 0 ? Math.round((uDone / uTotal) * 100) : 0;
 
-            const position = getPositionTitle(u.role, activeSess?.task_role || completedSess?.task_role);
+            const primaryRole = computePrimaryRole(u.manager_type, u.executive_type, u.is_admin);
+            const position = getPositionTitle(primaryRole, activeSess?.task_role || completedSess?.task_role);
 
             return {
               id: u.id,
               name: u.name,
               username: u.username,
-              role: u.role,
+              role: primaryRole,
               position,
               point: u.point ?? 0,
               pointStreak: u.point_streak ?? 0,

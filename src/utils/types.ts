@@ -2,6 +2,8 @@ import { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
     branches,
     roleEnum,
+    managerTypeEnum,
+    executiveTypeEnum,
     shiftEnum,
     shiftSession,
     tasks,
@@ -26,10 +28,12 @@ export type Branch = InferSelectModel<typeof branches>;
 export type NewBranch = InferInsertModel<typeof branches>;
 
 export type Role = (typeof roleEnum.enumValues)[number];
+export type ManagerType = (typeof managerTypeEnum.enumValues)[number];
+export type ExecutiveType = (typeof executiveTypeEnum.enumValues)[number];
 export type TaskRole = (typeof taskRoleEnum.enumValues)[number];
 export type Shift = (typeof shiftEnum.enumValues)[number];
 
-interface Notification {
+export interface Notification {
     taskWork: TaskWork
     read: Date | null;
 }

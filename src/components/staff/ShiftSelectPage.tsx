@@ -8,6 +8,7 @@ import { Confetti } from "../common/Confetti";
 import { NotificationCenter } from "../common/NotificationCenter";
 import { PointStreakBadge } from "../common/PointStreakBadge";
 import { ThemeToggle } from "../common/ThemeToggle";
+import { RoleSwitcher } from "../common/RoleSwitcher";
 import { LogOut, Store } from "lucide-react";
 
 export function ShiftSelectPage({
@@ -169,6 +170,7 @@ export function ShiftSelectPage({
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <PointStreakBadge />
           <NotificationCenter />
+          <RoleSwitcher />
           <ThemeToggle />
 
           {/* User Profile Block */}

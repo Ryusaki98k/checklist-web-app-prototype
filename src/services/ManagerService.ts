@@ -99,7 +99,7 @@ export class ManagerService implements IManagerService {
         .from(users)
         .where(
           and(
-            eq(users.role, "manager_assistant"),
+            eq(users.manager_type, "assistant"),
             gte(users.last_login, startOfDay),
             lte(users.last_login, endOfDay)
           )
@@ -275,7 +275,6 @@ export class ManagerService implements IManagerService {
         .select({
           id: users.id,
           name: users.name,
-          role: users.role,
           branchId: users.branch_id,
         })
         .from(users);
@@ -568,7 +567,7 @@ export class ManagerService implements IManagerService {
       }
 
       const [reviewer] = await this.db
-        .select({ id: users.id, name: users.name, role: users.role })
+        .select({ id: users.id, name: users.name, managerType: users.manager_type })
         .from(users)
         .where(eq(users.id, reviewerId))
         .limit(1);
@@ -638,7 +637,7 @@ export class ManagerService implements IManagerService {
         .where(eq(shiftSession.id, shiftSessionId));
 
       if (this.notificationService) {
-        const reviewerRoleName = reviewer.role === "manager_assistant" ? "ผู้ช่วยผู้จัดการร้าน" : "ผู้จัดการร้าน";
+        const reviewerRoleName = reviewer.managerType === "assistant" ? "ผู้ช่วยผู้จัดการร้าน" : "ผู้จัดการร้าน";
         await this.notificationService.createNotification({
           recipientId: targetUser.id,
           branchId: sess.branch,
@@ -689,7 +688,7 @@ export class ManagerService implements IManagerService {
         candidateUsers = await this.db
           .select()
           .from(users)
-          .where(inArray(users.role, ["employee", "manager_assistant"]));
+          .where(inArray(users.manager_type, ["none", "assistant"]));
       }
 
       // 3. Today's time boundary (Asia/Bangkok)
@@ -915,12 +914,12 @@ export class ManagerService implements IManagerService {
       for (const branch of allBranches) {
         // Fetch candidate staff users belonging to this branch
         const candidateUsers = await this.db
-          .select({ id: users.id, name: users.name, role: users.role })
+          .select({ id: users.id, name: users.name, managerType: users.manager_type })
           .from(users)
           .where(
             and(
               eq(users.branch_id, branch.id),
-              inArray(users.role, ["employee", "manager_assistant"])
+              inArray(users.manager_type, ["none", "assistant"])
             )
           );
 
@@ -965,7 +964,7 @@ export class ManagerService implements IManagerService {
           if (hasUnended) {
             const u = candidateUsers.find((cu: { id: string }) => cu.id === userId);
             if (u) {
-              const roleTitle = u.role === "manager_assistant" ? "ผู้ช่วยฯ" : "พนักงาน";
+              const roleTitle = u.managerType === "assistant" ? "ผู้ช่วยฯ" : "พนักงาน";
               unendedStaffNames.push(`${u.name} (${roleTitle})`);
             }
           }

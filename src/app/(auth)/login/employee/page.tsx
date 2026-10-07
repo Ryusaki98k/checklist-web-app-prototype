@@ -12,18 +12,13 @@ export default function EmployeeLoginPage() {
     useEffect(() => {
         if (!isReady) return;
         if (currentUser) {
-            if (currentUser.role === "employee") {
+            const role = currentUser.activeRole || currentUser.role;
+            if (role === "employee") {
                 if (!currentUser.branchName) {
                     router.replace("/awaiting-assignment");
                 } else {
                     router.replace("/position");
                 }
-            } else if (currentUser.role === "manager" || currentUser.role === "manager_assistant") {
-                router.replace("/manager/dashboard");
-            } else if (currentUser.role === "committee" || currentUser.role === "general_manager") {
-                router.replace("/manager/dashboard");
-            } else if (currentUser.role === "admin") {
-                router.replace("/admin/dashboard");
             }
         }
     }, [currentUser, isReady, router]);

@@ -17,6 +17,7 @@ import {
 } from "../../actions/checklist";
 import { NotificationCenter } from "../common/NotificationCenter";
 import { ThemeToggle } from "../common/ThemeToggle";
+import { RoleSwitcher } from "../common/RoleSwitcher";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
@@ -712,6 +713,8 @@ export function ManagerDashboard({
               <HeartPulse size={16} className="text-rose-500 shrink-0" />
               <span className="hidden sm:inline">การลา & สถานะพนักงาน</span>
             </Link>
+
+            <RoleSwitcher />
 
             <ThemeToggle />
 

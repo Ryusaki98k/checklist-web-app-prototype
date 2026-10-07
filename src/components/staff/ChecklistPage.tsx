@@ -9,6 +9,7 @@ import { useModalFocusTrap } from "../common/ModalFocusTrap";
 import { NotificationCenter } from "../common/NotificationCenter";
 import { PointStreakBadge } from "../common/PointStreakBadge";
 import { ThemeToggle } from "../common/ThemeToggle";
+import { RoleSwitcher } from "../common/RoleSwitcher";
 import { 
   Check, 
   CheckCircle2, 
@@ -454,6 +455,7 @@ export function ChecklistPage({
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <PointStreakBadge />
+            <RoleSwitcher />
             <NotificationCenter />
             <ThemeToggle />
             

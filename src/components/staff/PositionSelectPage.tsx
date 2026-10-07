@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { ShiftType, User, LeaveQuotaInfo } from "../../types";
 import { MANAGEMENT_POSITIONS, STAFF_POSITIONS } from "../../types";
 import { ThemeToggle } from "../common/ThemeToggle";
+import { RoleSwitcher } from "../common/RoleSwitcher";
 import { BrandLogo } from "../common/BrandLogo";
 import { PointStreakBadge } from "../common/PointStreakBadge";
 import { NotificationCenter } from "../common/NotificationCenter";
@@ -182,6 +183,7 @@ export function PositionSelectPage({
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <PointStreakBadge />
           <NotificationCenter />
+          <RoleSwitcher />
           <ThemeToggle />
 
           {/* User Profile Block */}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, ShiftType } from "../../types";
+import { User, ShiftType, ActiveRole } from "../../types";
 import { getUsers, saveUsers } from "../../data/storage";
 import { BrandLogo } from "../common/BrandLogo";
 import { loginAction, registerAction } from "../../actions/auth";
@@ -12,7 +12,7 @@ import Link from "next/link";
 export function EmployeeAuthPage({
     onLogin,
 }: {
-    onLogin: (user: User, shift?: ShiftType, redirectPath?: string) => void;
+    onLogin: (user: User, shift?: ShiftType, redirectPath?: string, roleToActivate?: ActiveRole) => void;
 }) {
     const [tab, setTab] = useState<"login" | "register">("login");
     const [branches, setBranches] = useState<DashboardBranch[]>([]);
@@ -56,18 +56,15 @@ export function EmployeeAuthPage({
                 saveUsers([...localUsers, res.user]);
             }
 
-            const role = res.user.role;
-            if (role !== "employee") {
-                if (role === "manager_assistant" || role === "manager") {
-                    setError("บัญชีนี้มีสิทธิ์ระดับผู้จัดการ กรุณาเข้าสู่ระบบผ่านหน้าผู้จัดการและผู้ช่วยฯ (Manager Portal)");
-                } else {
-                    setError("บัญชีนี้มีสิทธิ์ระดับบริหาร กรุณาเข้าสู่ระบบผ่านหน้าฝ่ายบริหาร (Executive Portal)");
-                }
-                setLoading(false);
-                return;
-            }
+            // All users can perform employee tasks
+            const employeeUser: User = {
+                ...res.user,
+                activeRole: "employee",
+                role: "employee",
+                position: undefined,
+            };
 
-            onLogin(res.user);
+            onLogin(employeeUser, undefined, undefined, "employee");
         } catch (err: unknown) {
             console.error("Login error:", err);
             const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง";

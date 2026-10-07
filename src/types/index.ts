@@ -1,4 +1,8 @@
-export type Role = "employee" | "manager" | "manager_assistant" | "committee" | "general_manager" | "admin";
+export type ManagerType = "none" | "assistant" | "store";
+export type ExecutiveType = "none" | "committee" | "executive";
+export type ActiveRole = "employee" | "manager" | "manager_assistant" | "committee" | "general_manager" | "admin";
+export type Role = ActiveRole;
+
 export type ShiftType = "morning" | "afternoon" | "night" | "both";
 export type LeaveType = "paid" | "unpaid" | "ลาเเบบได้เงิน" | "ลาเเบบไม่ได้รับเงิน" | "ลาแบบได้เงิน" | "ลาแบบไม่ได้รับเงิน";
 
@@ -47,6 +51,13 @@ export interface User {
   name: string;
   username?: string;
   password?: string;
+  // Multi-role capabilities
+  managerType: ManagerType;
+  executiveType: ExecutiveType;
+  isAdmin: boolean;
+  // Active operating role in current session
+  activeRole?: ActiveRole;
+  // For backwards compatibility across existing components:
   role: Role;
   position?: string;
   branchName?: string;

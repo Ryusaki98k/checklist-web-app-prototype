@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { User, ShiftType } from "../../types";
+import { User, ShiftType, ActiveRole } from "../../types";
 import { getUsers, saveUsers } from "../../data/storage";
 import { BrandLogo } from "../common/BrandLogo";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { loginAction } from "../../actions/auth";
+import { canAccessExecutivePortal } from "../../utils/roles";
 import { ForgotPasswordModal } from "./ForgotPasswordModal";
 import Link from "next/link";
 
 export function ExecutiveAuthPage({
     onLogin,
 }: {
-    onLogin: (user: User, shift?: ShiftType, redirectPath?: string) => void;
+    onLogin: (user: User, shift?: ShiftType, redirectPath?: string, roleToActivate?: ActiveRole) => void;
 }) {
     const [form, setForm] = useState({
         username: "",
@@ -42,18 +43,26 @@ export function ExecutiveAuthPage({
                 saveUsers([...localUsers, res.user]);
             }
 
-            const role = res.user.role;
-            if (role !== "general_manager" && role !== "committee" && role !== "admin") {
-                if (role === "employee") {
-                    setError("บัญชีนี้มีสิทธิ์ระดับพนักงานสาขา กรุณาเข้าสู่ระบบผ่านหน้าพนักงานสาขา (Floor Staff)");
-                } else {
-                    setError("บัญชีนี้มีสิทธิ์ระดับผู้จัดการร้าน กรุณาเข้าสู่ระบบผ่านหน้าผู้จัดการสาขา (Manager Portal)");
-                }
+            if (!canAccessExecutivePortal(res.user)) {
+                setError("บัญชีนี้ไม่มีสิทธิ์ระดับบริหารหรือกรรมการ กรุณาเข้าสู่ระบบผ่านช่องทางที่ได้รับสิทธิ์");
                 setLoading(false);
                 return;
             }
 
-            onLogin(res.user, undefined, role === "admin" ? "/admin/dashboard" : "/manager/dashboard");
+            const targetRole: ActiveRole = res.user.isAdmin
+                ? "admin"
+                : res.user.executiveType === "committee"
+                ? "committee"
+                : "general_manager";
+
+            const execUser: User = {
+                ...res.user,
+                activeRole: targetRole,
+                role: targetRole,
+                position: targetRole === "admin" ? "ผู้ดูแลระบบส่วนกลาง" : (targetRole === "committee" ? "กรรมการ" : "ผู้จัดการทั่วไป"),
+            };
+
+            onLogin(execUser, undefined, targetRole === "admin" ? "/admin/dashboard" : "/manager/dashboard", targetRole);
         } catch (err: unknown) {
             console.error("Login error:", err);
             const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง";

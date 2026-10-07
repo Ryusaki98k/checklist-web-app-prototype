@@ -77,12 +77,9 @@ export class ChecklistService implements IChecklistService {
 
       let validUserId = userId;
       if (!isValidUuid(userId)) {
-        const targetRoles = taskRole === "manager_assistant" ? ["manager", "manager_assistant"] : ["employee"];
-        const [foundUser] = await this.db
-          .select({ id: users.id })
-          .from(users)
-          .where(inArray(users.role, targetRoles as any))
-          .limit(1);
+        const [foundUser] = taskRole === "manager_assistant"
+          ? await this.db.select({ id: users.id }).from(users).where(inArray(users.manager_type, ["assistant", "store"])).limit(1)
+          : await this.db.select({ id: users.id }).from(users).limit(1);
         if (foundUser) {
           validUserId = foundUser.id;
         } else {
@@ -95,15 +92,20 @@ export class ChecklistService implements IChecklistService {
       const { startOfDay, endOfDay, dateStr } = getThaiStartAndEndOfDay();
 
       const [currentUserRecord] = await this.db
-        .select({ branchId: users.branch_id, role: users.role })
+        .select({ 
+          branchId: users.branch_id, 
+          managerType: users.manager_type,
+          executiveType: users.executive_type,
+          isAdmin: users.is_admin,
+        })
         .from(users)
         .where(eq(users.id, validUserId))
         .limit(1);
 
       // Executive & Committee policy: Executive and Committee must not have any checklist, including the night checklist.
       const isExecutiveOrCommittee =
-        currentUserRecord?.role === "general_manager" ||
-        currentUserRecord?.role === "committee" ||
+        currentUserRecord?.executiveType === "executive" ||
+        currentUserRecord?.executiveType === "committee" ||
         position.includes("ผู้จัดการทั่วไป") ||
         position.toLowerCase().includes("general manager") ||
         position.includes("กรรมการ");
@@ -327,7 +329,7 @@ export class ChecklistService implements IChecklistService {
               completedBy: taskWork.completed_by,
               comment: taskWork.comment,
               userName: users.name,
-              userRole: users.role,
+              managerType: users.manager_type,
             })
             .from(taskWork)
             .leftJoin(users, eq(users.id, taskWork.completed_by))
@@ -343,9 +345,9 @@ export class ChecklistService implements IChecklistService {
           for (const row of closingRows) {
             if (row.completedAt) {
               const roleTitle =
-                row.userRole === "manager"
+                row.managerType === "store"
                   ? "ผู้จัดการร้าน"
-                  : row.userRole === "manager_assistant"
+                  : row.managerType === "assistant"
                   ? "ผู้ช่วยผู้จัดการร้าน"
                   : "";
               const posSuffix = roleTitle ? ` (${roleTitle})` : "";
@@ -774,12 +776,12 @@ export class ChecklistService implements IChecklistService {
         );
 
       const [sessUser] = await this.db
-        .select({ role: users.role })
+        .select({ managerType: users.manager_type })
         .from(users)
         .where(eq(users.id, sess.user))
         .limit(1);
 
-      const isManagerUser = sessUser?.role === "manager";
+      const isManagerUser = sessUser?.managerType === "store";
 
       let activeTasks = dbTasks;
 

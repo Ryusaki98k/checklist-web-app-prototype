@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { User, ShiftType } from "../../types";
+import { User, ShiftType, ActiveRole } from "../../types";
 import { getUsers, saveUsers } from "../../data/storage";
 import { BrandLogo } from "../common/BrandLogo";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { loginAction } from "../../actions/auth";
+import { canAccessManagerPortal } from "../../utils/roles";
 import { ForgotPasswordModal } from "./ForgotPasswordModal";
 import Link from "next/link";
 
 export function ManagerAuthPage({
     onLogin,
 }: {
-    onLogin: (user: User, shift?: ShiftType, redirectPath?: string) => void;
+    onLogin: (user: User, shift?: ShiftType, redirectPath?: string, roleToActivate?: ActiveRole) => void;
 }) {
     const [form, setForm] = useState({
         username: "",
@@ -42,18 +43,21 @@ export function ManagerAuthPage({
                 saveUsers([...localUsers, res.user]);
             }
 
-            const role = res.user.role;
-            if (role !== "manager" && role !== "manager_assistant") {
-                if (role === "employee") {
-                    setError("บัญชีนี้มีสิทธิ์ระดับพนักงาน กรุณาเข้าสู่ระบบผ่านหน้าพนักงานสาขา (Floor Staff)");
-                } else {
-                    setError("บัญชีนี้มีสิทธิ์ระดับบริหาร กรุณาเข้าสู่ระบบผ่านหน้าฝ่ายบริหาร (Executive Portal)");
-                }
+            if (!canAccessManagerPortal(res.user)) {
+                setError("บัญชีนี้ไม่มีสิทธิ์ระดับผู้จัดการร้าน กรุณาเข้าสู่ระบบผ่านหน้าพนักงานสาขา (Floor Staff)");
                 setLoading(false);
                 return;
             }
 
-            onLogin(res.user, undefined, "/manager/dashboard");
+            const targetRole: ActiveRole = res.user.managerType === "assistant" ? "manager_assistant" : "manager";
+            const managerUser: User = {
+                ...res.user,
+                activeRole: targetRole,
+                role: targetRole,
+                position: targetRole === "manager_assistant" ? "ผู้ช่วยผู้จัดการร้าน" : "ผู้จัดการร้าน",
+            };
+
+            onLogin(managerUser, undefined, "/manager/dashboard", targetRole);
         } catch (err: unknown) {
             console.error("Login error:", err);
             const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง";

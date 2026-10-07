@@ -3,6 +3,8 @@ import { boolean, integer, jsonb, pgSchema, timestamp, time, uuid, text, index, 
 export const checklistSchema = pgSchema("checklist_web_app");
 
 export const roleEnum = checklistSchema.enum('role', ['admin', 'committee', 'general_manager', 'manager', 'manager_assistant', 'employee']);
+export const managerTypeEnum = checklistSchema.enum('manager_type', ['none', 'assistant', 'store']);
+export const executiveTypeEnum = checklistSchema.enum('executive_type', ['none', 'committee', 'executive']);
 export const taskRoleEnum = checklistSchema.enum('task_role', ['manager_assistant', 'cashier', 'stock']);
 export const shiftEnum = checklistSchema.enum('shift', ['morning', 'afternoon', 'morning_afternoon', 'night']);
 export const pointStreakEnum = checklistSchema.enum('point_streak', ['none', 'flawed', 'perfect']);
@@ -23,7 +25,9 @@ export const users = checklistSchema.table.withRLS("users", {
     name: text("name").notNull(),
     username: text("username").notNull().default(""),
     password: text("password"),
-    role: roleEnum("role").notNull(),
+    manager_type: managerTypeEnum("manager_type").notNull().default('none'),
+    executive_type: executiveTypeEnum("executive_type").notNull().default('none'),
+    is_admin: boolean("is_admin").notNull().default(false),
     branch_id: uuid("branch_id").references(() => branches.id, { onDelete: 'set null' }),
 
     point_streak_type: pointStreakEnum('point_streak_type').notNull().default('none'),
@@ -37,6 +41,9 @@ export const users = checklistSchema.table.withRLS("users", {
 }, (table) => [
     index("idx_users_branch_id").on(table.branch_id),
     index("idx_users_username").on(table.username),
+    index("idx_users_manager_type").on(table.manager_type),
+    index("idx_users_executive_type").on(table.executive_type),
+    index("idx_users_is_admin").on(table.is_admin),
 ]);
 
 export const tasks = checklistSchema.table.withRLS("tasks", {
