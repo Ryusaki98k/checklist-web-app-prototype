@@ -34,15 +34,6 @@ export function ShiftSelectPage({
   const [isLoadingStatuses, setIsLoadingStatuses] = useState(true);
   const [isStartingShift, setIsStartingShift] = useState(false);
 
-  // Safety timeout to prevent stuck loading button under any circumstances
-  useEffect(() => {
-    if (!isStartingShift) return;
-    const timer = setTimeout(() => {
-      setIsStartingShift(false);
-    }, 8000);
-    return () => clearTimeout(timer);
-  }, [isStartingShift]);
-
   const loadStatuses = useCallback(() => {
     if (!user.position) {
       setIsLoadingStatuses(false);

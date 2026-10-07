@@ -449,9 +449,9 @@ export class TaskChecklistBufferController {
   /**
    * Immediately flush all pending buffered toggles collectively to the database.
    * Concurrency-safe: awaits active flush if already running, then continues if more items remain.
-   * Wrapped in a safety timeout so network hangs can never lock callers.
+   * Awaits DB/API resolution without premature timeout cancellation.
    */
-  public async flush(timeoutMs = 5000): Promise<boolean> {
+  public async flush(): Promise<boolean> {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -552,14 +552,7 @@ export class TaskChecklistBufferController {
       }
     };
 
-    // Race against timeout to ensure UI can never hang indefinitely
-    const timeoutPromise = new Promise<boolean>((resolve) => {
-      setTimeout(() => {
-        resolve(false);
-      }, timeoutMs);
-    });
-
-    this.activeFlushPromise = Promise.race([performFlush(), timeoutPromise]);
+    this.activeFlushPromise = performFlush();
     return await this.activeFlushPromise;
   }
 
@@ -730,8 +723,8 @@ export function useTaskChecklistBuffer(options: {
   );
 
   const flush = useCallback(
-    async (timeoutMs = 5000) => {
-      return await controller.flush(timeoutMs);
+    async () => {
+      return await controller.flush();
     },
     [controller]
   );

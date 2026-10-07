@@ -221,10 +221,6 @@ export async function executeResilientApproval(params: {
   // 1. Immediately persist to localStorage queue for unload survival
   addPendingApproval(pendingItem);
 
-  // 2. Perform the approval request with a 12-second timeout guard
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
-
   try {
     // Try primary server action first for efficiency
     const res = await approveShiftSessionAction({
@@ -232,8 +228,6 @@ export async function executeResilientApproval(params: {
       role: params.role,
       isException: params.isException,
     });
-
-    clearTimeout(timeoutId);
 
     if (res.success) {
       // Clean up from pending queue
@@ -252,7 +246,6 @@ export async function executeResilientApproval(params: {
       return { success: false, error: res.error || "ไม่สามารถอนุมัติได้" };
     }
   } catch (actionErr: unknown) {
-    clearTimeout(timeoutId);
     console.warn("Direct server action failed, attempting keepalive route fallback...", actionErr);
 
     // Fallback to API route

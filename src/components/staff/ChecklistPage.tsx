@@ -69,7 +69,7 @@ export function ChecklistPage({
   session: ShiftSession;
   selectedShift?: ShiftType | null;
   onUpdate: (s: ShiftSession) => void;
-  onEndShift: (continueNextShift?: boolean, reason?: string) => void;
+  onEndShift: (continueNextShift?: boolean, reason?: string) => Promise<void> | void;
   onOpenDashboard?: () => void;
   onExit?: () => void;
 }) {
@@ -392,28 +392,33 @@ export function ChecklistPage({
   }
 
   async function endCompleteShift() {
+    if (isEnding) return;
     setIsEnding(true);
-    setShowConfirm(false);
-    setShiftCompleted(true);
     try {
+      setShiftCompleted(true);
       await flushChecklistBuffer();
+      await onEndShift(continueShift);
+      setShowConfirm(false);
     } catch (e) {
-      console.warn("Flush before ending shift:", e);
+      console.error("Flush or end shift error:", e);
+      setShiftCompleted(false);
+      setIsEnding(false);
     }
-    onEndShift(continueShift);
   }
 
   async function endIncompleteShift() {
-    if (!incompleteReason.trim()) return;
+    if (!incompleteReason.trim() || isEnding) return;
     setIsEnding(true);
-    setShowIncompleteModal(false);
-    setShiftCompleted(true);
     try {
+      setShiftCompleted(true);
       await flushChecklistBuffer();
+      await onEndShift(continueShift, incompleteReason.trim());
+      setShowIncompleteModal(false);
     } catch (e) {
-      console.warn("Flush before ending shift:", e);
+      console.error("Flush or end incomplete shift error:", e);
+      setShiftCompleted(false);
+      setIsEnding(false);
     }
-    onEndShift(continueShift, incompleteReason.trim());
   }
 
   return (

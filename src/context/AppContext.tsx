@@ -227,6 +227,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user) {
+        // Only sync if user was already stored or if we have an active auth code/token callback in the URL
+        const hasAuthCallback =
+          typeof window !== "undefined" &&
+          (window.location.search.includes("code=") ||
+            window.location.hash.includes("access_token=") ||
+            window.location.pathname.startsWith("/auth/callback"));
+
+        if (!storedUser && !hasAuthCallback) {
+          // Stale auth session without active user - sign out cleanly to prevent phantom logins
+          void supabase.auth.signOut();
+          return;
+        }
+
         const authUser = data.user;
         const username =
           authUser.user_metadata?.user_name ||
@@ -466,9 +479,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const supabase = createClient();
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
     } catch (err) {
       console.warn("Supabase signOut error:", err);
+    }
+
+    if (typeof window !== "undefined") {
+      // Clear all auth cookies
+      try {
+        document.cookie.split(";").forEach((cookie) => {
+          const eqPos = cookie.indexOf("=");
+          const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+          if (name.startsWith("sb-") || name.includes("supabase")) {
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;`;
+          }
+        });
+      } catch (e) {
+        console.warn("Error clearing auth cookies:", e);
+      }
+
+      // Clear all app and auth items in localStorage (preserve theme)
+      try {
+        const theme = localStorage.getItem("theme");
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith("sb-") || key.includes("supabase") || key.startsWith("app_") || key.startsWith("mgr_")) {
+            localStorage.removeItem(key);
+          }
+        });
+        if (theme) localStorage.setItem("theme", theme);
+      } catch (e) {
+        console.warn("Error clearing localStorage:", e);
+      }
+
+      // Clear all sessionStorage
+      try {
+        sessionStorage.clear();
+      } catch (e) {
+        console.warn("Error clearing sessionStorage:", e);
+      }
     }
 
     // Clear local storage items

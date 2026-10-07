@@ -26,30 +26,12 @@ export function GlobalButtonDisabler() {
     () => false
   );
 
-  // Busy ONLY when the app is initializing OR an active blocking loading operation is running (NOT on simple page navigation)
-  const isBusy = !isMounted || !isAppReady || (isLoading && !isPageTransition);
+  // Busy when the app is initializing OR an active blocking loading/DB/API operation is running
+  const isBusy = !isMounted || !isAppReady || isLoading;
   const isBusyRef = useRef(isBusy);
-  const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     isBusyRef.current = isBusy;
-
-    // Safety watchdog: auto-release busy state after 2.5s to prevent UI freeze under any circumstances
-    if (watchdogTimerRef.current) {
-      clearTimeout(watchdogTimerRef.current);
-      watchdogTimerRef.current = null;
-    }
-
-    if (isBusy) {
-      watchdogTimerRef.current = setTimeout(() => {
-        isBusyRef.current = false;
-        if (typeof document !== "undefined") {
-          document.body.removeAttribute("data-loading-busy");
-          document.documentElement.removeAttribute("data-loading-busy");
-          document.documentElement.removeAttribute("aria-busy");
-        }
-      }, 2500);
-    }
   }, [isBusy]);
 
   // Synchronize loading busy state with root document element and body
@@ -73,9 +55,6 @@ export function GlobalButtonDisabler() {
       body.removeAttribute("data-loading-busy");
       docEl.removeAttribute("data-loading-busy");
       docEl.removeAttribute("aria-busy");
-      if (watchdogTimerRef.current) {
-        clearTimeout(watchdogTimerRef.current);
-      }
     };
   }, [isBusy]);
 

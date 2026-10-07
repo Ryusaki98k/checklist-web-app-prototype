@@ -42,11 +42,13 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    activeCountRef.current = 0;
-    setIsLoading(false);
     setIsPageTransition(false);
     setIsNavigating(false);
-    clearDomBusy();
+    // Only clear loading and DOM busy if there are no active async DB/API operations
+    if (activeCountRef.current === 0) {
+      setIsLoading(false);
+      clearDomBusy();
+    }
   }, [clearDomBusy]);
 
   const startLoading = useCallback((message = "กำลังประมวลผล...", isTransition = false) => {
@@ -55,28 +57,20 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
     if (isTransition) {
       setIsPageTransition(true);
       setIsNavigating(true);
-      // For page transitions, don't increment activeCountRef; set a quick safety fallback
+      // For page transitions, don't increment activeCountRef; clear transition state after timer
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
         setIsPageTransition(false);
         setIsNavigating(false);
-        clearDomBusy();
+        if (activeCountRef.current === 0) {
+          clearDomBusy();
+        }
       }, 1800);
       return;
     }
 
     activeCountRef.current += 1;
     setIsLoading(true);
-
-    // Safety timeout: prevent UI lockup if an operation hangs indefinitely
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      activeCountRef.current = 0;
-      setIsLoading(false);
-      setIsPageTransition(false);
-      setIsNavigating(false);
-      clearDomBusy();
-    }, 5000);
   }, [clearDomBusy]);
 
   const stopLoading = useCallback(() => {
@@ -115,7 +109,9 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
       timeoutRef.current = setTimeout(() => {
         setIsPageTransition(false);
         setIsNavigating(false);
-        clearDomBusy();
+        if (activeCountRef.current === 0) {
+          clearDomBusy();
+        }
       }, 1800);
 
       if (typeof window !== "undefined") {
