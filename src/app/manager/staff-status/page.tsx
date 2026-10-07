@@ -12,23 +12,19 @@ export default function ManagerStaffStatusPage() {
 
   useEffect(() => {
     if (!isReady) return;
+    if (!currentUser) {
+      router.replace("/");
+      return;
+    }
     // Allow manager, manager_assistant, general_manager, committee, and admin
-    if (currentUser && currentUser.role === "employee") {
+    if (currentUser.role === "employee") {
       router.replace("/checklist");
     }
   }, [currentUser, isReady, router]);
 
-  if (!isReady) {
+  if (!isReady || !currentUser) {
     return <LoadingSpinner text="กำลังโหลดข้อมูลสถานะพนักงาน..." />;
   }
 
-  const activeUser = currentUser || {
-    id: "preview-manager-user",
-    name: "คุณวิภาดา สุขเจริญ",
-    username: "manager",
-    role: "manager" as const,
-    position: "ผู้จัดการร้าน",
-  };
-
-  return <BranchStaffUnifiedHub currentUser={activeUser} initialTab="presence" />;
+  return <BranchStaffUnifiedHub currentUser={currentUser} initialTab="presence" />;
 }

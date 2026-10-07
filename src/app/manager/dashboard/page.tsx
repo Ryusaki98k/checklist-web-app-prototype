@@ -20,41 +20,36 @@ export default function ManagerDashboardPage() {
   } = useApp();
   const { navigate } = useLoading();
 
-  // Use current logged in user or sample preview user
-  const activeUser = currentUser || {
-    id: "preview-exec-user",
-    name: "คุณวิภาดา สุขเจริญ",
-    username: "manager",
-    role: "manager" as const,
-    position: "ผู้จัดการร้าน",
-  };
-
-  const isAssistantRole =
-    activeUser.role === "manager_assistant" ||
-    (activeUser.position?.includes("ผู้ช่วย") ?? false);
-
-  const isExecutiveRole =
-    !isAssistantRole &&
-    (activeUser.role === "general_manager" ||
-      activeUser.role === "committee" ||
-      (activeUser.position?.includes("กรรมการ") ?? false) ||
-      (activeUser.position?.includes("ผู้จัดการทั่วไป") ?? false));
-
   useEffect(() => {
     if (!isReady) return;
-    if (currentUser?.role === "admin") {
+    if (!currentUser) {
+      router.replace("/");
+      return;
+    }
+    if (currentUser.role === "admin") {
       router.replace("/admin/dashboard");
     }
   }, [currentUser, isReady, router]);
 
-  if (!isReady) {
+  if (!isReady || !currentUser) {
     return <LoadingSpinner text="กำลังโหลดแดชบอร์ด..." />;
   }
+
+  const isAssistantRole =
+    currentUser.role === "manager_assistant" ||
+    (currentUser.position?.includes("ผู้ช่วย") ?? false);
+
+  const isExecutiveRole =
+    !isAssistantRole &&
+    (currentUser.role === "general_manager" ||
+      currentUser.role === "committee" ||
+      (currentUser.position?.includes("กรรมการ") ?? false) ||
+      (currentUser.position?.includes("ผู้จัดการทั่วไป") ?? false));
 
   if (isExecutiveRole) {
     return (
       <ExecutiveDashboard
-        user={activeUser}
+        user={currentUser}
         onLogout={() => logout("/")}
       />
     );
@@ -62,7 +57,7 @@ export default function ManagerDashboardPage() {
 
   return (
     <ManagerDashboard
-      user={activeUser}
+      user={currentUser}
       onLogout={() => logout("/")}
       activeSession={activeSession}
       onStartChecklist={selectShift}

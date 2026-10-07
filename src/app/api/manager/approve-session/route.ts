@@ -56,6 +56,14 @@ export async function POST(request: NextRequest) {
     }> = [];
     for (const item of items) {
       if (!item.shiftSessionId) continue;
+      if (item.role === "committee" || item.role === "general_manager") {
+        results.push({
+          shiftSessionId: item.shiftSessionId,
+          success: false,
+          error: "ผู้บริหารและคณะกรรมการไม่มีสิทธิ์ลงนามอนุมัติหรือตรวจรับรองกะงาน (หน้าที่นี้สำหรับผู้จัดการสาขาเท่านั้น)",
+        });
+        continue;
+      }
       try {
         const res = await services.manager.approveShiftSession({
           shiftSessionId: item.shiftSessionId,

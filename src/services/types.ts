@@ -349,11 +349,95 @@ export interface IManagerService {
   }>;
 }
 
+export interface BranchEmployeeStatusItem {
+  id: string;
+  name: string;
+  username: string;
+  role: Role;
+  position: string;
+  point: number;
+  pointStreak: number;
+  pointStreakType: "none" | "flawed" | "perfect";
+  status: "working" | "completed" | "on_leave" | "off_duty";
+  activeShift?: ShiftType;
+  shiftSessionId?: string;
+  shiftStartTime?: string;
+  shiftEndTime?: string;
+  completedTasksCount: number;
+  totalTasksCount: number;
+  taskCompletionRate: number;
+  leaveInfo?: {
+    leaveType: LeaveType;
+    startDate: string;
+    endDate: string;
+    reason: string;
+  };
+}
+
+export interface BranchShiftProgress {
+  shift: ShiftType;
+  totalTasks: number;
+  completedTasks: number;
+  completionRate: number;
+  activeStaffCount: number;
+  sessionsCount: number;
+}
+
+export interface BranchOperationsSummaryItem {
+  id: string;
+  code: string;
+  name: string;
+  location: string;
+  managerName: string;
+  staffCount: number;
+  status: "active" | "maintenance" | "standby";
+  leaveQuota: number;
+  todayCompletionRate: number;
+  totalTasksToday: number;
+  completedTasksToday: number;
+  pendingTasksToday: number;
+  totalRefrigerators: number;
+  checkedRefrigeratorsToday: number;
+  refrigeratorComplianceRate: number;
+  shifts: {
+    morning: BranchShiftProgress;
+    afternoon: BranchShiftProgress;
+    night: BranchShiftProgress;
+  };
+  workingStaffCount: number;
+  completedStaffCount: number;
+  onLeaveStaffCount: number;
+  offDutyStaffCount: number;
+  healthStatus: "excellent" | "in_progress" | "needs_attention";
+  employees: BranchEmployeeStatusItem[];
+}
+
+export interface BranchOperationsReportData {
+  summary: {
+    totalBranches: number;
+    activeBranchesCount: number;
+    totalStaff: number;
+    totalWorkingStaff: number;
+    totalOnLeaveStaff: number;
+    averageCompletionRate: number;
+    totalTasksToday: number;
+    completedTasksToday: number;
+    averageRefrigeratorCompliance: number;
+  };
+  branches: BranchOperationsSummaryItem[];
+  generatedAt: string;
+}
+
 export interface IBranchService {
   getBranches(options?: { forceRefresh?: boolean }): Promise<{
     success: boolean;
     branches?: any[];
     lastUpdate?: string;
+    error?: string;
+  }>;
+  getBranchOperationsReport(dateStr?: string): Promise<{
+    success: boolean;
+    data?: BranchOperationsReportData;
     error?: string;
   }>;
   checkBranchesUpdated(clientLastUpdate?: string, branchId?: string): Promise<{

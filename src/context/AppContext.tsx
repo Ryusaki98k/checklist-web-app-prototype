@@ -462,8 +462,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   async function logout(redirectTo?: unknown) {
     startLoading("กำลังออกจากระบบ...", true);
-    const targetUrl = typeof redirectTo === "string" ? redirectTo : null;
-    const prevRole = currentUser?.role;
+    const targetUrl = typeof redirectTo === "string" ? redirectTo : "/";
 
     try {
       const supabase = createClient();
@@ -485,22 +484,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSelectedShift(null);
     setActiveSession(null);
 
-    startTransition(() => {
-      if (targetUrl) {
-        router.push(targetUrl);
-      } else if (prevRole === "admin") {
-        router.push("/admin");
-      } else if (
-        prevRole === "committee" ||
-        prevRole === "general_manager" ||
-        prevRole === "manager" ||
-        prevRole === "manager_assistant"
-      ) {
-        router.push("/login/executive");
-      } else {
-        router.push("/login/staff");
-      }
-    });
+    // Guarantee full tear-down and navigation directly to home page
+    if (typeof window !== "undefined") {
+      window.location.replace(targetUrl);
+    } else {
+      router.replace(targetUrl);
+    }
   }
 
   function selectPosition(position: string) {

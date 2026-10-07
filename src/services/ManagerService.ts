@@ -383,10 +383,17 @@ export class ManagerService implements IManagerService {
         return { success: false, error: "ไม่พบข้อมูลกะนี้" };
       }
 
+      if (role === "committee" || role === "general_manager") {
+        return {
+          success: false,
+          error: "ผู้บริหารและคณะกรรมการไม่มีหน้าที่ลงนามอนุมัติหรือตรวจรับรองกะงาน (หน้าที่นี้สำหรับผู้จัดการสาขาเท่านั้น)",
+        };
+      }
+
       if (targetSession.task_role === "manager_assistant" && role === "manager_assistant") {
         return {
           success: false,
-          error: "ผู้ที่จะอนุมัติงานของผู้ช่วยผู้จัดการร้านได้จะต้องเป็นตำแหน่งผู้จัดการร้าน (Manager) หรือสูงกว่าเท่านั้น",
+          error: "ผู้ที่จะอนุมัติงานของผู้ช่วยผู้จัดการร้านได้จะต้องเป็นตำแหน่งผู้จัดการร้าน (Manager) เท่านั้น",
         };
       }
 

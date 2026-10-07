@@ -17,10 +17,8 @@ import { SessionDetailModal } from "../admin/SessionDetailModal";
 import {
   getManagerShiftSessionsAction,
   getHistoryShiftSessionsAction,
-  approveShiftSessionAction,
   ManagerShiftSummary,
 } from "../../actions/manager";
-import { executeResilientApproval, flushPendingApprovals } from "../../utils/sessionApprovalBuffer";
 import {
   resetTodayChecklistDataAction,
 } from "../../actions/checklist";
@@ -31,7 +29,7 @@ import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
 import { LeaderboardWidget } from "./LeaderboardWidget";
 import { ErrorBoundary } from "../common/ErrorBoundary";
-import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ShieldAlert } from "lucide-react";
+import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ShieldAlert, Eye } from "lucide-react";
 import Link from "next/link";
 
 export type ExecutiveRole = "manager" | "committee" | "general_manager";
@@ -84,7 +82,6 @@ export function ExecutiveDashboard({
 
   // Approval status tracking in client state (synced with Supabase task_work)
   const [approvals, setApprovals] = useState<Record<string, { assistantApproved?: boolean; managerApproved?: boolean }>>({});
-  const [approvingSessionIds, setApprovingSessionIds] = useState<Set<string>>(new Set());
   const [isResetting, setIsResetting] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
 
@@ -202,7 +199,6 @@ export function ExecutiveDashboard({
 
   // Sync initial DB fetch on mount
   useEffect(() => {
-    void flushPendingApprovals();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDbSessions();
 
@@ -422,70 +418,7 @@ export function ExecutiveDashboard({
     setTimeout(() => setActionFeedback(null), 3500);
   }
 
-  async function handleApproveSession(
-    sessionId: string,
-    type: "assistant" | "manager",
-    isException?: boolean
-  ) {
-    if (approvingSessionIds.has(sessionId)) return;
 
-    const prevApproval = approvals[sessionId];
-
-    // Optimistic UI update
-    setApprovals((prev) => {
-      return {
-        ...prev,
-        [sessionId]: {
-          ...prev[sessionId],
-          assistantApproved: true,
-          managerApproved: true,
-        },
-      };
-    });
-
-    setApprovingSessionIds((prev) => new Set(prev).add(sessionId));
-
-    try {
-      const roleForDb =
-        (currentRole === "committee" || currentRole === "general_manager")
-          ? currentRole
-          : "manager";
-
-      const res = await executeResilientApproval({
-        shiftSessionId: sessionId,
-        role: roleForDb,
-        isException: Boolean(isException),
-      });
-
-      if (res.success) {
-        const exceptionNotice = isException ? " (แบบอนุโลม / Exception: สตรีคจะคงอยู่เป็นสถานะ Flawed)" : "";
-        showToast(
-          (currentRole === "committee" || currentRole === "general_manager")
-            ? `รับรองผลการตรวจงานโดย${roleConfig.title}ลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
-            : `อนุมัติกะโดยผู้จัดการร้านลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
-        );
-        await loadDbSessions(true);
-      } else {
-        setApprovals((prev) => ({
-          ...prev,
-          [sessionId]: prevApproval || {},
-        }));
-        showToast(res.error || "เกิดข้อผิดพลาดในการอนุมัติ กรุณาลองใหม่อีกครั้ง");
-      }
-    } catch (err: any) {
-      setApprovals((prev) => ({
-        ...prev,
-        [sessionId]: prevApproval || {},
-      }));
-      showToast(err?.message || "เกิดข้อผิดพลาดในการอนุมัติ กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setApprovingSessionIds((prev) => {
-        const next = new Set(prev);
-        next.delete(sessionId);
-        return next;
-      });
-    }
-  }
 
 
 
@@ -573,6 +506,15 @@ export function ExecutiveDashboard({
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
 
             <Link
+              href="/manager/branches"
+              className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface)] hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
+              title="รายงานภาพรวมทุกสาขาและการปฏิบัติงาน"
+            >
+              <Building2 size={16} className="text-amber-600 shrink-0" />
+              <span className="hidden sm:inline">ภาพรวมทุกสาขา</span>
+            </Link>
+
+            <Link
               href="/manager/leaves"
               className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface)] hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
               title="ระบบจัดการการลาและสถานะพนักงาน"
@@ -646,8 +588,15 @@ export function ExecutiveDashboard({
             </p>
           </div>
 
-          {/* Quick Access to Leave & Staff Status & Switch to Manager View */}
+          {/* Quick Access to Leaves, Staff Status, and Branches */}
           <div className="flex items-center gap-2 z-10 shrink-0 flex-wrap sm:flex-nowrap">
+            <Link
+              href="/manager/branches"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 text-amber-950 border border-amber-500 transition-all flex items-center gap-1.5 shadow-2xs"
+            >
+              <Building2 size={15} className="shrink-0" />
+              <span>ภาพรวมทุกสาขา</span>
+            </Link>
             <Link
               href="/manager/leaves"
               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[var(--color-surface-2)] hover:bg-rose-50 dark:hover:bg-rose-950/40 text-[var(--color-text)] hover:text-rose-700 dark:hover:text-rose-300 border border-[var(--color-border)] hover:border-rose-300 transition-all flex items-center gap-1.5 shadow-2xs"
@@ -779,45 +728,25 @@ export function ExecutiveDashboard({
                 </div>
               </div>
 
-              {/* Card 3: Direct Approval Action Callout */}
-              <div
-                onClick={() => {
-                  if (pendingApprovalsCount > 0) {
-                    setShiftQueueStatusFilter((prev) => (prev === "pending" ? "all" : "pending"));
-                  }
-                }}
-                className={`rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4 transition-all ${pendingApprovalsCount > 0
-                    ? `cursor-pointer group hover:shadow-md border ${shiftQueueStatusFilter === "pending"
-                      ? "bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/30"
-                      : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-amber-400"
-                    }`
-                    : "bg-[var(--color-surface)] border border-[var(--color-border)]"
-                  }`}
-                title={pendingApprovalsCount > 0 ? "คลิกเพื่อกรองเฉพาะกะที่รอดำเนินการรับรอง" : undefined}
-              >
+              {/* Card 3: Branch Operations & Manager Approval Status Overview */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full ${pendingApprovalsCount > 0 ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`} aria-hidden="true" />
                       <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
-                        สถานะการลงนามรับรอง
+                        การรับรองกะโดย ผจก.สาขา
                       </span>
                     </div>
-                    {pendingApprovalsCount > 0 && (
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${shiftQueueStatusFilter === "pending"
-                          ? "bg-amber-300 text-amber-950 dark:bg-amber-800 dark:text-amber-100"
-                          : "text-amber-950 bg-amber-100 dark:bg-amber-950 dark:text-amber-200 group-hover:bg-amber-200 border border-amber-300 dark:border-amber-800"
-                        }`}>
-                        <span>{shiftQueueStatusFilter === "pending" ? "✓ กำลังกรองกะค้าง" : "คลิกเพื่อกรอง"}</span>
-                        <span>→</span>
-                      </span>
-                    )}
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                      ระดับสาขา
+                    </span>
                   </div>
                   <div className="mt-1 flex items-center gap-2">
                     {pendingApprovalsCount > 0 ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-950 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 px-3 py-1.5 rounded-full shadow-2xs">
                         <AlertCircle size={14} className="text-amber-700 dark:text-amber-400" />
-                        <span>ค้างรับรอง {pendingApprovalsCount} กะ</span>
+                        <span>รอ ผจก.สาขา ตรวจรับรอง {pendingApprovalsCount} กะ</span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 px-3 py-1.5 rounded-full shadow-2xs">
@@ -827,14 +756,17 @@ export function ExecutiveDashboard({
                     )}
                   </div>
                 </div>
-                <div className="pt-3 border-t border-[var(--color-border-subtle)]">
-                  <p className="text-xs text-[var(--color-text-muted)] font-medium">
-                    {pendingApprovalsCount > 0
-                      ? shiftQueueStatusFilter === "pending"
-                        ? "กำลังแสดงเฉพาะกะที่รอดำเนินการ (คลิกการ์ดนี้เพื่อดูทั้งหมด)"
-                        : "คลิกเพื่อกรองดูเฉพาะกะที่รอการตรวจรับรองทันที"
-                      : "สาขาพร้อมเปิดทำการเต็มมาตรฐาน รับรองครบทุกกะงานแล้ว"}
-                  </p>
+                <div className="pt-3 border-t border-[var(--color-border-subtle)] flex items-center justify-between">
+                  <Link
+                    href="/manager/branches"
+                    className="text-xs font-bold text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300 inline-flex items-center gap-1 transition-colors"
+                  >
+                    <span>ดูภาพรวมทุกสาขา & กำลังพล</span>
+                    <span>→</span>
+                  </Link>
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    {sessions.length - pendingApprovalsCount}/{sessions.length} กะรับรองแล้ว
+                  </span>
                 </div>
               </div>
             </div>
@@ -884,7 +816,7 @@ export function ExecutiveDashboard({
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-sm sm:text-base font-bold text-[var(--color-text)] flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span>รายการกะงานสาขา & การรับรองกะ</span>
+                      <span>รายการกะงานสาขา (Live Shift Operations)</span>
                     </h3>
                     {isLiveFromDb && (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-50 text-emerald-950 dark:bg-emerald-950/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800">
@@ -894,7 +826,7 @@ export function ExecutiveDashboard({
                     )}
                   </div>
                   <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                    ตรวจสอบความเรียบร้อยของรายการเช็คลิสต์และกดรับรองกะงาน
+                    ตรวจสอบและติดตามความคืบหน้าของรายการเช็คลิสต์และการทำงานของแต่ละสาขาแบบเรียลไทม์
                   </p>
                 </div>
 
@@ -1224,31 +1156,17 @@ export function ExecutiveDashboard({
                             )}
 
                             {/* Status & Action */}
-                            {(() => {
-                              const app = approvals[sess.id] || {};
-                              const isPendingForMe = !app.managerApproved;
-
-                              return (
-                                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                                  <div className="min-w-0">{renderApprovalBadge(sess)}</div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedSession(sess)}
-                                    className={`min-h-[44px] px-4 py-2 shrink-0 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5 ${isPendingForMe
-                                        ? "text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500"
-                                        : "text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-2)]/80 border border-[var(--color-border)]"
-                                      }`}
-                                  >
-                                    <span>
-                                      {isPendingForMe
-                                        ? "ตรวจรับรอง"
-                                        : "ดูรายละเอียด"}
-                                    </span>
-                                    {isPendingForMe && <span>→</span>}
-                                  </button>
-                                </div>
-                              );
-                            })()}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                              <div className="min-w-0">{renderApprovalBadge(sess)}</div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSession(sess)}
+                                className="min-h-[44px] px-4 py-2 shrink-0 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5 text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-2)]/80 border border-[var(--color-border)]"
+                              >
+                                <Eye size={14} className="text-[var(--color-text-muted)]" />
+                                <span>ดูรายละเอียด</span>
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -1367,25 +1285,14 @@ export function ExecutiveDashboard({
                                   {renderApprovalBadge(sess)}
                                 </td>
                                 <td className="py-3 px-3 text-right">
-                                  {(() => {
-                                    const app = approvals[sess.id] || {};
-                                    const isPendingForMe = !app.managerApproved;
-
-                                    return (
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedSession(sess)}
-                                        className={`min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-0 inline-flex items-center justify-center px-4 py-2 sm:px-3.5 sm:py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap ${isPendingForMe
-                                            ? "text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500"
-                                            : "text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-2)]/80 border border-[var(--color-border)]"
-                                          }`}
-                                      >
-                                        {isPendingForMe
-                                          ? "ตรวจรับรอง →"
-                                          : "ดูรายละเอียด"}
-                                      </button>
-                                    );
-                                  })()}
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedSession(sess)}
+                                    className="min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 sm:px-3.5 sm:py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-2)]/80 border border-[var(--color-border)]"
+                                  >
+                                    <Eye size={14} className="text-[var(--color-text-muted)]" />
+                                    <span>ดูรายละเอียด</span>
+                                  </button>
                                 </td>
                               </tr>
                             );
@@ -1820,21 +1727,14 @@ export function ExecutiveDashboard({
           <SessionDetailModal
             session={selectedSession}
             onClose={() => setSelectedSession(null)}
-            canApprove={canApprove}
-            isApproved={isApproved}
-            approveRoleTitle={approveTitle}
-            isApproving={approvingSessionIds.has(selectedSession.id)}
+            canApprove={false}
+            isApproved={!!approvals[selectedSession.id]?.managerApproved}
+            approveRoleTitle={roleConfig.title}
+            isApproving={false}
             reviewerId={user.id}
-            canReviewIncomplete={["manager", "general_manager", "committee"].includes(currentRole)}
+            canReviewIncomplete={false}
             onReviewSuccess={() => {
               loadDbSessions();
-            }}
-            onApprove={(sessId, isException) => {
-              handleApproveSession(
-                sessId,
-                "manager",
-                isException
-              );
             }}
           />
         );

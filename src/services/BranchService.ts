@@ -1,6 +1,22 @@
-import { eq, sql, and, inArray, notInArray } from "drizzle-orm";
-import { branches, users, branchTasks } from "../db/schema";
-import { IBranchService } from "./types";
+import { eq, sql, and, inArray, notInArray, gte, lte } from "drizzle-orm";
+import {
+  branches,
+  users,
+  branchTasks,
+  shiftSession,
+  taskWork,
+  refrigerators,
+  refrigeratorTasks,
+  employeeLeaves,
+} from "../db/schema";
+import {
+  IBranchService,
+  BranchOperationsReportData,
+  BranchOperationsSummaryItem,
+  BranchEmployeeStatusItem,
+  BranchShiftProgress,
+} from "./types";
+import { getThaiStartAndEndOfDay } from "../utils/date";
 
 export interface DashboardBranch {
   id: string;
@@ -317,6 +333,289 @@ export class BranchService implements IBranchService {
     } catch (err: any) {
       console.error("BranchService.updateBranchLeaveQuota error:", err);
       return { success: false, error: "ไม่สามารถปรับปรุงโควตาการลาของสาขาได้" };
+    }
+  }
+
+  async getBranchOperationsReport(dateStr?: string): Promise<{
+    success: boolean;
+    data?: BranchOperationsReportData;
+    error?: string;
+  }> {
+    try {
+      const targetDate = dateStr ? new Date(dateStr) : new Date();
+      const { startOfDay, endOfDay, dateStr: activeDateStr } = getThaiStartAndEndOfDay(targetDate);
+
+      // 1. Fetch core entities
+      const allBranches = await this.db.select().from(branches);
+      const allUsers = await this.db.select().from(users);
+
+      // 2. Fetch today's shift sessions
+      const todaySessions = await this.db
+        .select()
+        .from(shiftSession)
+        .where(and(gte(shiftSession.start, startOfDay), lte(shiftSession.start, endOfDay)));
+
+      const sessionIds = todaySessions.map((s: any) => s.id);
+
+      // 3. Fetch taskWorks for today's sessions
+      let todayWorks: any[] = [];
+      if (sessionIds.length > 0) {
+        todayWorks = await this.db
+          .select()
+          .from(taskWork)
+          .where(inArray(taskWork.shift_session, sessionIds));
+      }
+
+      // 4. Fetch refrigerators and refrigeratorTasks
+      const allFridges = await this.db.select().from(refrigerators);
+      const todayRefTasks = await this.db
+        .select()
+        .from(refrigeratorTasks)
+        .where(eq(refrigeratorTasks.task_date, activeDateStr));
+
+      // 5. Fetch approved leaves for today
+      const todayLeaves = await this.db
+        .select()
+        .from(employeeLeaves)
+        .where(
+          and(
+            lte(employeeLeaves.start_date, activeDateStr),
+            gte(employeeLeaves.end_date, activeDateStr),
+            eq(employeeLeaves.status, "approved")
+          )
+        );
+
+      // Helper for task role title
+      const getPositionTitle = (role?: string | null, taskRole?: string | null) => {
+        if (taskRole === "manager_assistant") return "ผู้ช่วยผู้จัดการร้าน";
+        if (taskRole === "cashier") return "พนักงานแคชเชียร์";
+        if (taskRole === "stock") return "พนักงานจัดเรียงสินค้า / สต็อก";
+        if (role === "general_manager") return "ผู้จัดการทั่วไป";
+        if (role === "committee") return "กรรมการบริหาร";
+        if (role === "manager") return "ผู้จัดการร้าน";
+        if (role === "manager_assistant") return "ผู้ช่วยผู้จัดการร้าน";
+        return "พนักงานประจำสาขา";
+      };
+
+      let totalTasksCompany = 0;
+      let completedTasksCompany = 0;
+      let totalWorkingStaffCompany = 0;
+      let totalOnLeaveStaffCompany = 0;
+      const totalStaffCompany = allUsers.filter(
+        (u: any) => u.branch_id && !["admin", "committee", "general_manager"].includes(u.role)
+      ).length;
+
+      const branchSummaries: BranchOperationsSummaryItem[] = allBranches.map((b: any, index: number) => {
+        const branchUsers = allUsers.filter((u: any) => u.branch_id === b.id);
+        const manager = branchUsers.find((u: any) => u.role === "manager" || u.role === "general_manager");
+        const managerName = manager ? manager.name : "กำลังสรรหา";
+
+        const branchCode = /^[A-Z0-9_-]{2,8}$/i.test(b.name)
+          ? b.name.toUpperCase()
+          : `BR-${String(index + 1).padStart(3, "0")}`;
+
+        const bSessions = todaySessions.filter((s: any) => s.branch === b.id);
+        const bSessionIds = new Set(bSessions.map((s: any) => s.id));
+        const bWorks = todayWorks.filter((w: any) => bSessionIds.has(w.shift_session));
+
+        const totalTasksToday = bWorks.length;
+        const completedTasksToday = bWorks.filter((w: any) => w.timestamp !== null).length;
+        const pendingTasksToday = totalTasksToday - completedTasksToday;
+        const todayCompletionRate =
+          totalTasksToday > 0 ? Math.round((completedTasksToday / totalTasksToday) * 100) : 0;
+
+        totalTasksCompany += totalTasksToday;
+        completedTasksCompany += completedTasksToday;
+
+        // Shifts breakdown
+        const computeShiftProgress = (shiftType: "morning" | "afternoon" | "night"): BranchShiftProgress => {
+          const sShifts = bSessions.filter((s: any) => s.shift === shiftType);
+          const sIds = new Set(sShifts.map((s: any) => s.id));
+          const sWorks = bWorks.filter((w: any) => sIds.has(w.shift_session));
+          const sTotal = sWorks.length;
+          const sDone = sWorks.filter((w: any) => w.timestamp !== null).length;
+          const sRate = sTotal > 0 ? Math.round((sDone / sTotal) * 100) : 0;
+          const sStaffCount = new Set(sShifts.map((s: any) => s.user)).size;
+
+          return {
+            shift: shiftType,
+            totalTasks: sTotal,
+            completedTasks: sDone,
+            completionRate: sRate,
+            activeStaffCount: sStaffCount,
+            sessionsCount: sShifts.length,
+          };
+        };
+
+        const shifts = {
+          morning: computeShiftProgress("morning"),
+          afternoon: computeShiftProgress("afternoon"),
+          night: computeShiftProgress("night"),
+        };
+
+        // Refrigerator compliance
+        const bFridges = allFridges.filter((f: any) => f.branch_id === b.id && !f.disable_check);
+        const bRefTasks = todayRefTasks.filter((t: any) => t.branch_id === b.id && t.completed);
+        const refrigeratorComplianceRate =
+          bFridges.length > 0
+            ? Math.min(100, Math.round((bRefTasks.length / bFridges.length) * 100))
+            : 100;
+
+        // Employees roster
+        let workingCount = 0;
+        let completedCount = 0;
+        let onLeaveCount = 0;
+        let offDutyCount = 0;
+
+        const employees: BranchEmployeeStatusItem[] = branchUsers
+          .filter((u: any) => u.role !== "admin")
+          .map((u: any) => {
+            const userSessions = bSessions.filter((s: any) => s.user === u.id);
+            const activeSess = userSessions.find((s: any) => s.end === null);
+            const completedSess = userSessions.find((s: any) => s.end !== null);
+            const userLeave = todayLeaves.find((l: any) => l.user_id === u.id);
+
+            let status: "working" | "completed" | "on_leave" | "off_duty" = "off_duty";
+            let activeShift = undefined;
+            let shiftSessionId = undefined;
+            let shiftStartTime = undefined;
+            let shiftEndTime = undefined;
+
+            if (activeSess) {
+              status = "working";
+              activeShift = activeSess.shift;
+              shiftSessionId = activeSess.id;
+              shiftStartTime = activeSess.start ? new Date(activeSess.start).toISOString() : undefined;
+              workingCount++;
+            } else if (completedSess) {
+              status = "completed";
+              activeShift = completedSess.shift;
+              shiftSessionId = completedSess.id;
+              shiftStartTime = completedSess.start ? new Date(completedSess.start).toISOString() : undefined;
+              shiftEndTime = completedSess.end ? new Date(completedSess.end).toISOString() : undefined;
+              completedCount++;
+            } else if (userLeave) {
+              status = "on_leave";
+              onLeaveCount++;
+            } else {
+              offDutyCount++;
+            }
+
+            // Individual works
+            const userSessionIds = new Set(userSessions.map((s: any) => s.id));
+            const uWorks = bWorks.filter((w: any) => userSessionIds.has(w.shift_session));
+            const uTotal = uWorks.length;
+            const uDone = uWorks.filter((w: any) => w.timestamp !== null).length;
+            const taskCompletionRate = uTotal > 0 ? Math.round((uDone / uTotal) * 100) : 0;
+
+            const position = getPositionTitle(u.role, activeSess?.task_role || completedSess?.task_role);
+
+            return {
+              id: u.id,
+              name: u.name,
+              username: u.username,
+              role: u.role,
+              position,
+              point: u.point ?? 0,
+              pointStreak: u.point_streak ?? 0,
+              pointStreakType: u.point_streak_type ?? "none",
+              status,
+              activeShift,
+              shiftSessionId,
+              shiftStartTime,
+              shiftEndTime,
+              completedTasksCount: uDone,
+              totalTasksCount: uTotal,
+              taskCompletionRate,
+              leaveInfo: userLeave
+                ? {
+                    leaveType: userLeave.leave_type,
+                    startDate: userLeave.start_date,
+                    endDate: userLeave.end_date,
+                    reason: userLeave.reason,
+                  }
+                : undefined,
+            };
+          });
+
+        // Sort employees: working first, then completed, then on_leave, then off_duty
+        employees.sort((a, b) => {
+          const order = { working: 0, completed: 1, on_leave: 2, off_duty: 3 };
+          if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+          return a.name.localeCompare(b.name, "th");
+        });
+
+        totalWorkingStaffCompany += workingCount;
+        totalOnLeaveStaffCompany += onLeaveCount;
+
+        let healthStatus: "excellent" | "in_progress" | "needs_attention" = "in_progress";
+        if (todayCompletionRate >= 80) {
+          healthStatus = "excellent";
+        } else if (todayCompletionRate < 40 && (bSessions.length > 0 || branchUsers.length > 0)) {
+          healthStatus = "needs_attention";
+        }
+
+        return {
+          id: b.id,
+          code: branchCode,
+          name: b.name,
+          location: "-",
+          managerName,
+          staffCount: branchUsers.length,
+          status: "active",
+          leaveQuota: typeof b.leave_quota === "number" ? b.leave_quota : 3,
+          todayCompletionRate,
+          totalTasksToday,
+          completedTasksToday,
+          pendingTasksToday,
+          totalRefrigerators: bFridges.length,
+          checkedRefrigeratorsToday: bRefTasks.length,
+          refrigeratorComplianceRate,
+          shifts,
+          workingStaffCount: workingCount,
+          completedStaffCount: completedCount,
+          onLeaveStaffCount: onLeaveCount,
+          offDutyStaffCount: offDutyCount,
+          healthStatus,
+          employees,
+        };
+      });
+
+      const averageCompletionRate =
+        branchSummaries.length > 0
+          ? Math.round(branchSummaries.reduce((sum, b) => sum + b.todayCompletionRate, 0) / branchSummaries.length)
+          : 0;
+
+      const averageRefrigeratorCompliance =
+        branchSummaries.length > 0
+          ? Math.round(
+              branchSummaries.reduce((sum, b) => sum + b.refrigeratorComplianceRate, 0) / branchSummaries.length
+            )
+          : 100;
+
+      const reportData: BranchOperationsReportData = {
+        summary: {
+          totalBranches: allBranches.length,
+          activeBranchesCount: branchSummaries.length,
+          totalStaff: totalStaffCompany,
+          totalWorkingStaff: totalWorkingStaffCompany,
+          totalOnLeaveStaff: totalOnLeaveStaffCompany,
+          averageCompletionRate,
+          totalTasksToday: totalTasksCompany,
+          completedTasksToday: completedTasksCompany,
+          averageRefrigeratorCompliance,
+        },
+        branches: branchSummaries,
+        generatedAt: new Date().toISOString(),
+      };
+
+      return {
+        success: true,
+        data: reportData,
+      };
+    } catch (err: unknown) {
+      console.error("BranchService.getBranchOperationsReport error:", err);
+      return { success: false, error: "เกิดข้อผิดพลาดในการดึงรายงานการปฏิบัติงานสาขา" };
     }
   }
 }

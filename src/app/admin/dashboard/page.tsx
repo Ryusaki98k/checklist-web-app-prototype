@@ -12,28 +12,26 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!isReady) return;
-    if (currentUser?.role === "employee") {
+    if (!currentUser) {
       router.replace("/");
-    } else if (currentUser && (currentUser.role === "committee" || currentUser.role === "general_manager")) {
+      return;
+    }
+    if (currentUser.role === "employee") {
+      router.replace("/");
+    } else if (currentUser.role === "committee" || currentUser.role === "general_manager") {
+      router.replace("/manager/dashboard");
+    } else if (currentUser.role !== "admin") {
       router.replace("/manager/dashboard");
     }
   }, [currentUser, isReady, router]);
 
-  if (!isReady) {
+  if (!isReady || !currentUser) {
     return <LoadingSpinner text="กำลังโหลดระบบดูแลส่วนกลาง..." />;
   }
 
-  const activeUser = currentUser || {
-    id: "preview-admin-user",
-    name: "คุณสมเกียรติ บริหารกิจ",
-    username: "admin",
-    role: "admin" as const,
-    position: "ผู้ดูแลระบบส่วนกลาง",
-  };
-
   return (
     <AdminDashboardView
-      user={activeUser}
+      user={currentUser}
       onLogout={logout}
     />
   );

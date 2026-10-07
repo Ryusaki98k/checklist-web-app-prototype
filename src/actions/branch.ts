@@ -3,7 +3,27 @@
 import { getServices } from "../services/container";
 import { DashboardBranch } from "../services/BranchService";
 
-export type { DashboardBranch };
+import {
+  BranchOperationsReportData,
+  BranchOperationsSummaryItem,
+  BranchEmployeeStatusItem,
+} from "../services/types";
+
+export type {
+  DashboardBranch,
+  BranchOperationsReportData,
+  BranchOperationsSummaryItem,
+  BranchEmployeeStatusItem,
+};
+
+export async function getBranchOperationsReportAction(dateStr?: string): Promise<{
+  success: boolean;
+  data?: BranchOperationsReportData;
+  error?: string;
+}> {
+  const services = getServices();
+  return await services.branch.getBranchOperationsReport(dateStr);
+}
 
 export async function getBranchesAction(options?: { forceRefresh?: boolean }): Promise<{
   success: boolean;

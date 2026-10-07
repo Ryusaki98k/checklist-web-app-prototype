@@ -4,11 +4,11 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "../../../context/AppContext";
 import { LoadingSpinner } from "../../loading";
-import { BranchStaffUnifiedHub } from "../../../components/manager/BranchStaffUnifiedHub";
+import { BranchOperationsPage } from "../../../components/manager/BranchOperationsPage";
 
-export default function ManagerLeavesPage() {
+export default function ManagerBranchesRoutePage() {
   const router = useRouter();
-  const { currentUser, isReady } = useApp();
+  const { currentUser, isReady, logout } = useApp();
 
   useEffect(() => {
     if (!isReady) return;
@@ -23,8 +23,13 @@ export default function ManagerLeavesPage() {
   }, [currentUser, isReady, router]);
 
   if (!isReady || !currentUser) {
-    return <LoadingSpinner text="กำลังโหลดระบบจัดการการลาพนักงาน..." />;
+    return <LoadingSpinner text="กำลังโหลดรายงานภาพรวมสาขา..." />;
   }
 
-  return <BranchStaffUnifiedHub currentUser={currentUser} initialTab="leaves" />;
+  return (
+    <BranchOperationsPage
+      currentUser={currentUser}
+      onLogout={() => logout("/")}
+    />
+  );
 }
