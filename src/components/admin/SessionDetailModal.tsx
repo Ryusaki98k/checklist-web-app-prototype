@@ -16,6 +16,7 @@ export function SessionDetailModal({
   reviewerId,
   canReviewIncomplete = false,
   onReviewSuccess,
+  isApproving = false,
 }: {
   session: ShiftSession | null;
   onClose: () => void;
@@ -26,6 +27,7 @@ export function SessionDetailModal({
   reviewerId?: string;
   canReviewIncomplete?: boolean;
   onReviewSuccess?: () => void;
+  isApproving?: boolean;
 }) {
   const [sessionOverride, setSessionOverride] = useState<Partial<ShiftSession> | null>(null);
   const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
@@ -504,13 +506,26 @@ export function SessionDetailModal({
           <div className="mt-5 pt-4 border-t border-[var(--color-border)]">
             <button
               type="button"
+              disabled={isApproving}
               onClick={() => setShowApprovalPrompt(true)}
-              className="w-full min-h-[44px] py-3 sm:py-2.5 px-4 bg-[var(--color-brown)] hover:bg-[var(--color-brown-light)] text-amber-100 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
+              className="w-full min-h-[44px] py-3 sm:py-2.5 px-4 bg-[var(--color-brown)] hover:bg-[var(--color-brown-light)] disabled:opacity-60 text-amber-100 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>รับรองผลการตรวจงาน ({approveRoleTitle})</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+              {isApproving ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-amber-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                  </svg>
+                  <span>กำลังดำเนินการรับรองผล...</span>
+                </>
+              ) : (
+                <>
+                  <span>รับรองผลการตรวจงาน ({approveRoleTitle})</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </>
+              )}
             </button>
           </div>
         )}
@@ -520,7 +535,7 @@ export function SessionDetailModal({
       {showApprovalPrompt && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[60] px-4 animate-in fade-in duration-150"
-          onClick={() => setShowApprovalPrompt(false)}
+          onClick={() => !isApproving && setShowApprovalPrompt(false)}
         >
           <div
             role="dialog"
@@ -547,11 +562,12 @@ export function SessionDetailModal({
               {/* Option 1: Standard Approval */}
               <button
                 type="button"
+                disabled={isApproving}
                 onClick={() => {
                   setShowApprovalPrompt(false);
                   onApprove?.(currentSession.id, false);
                 }}
-                className="w-full text-left p-3.5 rounded-xl border border-[var(--color-border)] hover:border-amber-500 bg-[var(--color-surface-2)] hover:bg-amber-500/5 transition-all cursor-pointer group"
+                className="w-full text-left p-3.5 rounded-xl border border-[var(--color-border)] hover:border-amber-500 bg-[var(--color-surface-2)] hover:bg-amber-500/5 transition-all cursor-pointer group disabled:opacity-60"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-[var(--color-text)] group-hover:text-amber-600 flex items-center gap-1.5">
@@ -567,11 +583,12 @@ export function SessionDetailModal({
               {/* Option 2: Exception Approval (อนุโลม) */}
               <button
                 type="button"
+                disabled={isApproving}
                 onClick={() => {
                   setShowApprovalPrompt(false);
                   onApprove?.(currentSession.id, true);
                 }}
-                className="w-full text-left p-3.5 rounded-xl border-2 border-amber-500/70 hover:border-amber-500 bg-amber-500/10 hover:bg-amber-500/15 transition-all cursor-pointer group shadow-xs"
+                className="w-full text-left p-3.5 rounded-xl border-2 border-amber-500/70 hover:border-amber-500 bg-amber-500/10 hover:bg-amber-500/15 transition-all cursor-pointer group shadow-xs disabled:opacity-60"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-extrabold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
@@ -590,8 +607,9 @@ export function SessionDetailModal({
             <div className="pt-2 flex justify-end">
               <button
                 type="button"
+                disabled={isApproving}
                 onClick={() => setShowApprovalPrompt(false)}
-                className="px-4 py-2 rounded-xl border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer disabled:opacity-60"
               >
                 ยกเลิก
               </button>

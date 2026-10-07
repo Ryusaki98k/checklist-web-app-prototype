@@ -10,6 +10,7 @@ import {
 } from "../../actions/notifications";
 import { useApp } from "../../context/AppContext";
 import { createClient } from "../../db/supabase/client";
+import { broadcastScoresUpdated } from "../../utils/sessionApprovalBuffer";
 
 function formatNotificationDateTime(dateStr: string | Date | undefined): string {
   if (!dateStr) return "-";
@@ -112,8 +113,17 @@ export function NotificationCenter() {
             schema: "checklist_web_app",
             table: "notifications",
           },
-          () => {
+          (payload: any) => {
             fetchNotifications();
+            if (payload?.new) {
+              const notifType = payload.new.type;
+              if (notifType === "point_awarded" || notifType === "shift_approved") {
+                broadcastScoresUpdated({
+                  userId: payload.new.recipient_id,
+                  shiftSessionId: payload.new.shift_session_id,
+                });
+              }
+            }
           }
         )
         .subscribe();

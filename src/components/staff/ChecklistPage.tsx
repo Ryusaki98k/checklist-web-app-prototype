@@ -391,18 +391,28 @@ export function ChecklistPage({
     }
   }
 
-  function endCompleteShift() {
+  async function endCompleteShift() {
     setIsEnding(true);
     setShowConfirm(false);
     setShiftCompleted(true);
+    try {
+      await flushChecklistBuffer();
+    } catch (e) {
+      console.warn("Flush before ending shift:", e);
+    }
     onEndShift(continueShift);
   }
 
-  function endIncompleteShift() {
+  async function endIncompleteShift() {
     if (!incompleteReason.trim()) return;
     setIsEnding(true);
     setShowIncompleteModal(false);
     setShiftCompleted(true);
+    try {
+      await flushChecklistBuffer();
+    } catch (e) {
+      console.warn("Flush before ending shift:", e);
+    }
     onEndShift(continueShift, incompleteReason.trim());
   }
 
@@ -446,7 +456,14 @@ export function ChecklistPage({
               <button
                 type="button"
                 disabled={isPageBusy}
-                onClick={onOpenDashboard}
+                onClick={async () => {
+                  try {
+                    await flushChecklistBuffer();
+                  } catch (e) {
+                    console.warn("Flush before opening dashboard:", e);
+                  }
+                  onOpenDashboard();
+                }}
                 aria-label="เปิดหน้าแดชบอร์ด"
                 className="p-1.5 sm:p-2 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:text-[var(--color-text)] hover:bg-[var(--color-border-subtle)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center"
                 title="เปิดหน้าแดชบอร์ด"
@@ -1041,8 +1058,13 @@ export function ChecklistPage({
               <button
                 type="button"
                 disabled={isPageBusy}
-                onClick={() => {
+                onClick={async () => {
                   setShowExitConfirm(false);
+                  try {
+                    await flushChecklistBuffer();
+                  } catch (e) {
+                    console.warn("Flush before exit:", e);
+                  }
                   if (onExit) {
                     onExit();
                   } else if (typeof window !== "undefined") {

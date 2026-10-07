@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Trophy, Flame, Award, Users } from "lucide-react";
 import { LeaderboardEntry } from "../../types";
 import { getLeaderboardAction } from "../../actions/points";
@@ -9,7 +9,7 @@ export function LeaderboardWidget({ branchId }: { branchId?: string }) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchLeaderboard = useCallback(() => {
     getLeaderboardAction(branchId)
       .then((res) => {
         if (res.success && res.leaderboard) {
@@ -19,6 +19,37 @@ export function LeaderboardWidget({ branchId }: { branchId?: string }) {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [branchId]);
+
+  useEffect(() => {
+    fetchLeaderboard();
+
+    const handleScoreUpdate = () => {
+      fetchLeaderboard();
+    };
+
+    window.addEventListener("app:scores-updated", handleScoreUpdate);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        bc = new BroadcastChannel("app_scores_sync");
+        bc.onmessage = (msgEvent) => {
+          if (msgEvent.data?.type === "SCORES_UPDATED") {
+            fetchLeaderboard();
+          }
+        };
+      }
+    } catch (_) {}
+
+    return () => {
+      window.removeEventListener("app:scores-updated", handleScoreUpdate);
+      if (bc) {
+        try {
+          bc.close();
+        } catch (_) {}
+      }
+    };
+  }, [fetchLeaderboard]);
 
   const getRankBadge = (index: number) => {
     if (index === 0) {

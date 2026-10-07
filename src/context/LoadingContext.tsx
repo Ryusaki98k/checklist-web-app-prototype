@@ -29,32 +29,11 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
   const activeCountRef = useRef(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const startLoading = useCallback((message = "กำลังประมวลผล...", isTransition = false) => {
-    activeCountRef.current += 1;
-    setLoadingMessage(message);
-    setIsPageTransition(isTransition);
-    setIsLoading(true);
-
-    // Safety timeout: prevent UI lockup if an operation hangs indefinitely
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      activeCountRef.current = 0;
-      setIsLoading(false);
-      setIsPageTransition(false);
-      setIsNavigating(false);
-    }, isTransition ? 2500 : 8000);
-  }, []);
-
-  const stopLoading = useCallback(() => {
-    activeCountRef.current = Math.max(0, activeCountRef.current - 1);
-    if (activeCountRef.current === 0) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      setIsLoading(false);
-      setIsPageTransition(false);
-      setIsNavigating(false);
+  const clearDomBusy = useCallback(() => {
+    if (typeof document !== "undefined") {
+      document.body.removeAttribute("data-loading-busy");
+      document.documentElement.removeAttribute("data-loading-busy");
+      document.documentElement.removeAttribute("aria-busy");
     }
   }, []);
 
@@ -67,7 +46,52 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
     setIsPageTransition(false);
     setIsNavigating(false);
-  }, []);
+    clearDomBusy();
+  }, [clearDomBusy]);
+
+  const startLoading = useCallback((message = "กำลังประมวลผล...", isTransition = false) => {
+    setLoadingMessage(message);
+
+    if (isTransition) {
+      setIsPageTransition(true);
+      setIsNavigating(true);
+      // For page transitions, don't increment activeCountRef; set a quick safety fallback
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        setIsPageTransition(false);
+        setIsNavigating(false);
+        clearDomBusy();
+      }, 1800);
+      return;
+    }
+
+    activeCountRef.current += 1;
+    setIsLoading(true);
+
+    // Safety timeout: prevent UI lockup if an operation hangs indefinitely
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      activeCountRef.current = 0;
+      setIsLoading(false);
+      setIsPageTransition(false);
+      setIsNavigating(false);
+      clearDomBusy();
+    }, 5000);
+  }, [clearDomBusy]);
+
+  const stopLoading = useCallback(() => {
+    activeCountRef.current = Math.max(0, activeCountRef.current - 1);
+    if (activeCountRef.current === 0) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setIsLoading(false);
+      setIsPageTransition(false);
+      setIsNavigating(false);
+      clearDomBusy();
+    }
+  }, [clearDomBusy]);
 
   const withLoading = useCallback(
     async <T,>(action: () => Promise<T>, message = "กำลังประมวลผล..."): Promise<T> => {
@@ -83,14 +107,23 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
 
   const navigate = useCallback(
     (href: string, message = "กำลังเตรียมเนื้อหาหน้าถัดไป...") => {
-      startLoading(message, true);
+      setLoadingMessage(message);
+      setIsPageTransition(true);
       setIsNavigating(true);
+
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        setIsPageTransition(false);
+        setIsNavigating(false);
+        clearDomBusy();
+      }, 1800);
+
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("app:navigating", { detail: { href, message } }));
       }
       router.push(href);
     },
-    [router, startLoading]
+    [router, clearDomBusy]
   );
 
   return (

@@ -29,10 +29,11 @@ export function PointStreakBadge() {
     setMounted(true);
   }, []);
 
-  const fetchPointDetails = async () => {
-    if (!currentUser) return;
+  const currentUserId = currentUser?.id;
+  const fetchPointDetails = useCallback(async () => {
+    if (!currentUserId) return;
     try {
-      const res = await getUserPointsAction(currentUser.id);
+      const res = await getUserPointsAction(currentUserId);
       if (res.success) {
         setPoints(res.points ?? 0);
         setStreak(res.streak ?? 0);
@@ -42,7 +43,7 @@ export function PointStreakBadge() {
     } catch (err) {
       console.error("Failed to load user point details:", err);
     }
-  };
+  }, [currentUserId]);
 
   const currentBranchId = currentUser?.branchId;
   const fetchLeaderboard = useCallback(async (scope: "branch" | "all" = leaderboardScope) => {
@@ -61,8 +62,63 @@ export function PointStreakBadge() {
   }, [currentBranchId, leaderboardScope]);
 
   useEffect(() => {
-    fetchPointDetails();
-  }, [currentUser?.id]);
+    void fetchPointDetails();
+  }, [fetchPointDetails]);
+
+  // React immediately whenever currentUser points or streak in AppContext changes
+  useEffect(() => {
+    if (currentUser) {
+      setPoints(currentUser.point ?? 0);
+      setStreak(currentUser.pointStreak ?? 0);
+      setLongestStreak(currentUser.longestStreak ?? 0);
+    }
+  }, [currentUser?.point, currentUser?.pointStreak, currentUser?.longestStreak]);
+
+  // Listen for score updates across window and tabs to refetch immediately
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const handleScoreUpdate = (event?: CustomEvent) => {
+      const targetUserId = event?.detail?.userId;
+      if (!targetUserId || targetUserId === currentUserId) {
+        void fetchPointDetails();
+        if (isModalOpen) {
+          void fetchLeaderboard(leaderboardScope);
+        }
+      }
+    };
+
+    window.addEventListener("app:scores-updated", handleScoreUpdate as EventListener);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        bc = new BroadcastChannel("app_scores_sync");
+        bc.onmessage = (msgEvent) => {
+          if (msgEvent.data?.type === "SCORES_UPDATED") {
+            const targetUserId = msgEvent.data?.userId;
+            if (!targetUserId || targetUserId === currentUserId) {
+              void fetchPointDetails();
+              if (isModalOpen) {
+                void fetchLeaderboard(leaderboardScope);
+              }
+            }
+          }
+        };
+      }
+    } catch (e) {
+      console.warn("BroadcastChannel app_scores_sync unavailable:", e);
+    }
+
+    return () => {
+      window.removeEventListener("app:scores-updated", handleScoreUpdate as EventListener);
+      if (bc) {
+        try {
+          bc.close();
+        } catch (_) {}
+      }
+    };
+  }, [currentUserId, isModalOpen, leaderboardScope, fetchLeaderboard, fetchPointDetails]);
 
   const handleOpenModal = () => {
     setIsModalOpen(true);

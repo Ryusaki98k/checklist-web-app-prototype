@@ -237,7 +237,7 @@ export interface IManagerService {
     shiftSessionId: string;
     role: "manager" | "manager_assistant" | "committee" | "general_manager" | Role;
     isException?: boolean;
-  }): Promise<{ success: boolean; error?: string }>;
+  }): Promise<{ success: boolean; targetUserId?: string; error?: string }>;
 
   reviewIncompleteShift(params: {
     shiftSessionId: string;

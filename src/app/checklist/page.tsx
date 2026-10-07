@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ChecklistPage } from "../../components/staff/ChecklistPage";
 import { useApp } from "../../context/AppContext";
@@ -13,24 +13,30 @@ export default function ChecklistRoutePage() {
   const { currentUser, activeSession, selectedShift, isReady, updateSession, endShift, setActiveSession } = useApp();
   const { navigate } = useLoading();
 
+  const redirectedRef = useRef(false);
+
   useEffect(() => {
     if (!isReady) return;
     if (!currentUser) {
-      router.replace("/");
+      if (!redirectedRef.current) {
+        redirectedRef.current = true;
+        router.replace("/");
+      }
       return;
     }
     if (!activeSession) {
       const stored = getActiveSession();
       if (stored) {
         setActiveSession(stored);
-      } else {
+      } else if (!redirectedRef.current) {
+        redirectedRef.current = true;
         router.replace(currentUser.role === "manager" ? "/admin/dashboard" : "/shift");
       }
     }
   }, [currentUser, activeSession, isReady, router, setActiveSession]);
 
   if (!isReady || !currentUser || !activeSession) {
-    return <LoadingSpinner text="กำลังเตรียมรายการเช็คลิสต์..." />;
+    return <LoadingSpinner text="กำลังนำท่านไปยังหน้าถัดไป..." subtitle="กรุณารอสักครู่ ระบบกำลังประมวลผลข้อมูล" />;
   }
 
   return (

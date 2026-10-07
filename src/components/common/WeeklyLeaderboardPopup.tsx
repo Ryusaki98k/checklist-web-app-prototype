@@ -192,6 +192,38 @@ export function WeeklyLeaderboardPopup() {
     };
   }, [fetchLeaderboard, scope]);
 
+  // Sync leaderboard live if open when score updates occur
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleScoreUpdate = () => {
+      fetchLeaderboard(scope);
+    };
+
+    window.addEventListener("app:scores-updated", handleScoreUpdate);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        bc = new BroadcastChannel("app_scores_sync");
+        bc.onmessage = (msgEvent) => {
+          if (msgEvent.data?.type === "SCORES_UPDATED") {
+            fetchLeaderboard(scope);
+          }
+        };
+      }
+    } catch (_) {}
+
+    return () => {
+      window.removeEventListener("app:scores-updated", handleScoreUpdate);
+      if (bc) {
+        try {
+          bc.close();
+        } catch (_) {}
+      }
+    };
+  }, [isOpen, scope, fetchLeaderboard]);
+
   function handleClose() {
     setIsOpen(false);
     if (currentUser && weekInfo) {

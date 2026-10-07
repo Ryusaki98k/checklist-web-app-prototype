@@ -33,7 +33,7 @@ export async function approveShiftSessionAction(params: {
   shiftSessionId: string;
   role: "manager" | "manager_assistant" | "committee" | "general_manager" | Role;
   isException?: boolean;
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; targetUserId?: string; error?: string }> {
   const services = getServices();
   return await services.manager.approveShiftSession(params);
 }

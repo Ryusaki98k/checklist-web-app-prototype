@@ -108,11 +108,9 @@ export function PageTransitionWatcher() {
         timersRef.current.push(setTimeout(() => setProgress(75), 350));
         timersRef.current.push(setTimeout(() => setProgress(88), 700));
 
-        // Safety fallback: if navigation fails or cancels, auto-recover in 1.5 seconds
+        // Guaranteed safety fallback: auto-complete transition if navigation takes more than 1.5s
         const fallbackTimer = setTimeout(() => {
-          if (activeNavRef.current) {
-            completeTransition();
-          }
+          completeTransition();
         }, 1500);
         timersRef.current.push(fallbackTimer);
       } catch {
@@ -121,10 +119,7 @@ export function PageTransitionWatcher() {
     }
 
     const handlePopState = () => {
-      // Browser back/forward button clicked:
-      // History traversal is nearly instantaneous via browser bfcache or client router cache.
-      // We show a brief, responsive progress bar and auto-complete promptly,
-      // and NEVER lock the screen with a blocking full-screen modal or long delay.
+      // Browser back/forward button clicked: auto-complete promptly
       clearTimers();
       activeNavRef.current = true;
       setIsVisible(true);
@@ -134,7 +129,6 @@ export function PageTransitionWatcher() {
       // Smooth step
       timersRef.current.push(setTimeout(() => setProgress(80), 80));
 
-      // Quick auto-completion (200ms) ensuring the loading bar never hangs on back navigation
       const popstateCompleteTimer = setTimeout(() => {
         completeTransition();
       }, 200);
@@ -155,10 +149,8 @@ export function PageTransitionWatcher() {
 
       // Safety fallback for custom navigation
       const customFallback = setTimeout(() => {
-        if (activeNavRef.current) {
-          completeTransition();
-        }
-      }, 2000);
+        completeTransition();
+      }, 1600);
       timersRef.current.push(customFallback);
     };
 

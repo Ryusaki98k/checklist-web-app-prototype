@@ -18,6 +18,150 @@ export interface CachedChecklistData {
   cachedAt: number;
 }
 
+const PERSISTENT_QUEUE_KEY = "chk_pending_sync_queue";
+
+/**
+ * Helper to get the persistent pending queue from localStorage
+ */
+export function getPersistedQueue(): TaskBufferToggle[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PERSISTENT_QUEUE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Helper to save the persistent pending queue to localStorage
+ */
+export function savePersistedQueue(queue: TaskBufferToggle[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (queue.length === 0) {
+      localStorage.removeItem(PERSISTENT_QUEUE_KEY);
+    } else {
+      localStorage.setItem(PERSISTENT_QUEUE_KEY, JSON.stringify(queue));
+    }
+  } catch (err) {
+    console.warn("Failed to save pending sync queue:", err);
+  }
+}
+
+/**
+ * Add or update an item in the persistent pending queue
+ */
+export function addToPersistedQueue(toggle: TaskBufferToggle): void {
+  const current = getPersistedQueue();
+  const existingIdx = current.findIndex(
+    (t) => t.taskId === toggle.taskId && (!toggle.shiftSessionId || t.shiftSessionId === toggle.shiftSessionId)
+  );
+  if (existingIdx >= 0) {
+    current[existingIdx] = toggle;
+  } else {
+    current.push(toggle);
+  }
+  savePersistedQueue(current);
+}
+
+/**
+ * Remove items from the persistent pending queue that have been successfully flushed
+ */
+export function removeFromPersistedQueue(flushed: TaskBufferToggle[]): void {
+  const current = getPersistedQueue();
+  const flushedMap = new Map(flushed.map((f) => [`${f.taskId}_${f.shiftSessionId || ""}`, f.timestamp]));
+  const remaining = current.filter((item) => {
+    const key = `${item.taskId}_${item.shiftSessionId || ""}`;
+    const flushedTs = flushedMap.get(key);
+    // If not flushed or has newer click, keep
+    return flushedTs === undefined || item.timestamp > flushedTs;
+  });
+  savePersistedQueue(remaining);
+}
+
+/**
+ * Send queued toggles to DB using fetch keepalive (or sendBeacon) on page unload
+ */
+export function sendTogglesViaBeacon(items: TaskBufferToggle[]): boolean {
+  if (!items || items.length === 0 || typeof window === "undefined") return false;
+  const payload = JSON.stringify({
+    items: items.map((item) => ({
+      taskId: item.taskId,
+      taskWorkId: item.taskWorkId,
+      shiftSessionId: item.shiftSessionId,
+      completed: item.completed,
+      comment: item.comment,
+    })),
+  });
+
+  const url = "/api/checklist/batch-sync";
+
+  try {
+    if (typeof fetch === "function") {
+      void fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true,
+      });
+      return true;
+    }
+  } catch (err) {
+    console.warn("fetch keepalive failed, falling back to sendBeacon:", err);
+  }
+
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      const blob = new Blob([payload], { type: "application/json" });
+      return navigator.sendBeacon(url, blob);
+    }
+  } catch (err) {
+    console.warn("navigator.sendBeacon failed:", err);
+  }
+
+  return false;
+}
+
+// Global registry of all active controllers so unload events flush all of them
+const activeControllers = new Set<TaskChecklistBufferController>();
+
+// Register global browser unload listeners once
+if (typeof window !== "undefined") {
+  const flushAllControllersOnUnload = () => {
+    for (const ctrl of activeControllers) {
+      ctrl.flushViaBeacon();
+    }
+    // Also check persistent queue for any stranded items
+    const remainingQueue = getPersistedQueue();
+    if (remainingQueue.length > 0) {
+      sendTogglesViaBeacon(remainingQueue);
+      savePersistedQueue([]);
+    }
+  };
+
+  window.addEventListener("pagehide", flushAllControllersOnUnload);
+  window.addEventListener("beforeunload", flushAllControllersOnUnload);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      for (const ctrl of activeControllers) {
+        void ctrl.flush();
+      }
+    }
+  });
+}
+
+/**
+ * Public helper to await flushing of ALL active checklist controllers
+ */
+export async function flushAllPendingChecklists(): Promise<void> {
+  const controllers = Array.from(activeControllers);
+  await Promise.all(controllers.map((c) => c.flush()));
+}
+
 /**
  * Build a stable signature string from checklist items to detect changes
  */
@@ -85,12 +229,6 @@ export interface ReconcileResult {
 
 /**
  * Reconcile fresh items from database with current local items and pending buffer.
- *
- * Rules:
- * 1. If an item has a pending buffered toggle or was toggled recently (within grace period),
- *    preserve the local optimistic state so stale DB reads do NOT revert the user's action.
- * 2. If an item does NOT have local pending changes and the server has different data,
- *    adopt the server changes (external updates from other managers/staff).
  */
 export function reconcileTasksWithBuffer(
   serverItems: ChecklistItem[],
@@ -172,6 +310,7 @@ export class TaskChecklistBufferController {
   private recentLocks = new Map<string, { completed: boolean; timestamp: number }>();
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private isFlushing = false;
+  private activeFlushPromise: Promise<boolean> | null = null;
   private debounceMs: number;
   private graceLockMs: number;
 
@@ -217,6 +356,36 @@ export class TaskChecklistBufferController {
     this.onBatchSuccess = options?.onBatchSuccess;
     this.onBatchError = options?.onBatchError;
     this.onDbVerified = options?.onDbVerified;
+
+    // Register into active set
+    activeControllers.add(this);
+
+    // Hydrate any unsaved items from persistent storage queue
+    this.hydrateFromPersistentQueue();
+  }
+
+  private hydrateFromPersistentQueue(): void {
+    if (typeof window === "undefined") return;
+    try {
+      const persisted = getPersistedQueue();
+      if (persisted.length > 0) {
+        for (const item of persisted) {
+          this.pendingBuffer.set(item.taskId, item);
+          this.recentLocks.set(item.taskId, {
+            completed: item.completed,
+            timestamp: item.timestamp,
+          });
+        }
+        // Schedule debounced sync for hydrated items
+        if (!this.debounceTimer) {
+          this.debounceTimer = setTimeout(() => {
+            void this.flush();
+          }, 600);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to hydrate from persistent queue:", err);
+    }
   }
 
   public getPendingMap(): Map<string, TaskBufferToggle> {
@@ -232,7 +401,7 @@ export class TaskChecklistBufferController {
   }
 
   /**
-   * Enqueue a toggle into the buffer.
+   * Enqueue a toggle into the buffer and persistent local storage.
    * Debounces the collective database flush.
    */
   public enqueueToggle(toggle: {
@@ -243,14 +412,19 @@ export class TaskChecklistBufferController {
     comment?: string;
   }): void {
     const now = Date.now();
-    this.pendingBuffer.set(toggle.taskId, {
+    const item: TaskBufferToggle = {
       ...toggle,
       timestamp: now,
-    });
+    };
+
+    this.pendingBuffer.set(toggle.taskId, item);
     this.recentLocks.set(toggle.taskId, {
       completed: toggle.completed,
       timestamp: now,
     });
+
+    // Mirror to persistent storage so it survives unloads, reloads, and tab closures
+    addToPersistedQueue(item);
 
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
@@ -262,12 +436,32 @@ export class TaskChecklistBufferController {
   }
 
   /**
-   * Immediately flush all pending buffered toggles collectively to the database.
+   * Flush pending items via Beacon / Keepalive (used during page unload)
    */
-  public async flush(): Promise<boolean> {
+  public flushViaBeacon(): void {
+    if (this.pendingBuffer.size === 0) return;
+    const items = Array.from(this.pendingBuffer.values());
+    sendTogglesViaBeacon(items);
+    this.pendingBuffer.clear();
+    removeFromPersistedQueue(items);
+  }
+
+  /**
+   * Immediately flush all pending buffered toggles collectively to the database.
+   * Concurrency-safe: awaits active flush if already running, then continues if more items remain.
+   * Wrapped in a safety timeout so network hangs can never lock callers.
+   */
+  public async flush(timeoutMs = 5000): Promise<boolean> {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
+    }
+
+    if (this.isFlushing && this.activeFlushPromise) {
+      await this.activeFlushPromise;
+      if (this.pendingBuffer.size === 0) {
+        return true;
+      }
     }
 
     if (this.pendingBuffer.size === 0) {
@@ -277,59 +471,96 @@ export class TaskChecklistBufferController {
     const itemsToFlush = Array.from(this.pendingBuffer.values());
     this.isFlushing = true;
 
-    try {
-      const res = await batchToggleTaskWorksAction(
-        itemsToFlush.map((item) => ({
+    const performFlush = async (): Promise<boolean> => {
+      try {
+        const payload = itemsToFlush.map((item) => ({
           taskId: item.taskId,
           taskWorkId: item.taskWorkId,
           shiftSessionId: item.shiftSessionId,
           completed: item.completed,
           comment: item.comment,
-        }))
-      );
+        }));
 
-      const now = Date.now();
+        let res: {
+          success: boolean;
+          results?: Array<{
+            taskId?: string;
+            taskWorkId?: string;
+            completed: boolean;
+            completedAt?: string | null;
+          }>;
+          error?: string;
+        };
 
-      if (res.success) {
-        // Clear flushed items from pending buffer
-        for (const flushed of itemsToFlush) {
-          const current = this.pendingBuffer.get(flushed.taskId);
-          // If no newer click occurred during network flush, delete from pending
-          if (current && current.timestamp <= flushed.timestamp) {
-            this.pendingBuffer.delete(flushed.taskId);
-          }
-          // Refresh grace lock so immediate background polls still won't revert
-          this.recentLocks.set(flushed.taskId, {
-            completed: flushed.completed,
-            timestamp: now,
+        try {
+          res = await batchToggleTaskWorksAction(payload);
+        } catch {
+          // Fallback to fetch endpoint if Server Action encounters context issue
+          const fallbackRes = await fetch("/api/checklist/batch-sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: payload }),
           });
+          res = await fallbackRes.json();
         }
 
-        // Mark that submitted changes are awaiting confirmation in the next DB cache check
-        this.awaitingDbCheckConfirmation = true;
-        this.lastFlushedCount = itemsToFlush.length;
+        const now = Date.now();
 
-        if (this.onBatchSuccess && res.results) {
-          this.onBatchSuccess(res.results);
+        if (res.success) {
+          // Clear flushed items from pending buffer
+          for (const flushed of itemsToFlush) {
+            const current = this.pendingBuffer.get(flushed.taskId);
+            // If no newer click occurred during network flush, delete from pending
+            if (current && current.timestamp <= flushed.timestamp) {
+              this.pendingBuffer.delete(flushed.taskId);
+            }
+            // Refresh grace lock so immediate background polls still won't revert
+            this.recentLocks.set(flushed.taskId, {
+              completed: flushed.completed,
+              timestamp: now,
+            });
+          }
+
+          // Clean up from persistent queue
+          removeFromPersistedQueue(itemsToFlush);
+
+          // Mark that submitted changes are awaiting confirmation in the next DB cache check
+          this.awaitingDbCheckConfirmation = true;
+          this.lastFlushedCount = itemsToFlush.length;
+
+          if (this.onBatchSuccess && res.results) {
+            this.onBatchSuccess(res.results);
+          }
+          return true;
+        } else {
+          console.error("TaskChecklistBufferController batch flush error:", res.error);
+          if (this.onBatchError) {
+            this.onBatchError(res.error || "บันทึกข้อมูลไม่สำเร็จ");
+          }
+          return false;
         }
-        return true;
-      } else {
-        console.error("TaskChecklistBufferController batch flush error:", res.error);
+      } catch (err: unknown) {
+        console.error("TaskChecklistBufferController batch flush exception:", err);
         if (this.onBatchError) {
-          this.onBatchError(res.error || "บันทึกข้อมูลไม่สำเร็จ");
+          const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย";
+          this.onBatchError(message);
         }
         return false;
+      } finally {
+        this.isFlushing = false;
+        this.activeFlushPromise = null;
       }
-    } catch (err: unknown) {
-      console.error("TaskChecklistBufferController batch flush exception:", err);
-      if (this.onBatchError) {
-        const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย";
-        this.onBatchError(message);
-      }
-      return false;
-    } finally {
-      this.isFlushing = false;
-    }
+    };
+
+    // Race against timeout to ensure UI can never hang indefinitely
+    const timeoutPromise = new Promise<boolean>((resolve) => {
+      setTimeout(() => {
+        resolve(false);
+      }, timeoutMs);
+    });
+
+    this.activeFlushPromise = Promise.race([performFlush(), timeoutPromise]);
+    return await this.activeFlushPromise;
   }
 
   public setCallbacks(callbacks: {
@@ -379,9 +610,10 @@ export class TaskChecklistBufferController {
   }
 
   /**
-   * Clean up timer on unmount
+   * Clean up timer on unmount and ensure pending items are flushed
    */
   public destroy(): void {
+    activeControllers.delete(this);
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -497,9 +729,12 @@ export function useTaskChecklistBuffer(options: {
     [controller]
   );
 
-  const flush = useCallback(async () => {
-    return await controller.flush();
-  }, [controller]);
+  const flush = useCallback(
+    async (timeoutMs = 5000) => {
+      return await controller.flush(timeoutMs);
+    },
+    [controller]
+  );
 
   const reconcile = useCallback(
     (serverItems: ChecklistItem[], currentLocalItems: ChecklistItem[]) => {

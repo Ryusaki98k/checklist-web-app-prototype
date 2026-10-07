@@ -261,6 +261,86 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Listen for employee score & streak updates across tabs, windows, and realtime notifications
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const handleScoreUpdate = (event?: CustomEvent) => {
+      const targetUserId = event?.detail?.userId;
+      // If no specific userId, or matches current user, refresh user scores and details
+      if (!targetUserId || targetUserId === currentUser.id) {
+        void refreshUserData();
+      }
+    };
+
+    // 1. In-tab custom event
+    window.addEventListener("app:scores-updated", handleScoreUpdate as EventListener);
+
+    // 2. Cross-tab BroadcastChannel
+    let broadcastChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        broadcastChannel = new BroadcastChannel("app_scores_sync");
+        broadcastChannel.onmessage = (msgEvent) => {
+          if (msgEvent.data?.type === "SCORES_UPDATED") {
+            const targetUserId = msgEvent.data?.userId;
+            if (!targetUserId || targetUserId === currentUser.id) {
+              void refreshUserData();
+            }
+          }
+        };
+      }
+    } catch (e) {
+      console.warn("BroadcastChannel app_scores_sync unavailable:", e);
+    }
+
+    // 3. Supabase Realtime subscription for external approvals/point awards
+    let realtimeChannel: any = null;
+    try {
+      const supabase = createClient();
+      realtimeChannel = supabase
+        .channel(`user-scores-${currentUser.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "checklist_web_app",
+            table: "notifications",
+            filter: `recipient_id=eq.${currentUser.id}`,
+          },
+          (payload: any) => {
+            const type = payload?.new?.type;
+            if (type === "point_awarded" || type === "shift_approved") {
+              void refreshUserData();
+              window.dispatchEvent(
+                new CustomEvent("app:scores-updated", {
+                  detail: { userId: currentUser.id, shiftSessionId: payload?.new?.shift_session_id },
+                })
+              );
+            }
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn("Supabase realtime user score subscription unavailable:", e);
+    }
+
+    return () => {
+      window.removeEventListener("app:scores-updated", handleScoreUpdate as EventListener);
+      if (broadcastChannel) {
+        try {
+          broadcastChannel.close();
+        } catch (_) {}
+      }
+      if (realtimeChannel) {
+        try {
+          const supabase = createClient();
+          supabase.removeChannel(realtimeChannel);
+        } catch (_) {}
+      }
+    };
+  }, [currentUser?.id]);
+
   function setCurrentUser(user: User | null) {
     setCurrentUserState(user);
     saveCurrentUser(user);
@@ -506,12 +586,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSessionsState(next);
 
         try {
-          await endShiftSessionAction({
+          const res = await endShiftSessionAction({
             shiftSessionId: activeSession.id,
             reason,
           });
+          if (!res.success) {
+            console.error("Failed to end shift in DB:", res.error);
+            alert(res.error || "เกิดข้อผิดพลาดในการบันทึกจบกะ");
+            return;
+          }
         } catch (err) {
           console.error("Failed to end shift in DB:", err);
+          alert("เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อจบกะ");
+          return;
         }
       }
       const wasManager = currentUser?.role === "manager";
@@ -533,13 +620,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      startTransition(() => {
-        if (wasManager) {
-          router.push("/admin/dashboard");
-        } else {
-          router.push("/shift");
-        }
-      });
+      const target = wasManager ? "/admin/dashboard" : "/shift";
+      router.replace(target);
     }, "กำลังบันทึกและส่งรายงานกะ...");
   }
 

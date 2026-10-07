@@ -9,6 +9,7 @@ import {
   getHistoryShiftSessionsAction,
   approveShiftSessionAction,
 } from "../../actions/manager";
+import { executeResilientApproval, flushPendingApprovals } from "../../utils/sessionApprovalBuffer";
 import {
   getOrCreateShiftSessionAction,
   toggleTaskWorkAction,
@@ -137,11 +138,20 @@ export function ManagerDashboard({
     },
   });
 
+  // Tab navigation handler that flushes checklist buffer before switching away from tasks tab
+  const handleTabChange = useCallback((tab: ManagerTab) => {
+    if (activeTab === "tasks") {
+      void flushChecklistBuffer();
+    }
+    setActiveTab(tab);
+  }, [activeTab, flushChecklistBuffer]);
+
   // --- Approvals & Live Sessions State ---
   const [sessions, setSessions] = useState<ShiftSession[]>([]);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [hasAssistantLoggedInToday, setHasAssistantLoggedInToday] = useState(true);
   const [approvals, setApprovals] = useState<Record<string, { assistantApproved?: boolean; managerApproved?: boolean }>>({});
+  const [approvingSessionIds, setApprovingSessionIds] = useState<Set<string>>(new Set());
   const [shiftQueueStatusFilter, setShiftQueueStatusFilter] = useState<"all" | "pending" | "approved">("all");
   const [selectedSession, setSelectedSession] = useState<ShiftSession | null>(null);
 
@@ -341,6 +351,7 @@ export function ManagerDashboard({
 
   // Initial and recurring fetch
   useEffect(() => {
+    void flushPendingApprovals();
     void loadChecklist(myChecklistShift);
     void loadDbSessions();
 
@@ -506,7 +517,9 @@ export function ManagerDashboard({
   }
 
   // Shift Approval Handler
-  async function handleApproveSession(sessionId: string, type: "assistant" | "manager") {
+  async function handleApproveSession(sessionId: string, type: "assistant" | "manager", isException?: boolean) {
+    if (approvingSessionIds.has(sessionId)) return;
+
     const target = sessions.find((s) => s.id === sessionId);
     const isAssistantSession =
       target?.taskRole === "manager_assistant" || target?.userPosition === "ผู้ช่วยผู้จัดการร้าน";
@@ -515,6 +528,8 @@ export function ManagerDashboard({
       showToast("เฉพาะผู้จัดการร้านเท่านั้นที่สามารถอนุมัติงานของผู้ช่วยผู้จัดการร้านได้");
       return;
     }
+
+    const prevApproval = approvals[sessionId];
 
     setApprovals((prev) => ({
       ...prev,
@@ -525,12 +540,16 @@ export function ManagerDashboard({
       },
     }));
 
+    setApprovingSessionIds((prev) => new Set(prev).add(sessionId));
+
     try {
       const roleForDb = type === "assistant" ? "manager_assistant" : "manager";
-      const res = await approveShiftSessionAction({
+      const res = await executeResilientApproval({
         shiftSessionId: sessionId,
         role: roleForDb,
+        isException: Boolean(isException),
       });
+
       if (res.success) {
         showToast(
           type === "assistant"
@@ -539,10 +558,24 @@ export function ManagerDashboard({
         );
         void loadDbSessions(true);
       } else {
-        showToast(res.error || "บันทึกในระบบเบื้องต้นแล้ว (Local)");
+        setApprovals((prev) => ({
+          ...prev,
+          [sessionId]: prevApproval || {},
+        }));
+        showToast(res.error || "เกิดข้อผิดพลาดในการอนุมัติ กรุณาลองใหม่อีกครั้ง");
       }
-    } catch {
-      showToast("บันทึกในระบบเบื้องต้นแล้ว (Local)");
+    } catch (err: any) {
+      setApprovals((prev) => ({
+        ...prev,
+        [sessionId]: prevApproval || {},
+      }));
+      showToast(err?.message || "เกิดข้อผิดพลาดในการอนุมัติ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setApprovingSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
     }
   }
 
@@ -628,7 +661,14 @@ export function ManagerDashboard({
 
             <button
               type="button"
-              onClick={onLogout}
+              onClick={async () => {
+                try {
+                  await flushChecklistBuffer();
+                } catch (e) {
+                  console.warn("Flush before logout:", e);
+                }
+                onLogout();
+              }}
               className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-semibold transition-colors flex items-center gap-1.5 border border-rose-500/20 cursor-pointer min-h-[36px]"
               title="ออกจากระบบ"
             >
@@ -780,7 +820,7 @@ export function ManagerDashboard({
               {/* Card 3: Direct Approval Action Callout */}
               <div
                 onClick={() => {
-                  setActiveTab("approvals");
+                  handleTabChange("approvals");
                   if (pendingApprovalsCount > 0) {
                     setShiftQueueStatusFilter((prev) => (prev === "pending" ? "all" : "pending"));
                   }
@@ -836,7 +876,7 @@ export function ManagerDashboard({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
             <button
               type="button"
-              onClick={() => setActiveTab("tasks")}
+              onClick={() => handleTabChange("tasks")}
               className={`p-2.5 sm:p-3 rounded-xl text-left transition-all cursor-pointer flex flex-col justify-center min-h-[48px] sm:min-h-[54px] ${activeTab === "tasks"
                 ? "bg-[var(--color-brown)] text-amber-100 shadow-sm font-bold"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/70"
@@ -853,7 +893,7 @@ export function ManagerDashboard({
 
             <button
               type="button"
-              onClick={() => setActiveTab("approvals")}
+              onClick={() => handleTabChange("approvals")}
               className={`p-2.5 sm:p-3 rounded-xl text-left transition-all cursor-pointer flex flex-col justify-center min-h-[48px] sm:min-h-[54px] relative ${activeTab === "approvals"
                 ? "bg-[var(--color-brown)] text-amber-100 shadow-sm font-bold"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/70"
@@ -875,7 +915,7 @@ export function ManagerDashboard({
 
             <button
               type="button"
-              onClick={() => setActiveTab("refrigerator")}
+              onClick={() => handleTabChange("refrigerator")}
               className={`p-2.5 sm:p-3 rounded-xl text-left transition-all cursor-pointer flex flex-col justify-center min-h-[48px] sm:min-h-[54px] ${activeTab === "refrigerator"
                 ? "bg-[var(--color-brown)] text-amber-100 shadow-sm font-bold"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/70"
@@ -892,7 +932,7 @@ export function ManagerDashboard({
 
             <button
               type="button"
-              onClick={() => setActiveTab("history")}
+              onClick={() => handleTabChange("history")}
               className={`p-2.5 sm:p-3 rounded-xl text-left transition-all cursor-pointer flex flex-col justify-center min-h-[48px] sm:min-h-[54px] ${activeTab === "history"
                 ? "bg-[var(--color-brown)] text-amber-100 shadow-sm font-bold"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/70"
@@ -1416,13 +1456,25 @@ export function ManagerDashboard({
                             <button
                               type="button"
                               onClick={() => void handleApproveSession(sess.id, "assistant")}
-                              disabled={isAssistantApproved}
-                              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${isAssistantApproved
+                              disabled={isAssistantApproved || approvingSessionIds.has(sess.id)}
+                              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${isAssistantApproved
                                 ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
                                 : "bg-amber-400 text-amber-950 hover:bg-amber-300 shadow-2xs"
-                              }`}
+                              } ${approvingSessionIds.has(sess.id) ? "opacity-75 cursor-wait" : ""}`}
                             >
-                              {isAssistantApproved ? "✓ ผู้ช่วยฯ รับรองแล้ว" : "ลงนามรับรอง (ผู้ช่วยฯ)"}
+                              {approvingSessionIds.has(sess.id) ? (
+                                <>
+                                  <svg className="animate-spin h-3.5 w-3.5 text-amber-950" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                  </svg>
+                                  <span>กำลังลงนาม...</span>
+                                </>
+                              ) : isAssistantApproved ? (
+                                "✓ ผู้ช่วยฯ รับรองแล้ว"
+                              ) : (
+                                "ลงนามรับรอง (ผู้ช่วยฯ)"
+                              )}
                             </button>
                           )}
 
@@ -1431,13 +1483,25 @@ export function ManagerDashboard({
                             <button
                               type="button"
                               onClick={() => void handleApproveSession(sess.id, "manager")}
-                              disabled={isFullyApproved}
-                              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${isFullyApproved
+                              disabled={isFullyApproved || approvingSessionIds.has(sess.id)}
+                              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${isFullyApproved
                                 ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
                                 : "bg-amber-600 hover:bg-amber-700 text-white shadow-2xs"
-                              }`}
+                              } ${approvingSessionIds.has(sess.id) ? "opacity-75 cursor-wait" : ""}`}
                             >
-                              {isFullyApproved ? "✓ อนุมัติขั้นสุดท้ายแล้ว" : "อนุมัติขั้นสุดท้าย (ผู้จัดการ)"}
+                              {approvingSessionIds.has(sess.id) ? (
+                                <>
+                                  <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                  </svg>
+                                  <span>กำลังอนุมัติ...</span>
+                                </>
+                              ) : isFullyApproved ? (
+                                "✓ อนุมัติขั้นสุดท้ายแล้ว"
+                              ) : (
+                                "อนุมัติขั้นสุดท้าย (ผู้จัดการ)"
+                              )}
                             </button>
                           )}
                         </div>
@@ -1745,6 +1809,16 @@ export function ManagerDashboard({
         onClose={() => setSelectedSession(null)}
         reviewerId={user.id}
         canReviewIncomplete={isManager}
+        canApprove={isManager && !approvals[selectedSession?.id || ""]?.managerApproved}
+        isApproved={Boolean(approvals[selectedSession?.id || ""]?.managerApproved)}
+        approveRoleTitle="ผู้จัดการร้าน"
+        isApproving={Boolean(selectedSession && approvingSessionIds.has(selectedSession.id))}
+        onApprove={(sessId, isException) => {
+          void handleApproveSession(sessId, "manager", isException);
+        }}
+        onReviewSuccess={() => {
+          void loadDbSessions(true);
+        }}
       />
 
       {/* Local notification on DB cache check verification */}

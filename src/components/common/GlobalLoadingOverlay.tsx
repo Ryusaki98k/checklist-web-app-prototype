@@ -7,7 +7,9 @@ import { BrandLogo } from "./BrandLogo";
 export function GlobalLoadingOverlay() {
   const { isLoading, loadingMessage, isPageTransition } = useLoading();
 
-  if (!isLoading) return null;
+  // Only display full-screen blocking overlay for true async server actions (withLoading)
+  // Simple page transitions use PageTransitionWatcher's sleek top progress bar without freezing the screen
+  if (!isLoading || isPageTransition) return null;
 
   return (
     <div

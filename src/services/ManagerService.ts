@@ -362,7 +362,7 @@ export class ManagerService implements IManagerService {
     shiftSessionId: string;
     role: "manager" | "manager_assistant" | "committee" | "general_manager" | Role;
     isException?: boolean;
-  }): Promise<{ success: boolean; error?: string }> {
+  }): Promise<{ success: boolean; targetUserId?: string; error?: string }> {
     try {
       const { shiftSessionId, role, isException } = params;
 
@@ -473,7 +473,7 @@ export class ManagerService implements IManagerService {
           .where(eq(branches.id, targetSession.branch));
       }
 
-      return { success: true };
+      return { success: true, targetUserId: targetSession.user };
     } catch (err: any) {
       console.error("ManagerService.approveShiftSession error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการรับรองผลงาน" };

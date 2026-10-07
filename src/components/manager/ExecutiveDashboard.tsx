@@ -20,6 +20,7 @@ import {
   approveShiftSessionAction,
   ManagerShiftSummary,
 } from "../../actions/manager";
+import { executeResilientApproval, flushPendingApprovals } from "../../utils/sessionApprovalBuffer";
 import {
   resetTodayChecklistDataAction,
 } from "../../actions/checklist";
@@ -93,6 +94,7 @@ export function ExecutiveDashboard({
 
   // Approval status tracking in client state (synced with Supabase task_work)
   const [approvals, setApprovals] = useState<Record<string, { assistantApproved?: boolean; managerApproved?: boolean }>>({});
+  const [approvingSessionIds, setApprovingSessionIds] = useState<Set<string>>(new Set());
   const [isResetting, setIsResetting] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
 
@@ -210,6 +212,7 @@ export function ExecutiveDashboard({
 
   // Sync initial DB fetch on mount
   useEffect(() => {
+    void flushPendingApprovals();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDbSessions();
 
@@ -434,6 +437,10 @@ export function ExecutiveDashboard({
     type: "assistant" | "manager",
     isException?: boolean
   ) {
+    if (approvingSessionIds.has(sessionId)) return;
+
+    const prevApproval = approvals[sessionId];
+
     // Optimistic UI update
     setApprovals((prev) => {
       return {
@@ -446,13 +453,15 @@ export function ExecutiveDashboard({
       };
     });
 
+    setApprovingSessionIds((prev) => new Set(prev).add(sessionId));
+
     try {
       const roleForDb =
         (currentRole === "committee" || currentRole === "general_manager")
           ? currentRole
           : "manager";
 
-      const res = await approveShiftSessionAction({
+      const res = await executeResilientApproval({
         shiftSessionId: sessionId,
         role: roleForDb,
         isException: Boolean(isException),
@@ -465,12 +474,26 @@ export function ExecutiveDashboard({
             ? `รับรองผลการตรวจงานโดย${roleConfig.title}ลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
             : `อนุมัติกะโดยผู้จัดการร้านลงฐานข้อมูลเรียบร้อยแล้ว${exceptionNotice} ✓`
         );
-        await loadDbSessions();
+        await loadDbSessions(true);
       } else {
-        showToast(res.error || "บันทึกในระบบเบื้องต้นแล้ว (Local)");
+        setApprovals((prev) => ({
+          ...prev,
+          [sessionId]: prevApproval || {},
+        }));
+        showToast(res.error || "เกิดข้อผิดพลาดในการอนุมัติ กรุณาลองใหม่อีกครั้ง");
       }
-    } catch {
-      showToast("บันทึกในระบบเบื้องต้นแล้ว (Local)");
+    } catch (err: any) {
+      setApprovals((prev) => ({
+        ...prev,
+        [sessionId]: prevApproval || {},
+      }));
+      showToast(err?.message || "เกิดข้อผิดพลาดในการอนุมัติ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setApprovingSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
     }
   }
 
@@ -1833,6 +1856,7 @@ export function ExecutiveDashboard({
             canApprove={canApprove}
             isApproved={isApproved}
             approveRoleTitle={approveTitle}
+            isApproving={approvingSessionIds.has(selectedSession.id)}
             reviewerId={user.id}
             canReviewIncomplete={["manager", "general_manager", "committee"].includes(currentRole)}
             onReviewSuccess={() => {
