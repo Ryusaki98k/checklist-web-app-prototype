@@ -31,7 +31,7 @@ import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
 import { LeaderboardWidget } from "./LeaderboardWidget";
 import { ErrorBoundary } from "../common/ErrorBoundary";
-import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ArrowLeft, ShieldAlert } from "lucide-react";
+import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
 export type ExecutiveRole = "manager" | "committee" | "general_manager";
@@ -39,33 +39,23 @@ export type ExecutiveRole = "manager" | "committee" | "general_manager";
 export function ExecutiveDashboard({
   user,
   onLogout,
-  activeSession,
-  onStartChecklist,
-  onUpdateSession,
-  onEndShift,
-  onOpenChecklistPage,
-  onSwitchToManagerView,
 }: {
   user: User;
   onLogout: () => void;
-  activeSession: ShiftSession | null;
-  onStartChecklist: (shift: ShiftType) => void;
-  onUpdateSession: (session: ShiftSession) => void;
-  onEndShift: () => void;
-  onOpenChecklistPage: () => void;
+  activeSession?: ShiftSession | null;
+  onStartChecklist?: (shift: ShiftType) => void;
+  onUpdateSession?: (session: ShiftSession) => void;
+  onEndShift?: () => void;
+  onOpenChecklistPage?: () => void;
   onSwitchToManagerView?: () => void;
 }) {
   const isAssistant = user.role === "manager_assistant" || (user.position?.includes("ผู้ช่วย") ?? false);
 
   useEffect(() => {
-    if (isAssistant) {
-      if (onSwitchToManagerView) {
-        onSwitchToManagerView();
-      } else if (typeof window !== "undefined") {
-        window.location.replace("/manager/dashboard");
-      }
+    if (isAssistant && typeof window !== "undefined") {
+      window.location.replace("/manager/dashboard");
     }
-  }, [isAssistant, onSwitchToManagerView]);
+  }, [isAssistant]);
 
   // Determine role directly from logged-in user account
   const currentRole: ExecutiveRole = useMemo(() => {
@@ -581,18 +571,6 @@ export function ExecutiveDashboard({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {onSwitchToManagerView && (
-              <button
-                type="button"
-                onClick={onSwitchToManagerView}
-                className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface)] hover:bg-amber-100/70 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
-                title="สลับกลับไปยังมุมมองผู้จัดการร้าน (Manager Operational View)"
-              >
-                <ArrowLeft size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                <span className="hidden sm:inline">มุมมองผู้จัดการ ↙</span>
-                <span className="sm:hidden">ผู้จัดการ ↙</span>
-              </button>
-            )}
 
             <Link
               href="/manager/leaves"
@@ -670,17 +648,6 @@ export function ExecutiveDashboard({
 
           {/* Quick Access to Leave & Staff Status & Switch to Manager View */}
           <div className="flex items-center gap-2 z-10 shrink-0 flex-wrap sm:flex-nowrap">
-            {onSwitchToManagerView && (
-              <button
-                type="button"
-                onClick={onSwitchToManagerView}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 hover:border-amber-500 transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                title="สลับกลับสู่มุมมองจัดการกะงานของผู้จัดการร้าน"
-              >
-                <ArrowLeft size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>กลับสู่มุมมองผู้จัดการ ↙</span>
-              </button>
-            )}
             <Link
               href="/manager/leaves"
               className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[var(--color-surface-2)] hover:bg-rose-50 dark:hover:bg-rose-950/40 text-[var(--color-text)] hover:text-rose-700 dark:hover:text-rose-300 border border-[var(--color-border)] hover:border-rose-300 transition-all flex items-center gap-1.5 shadow-2xs"

@@ -70,7 +70,21 @@ export function ManagerDashboard({
   onOpenChecklistPage?: () => void;
 }) {
   const isAssistant = user.role === "manager_assistant" || (user.position?.includes("ผู้ช่วย") ?? false);
-  const isManager = user.role === "manager" || (!isAssistant && (user.position?.includes("ผู้จัดการ") ?? false));
+  const isExecutive =
+    !isAssistant &&
+    (user.role === "general_manager" ||
+      user.role === "committee" ||
+      (user.position?.includes("กรรมการ") ?? false) ||
+      (user.position?.includes("ผู้จัดการทั่วไป") ?? false));
+  const isManager =
+    !isExecutive &&
+    (user.role === "manager" || (!isAssistant && (user.position?.includes("ผู้จัดการ") ?? false)));
+
+  useEffect(() => {
+    if (isExecutive && typeof window !== "undefined") {
+      window.location.replace("/manager/dashboard");
+    }
+  }, [isExecutive]);
 
   // Tab navigation
   type ManagerTab = "tasks" | "approvals" | "refrigerator" | "history";
@@ -622,6 +636,10 @@ export function ManagerDashboard({
   );
   const complianceRate =
     totalChecklistItems > 0 ? Math.round((completedChecklistItems / totalChecklistItems) * 100) : 100;
+
+  if (isExecutive) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] pb-20 font-sans">

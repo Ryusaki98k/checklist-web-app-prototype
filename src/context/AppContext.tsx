@@ -430,12 +430,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSelectedShift(null);
     }
 
-    if (activeUser.role === "admin" || activeUser.role === "committee" || activeUser.role === "general_manager") {
+    if (activeUser.role === "admin") {
       setCurrentUser(activeUser);
       startTransition(() => {
         router.push("/admin/dashboard");
       });
-    } else if (activeUser.role === "manager" || activeUser.role === "manager_assistant") {
+    } else if (
+      activeUser.role === "manager" ||
+      activeUser.role === "manager_assistant" ||
+      activeUser.role === "committee" ||
+      activeUser.role === "general_manager"
+    ) {
       setCurrentUser(activeUser);
       startTransition(() => {
         router.push("/manager/dashboard");
@@ -483,9 +488,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     startTransition(() => {
       if (targetUrl) {
         router.push(targetUrl);
-      } else if (prevRole === "admin" || prevRole === "committee" || prevRole === "general_manager") {
+      } else if (prevRole === "admin") {
         router.push("/admin");
-      } else if (prevRole === "manager" || prevRole === "manager_assistant") {
+      } else if (
+        prevRole === "committee" ||
+        prevRole === "general_manager" ||
+        prevRole === "manager" ||
+        prevRole === "manager_assistant"
+      ) {
         router.push("/login/executive");
       } else {
         router.push("/login/staff");

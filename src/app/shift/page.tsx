@@ -18,6 +18,16 @@ export default function ShiftRoutePage() {
       router.replace("/");
       return;
     }
+    const isExecutiveOrCommittee =
+      currentUser.role === "general_manager" ||
+      currentUser.role === "committee" ||
+      (currentUser.position?.includes("ผู้จัดการทั่วไป") ?? false) ||
+      (currentUser.position?.includes("กรรมการ") ?? false);
+
+    if (isExecutiveOrCommittee) {
+      router.replace("/manager/dashboard");
+      return;
+    }
     if (currentUser.role === "employee" && !currentUser.position) {
       router.replace("/position");
     }

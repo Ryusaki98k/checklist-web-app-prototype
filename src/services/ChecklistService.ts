@@ -24,7 +24,14 @@ export function isSpecialZeroPointTask(taskName: string): boolean {
 function mapPositionToTaskRole(pos: string): "cashier" | "stock" | "manager_assistant" {
   if (pos.includes("แคชเชียร์") || pos.includes("cashier")) return "cashier";
   if (pos.includes("สต็อก") || pos.includes("stock")) return "stock";
-  if (pos.includes("ผู้ช่วย") || pos.includes("assistant") || pos.includes("ผู้จัดการ") || pos.includes("manager")) return "manager_assistant";
+  if (
+    pos.includes("ผู้ช่วย") ||
+    pos.includes("assistant") ||
+    (pos.includes("ผู้จัดการ") && !pos.includes("ผู้จัดการทั่วไป")) ||
+    (pos.includes("manager") && !pos.toLowerCase().includes("general manager"))
+  ) {
+    return "manager_assistant";
+  }
   return "cashier";
 }
 
@@ -93,6 +100,21 @@ export class ChecklistService implements IChecklistService {
         .where(eq(users.id, validUserId))
         .limit(1);
 
+      // Executive & Committee policy: Executive and Committee must not have any checklist, including the night checklist.
+      const isExecutiveOrCommittee =
+        currentUserRecord?.role === "general_manager" ||
+        currentUserRecord?.role === "committee" ||
+        position.includes("ผู้จัดการทั่วไป") ||
+        position.toLowerCase().includes("general manager") ||
+        position.includes("กรรมการ");
+
+      if (isExecutiveOrCommittee) {
+        return {
+          success: false,
+          error: "ตำแหน่งกรรมการและผู้บริหารไม่มีรายการเช็คลิสต์การปฏิบัติงาน",
+        };
+      }
+
       let branchId: string = "";
       let branchNameForSession: string = "";
 
@@ -141,10 +163,15 @@ export class ChecklistService implements IChecklistService {
       // Manager role policy: Managers do NOT do regular assistant manager tasks,
       // ONLY the for_managers tasks (closing/night safety items).
       const isManager =
-        currentUserRecord?.role === "manager" ||
-        ((position.includes("ผู้จัดการ") || position.includes("manager")) &&
-          !position.includes("ผู้ช่วย") &&
-          !position.includes("assistant"));
+        (currentUserRecord?.role === "manager" ||
+          ((position.includes("ผู้จัดการ") || position.includes("manager")) &&
+            !position.includes("ผู้ช่วย") &&
+            !position.includes("assistant"))) &&
+        currentUserRecord?.role !== "general_manager" &&
+        currentUserRecord?.role !== "committee" &&
+        !position.includes("ผู้จัดการทั่วไป") &&
+        !position.toLowerCase().includes("general manager") &&
+        !position.includes("กรรมการ");
 
       if (isManager) {
         dbTasks = dbTasks.filter((t: any) => t.for_managers || t.shift === "night");
@@ -911,6 +938,22 @@ export class ChecklistService implements IChecklistService {
     error?: string;
   }> {
     try {
+      if (
+        position.includes("ผู้จัดการทั่วไป") ||
+        position.toLowerCase().includes("general manager") ||
+        position.includes("กรรมการ")
+      ) {
+        return {
+          success: true,
+          statuses: {
+            morning: { status: "none", total: 0, done: 0 },
+            afternoon: { status: "none", total: 0, done: 0 },
+            night: { status: "none", total: 0, done: 0 },
+            both: { status: "none", total: 0, done: 0 },
+          },
+        };
+      }
+
       const taskRole = mapPositionToTaskRole(position);
       const { startOfDay, endOfDay } = getThaiStartAndEndOfDay();
 

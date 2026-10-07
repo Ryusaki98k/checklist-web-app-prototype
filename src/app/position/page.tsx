@@ -15,6 +15,17 @@ export default function PositionRoutePage() {
     if (!currentUser) {
       router.replace("/");
     } else {
+      const isExecutiveOrCommittee =
+        currentUser.role === "general_manager" ||
+        currentUser.role === "committee" ||
+        (currentUser.position?.includes("ผู้จัดการทั่วไป") ?? false) ||
+        (currentUser.position?.includes("กรรมการ") ?? false);
+
+      if (isExecutiveOrCommittee) {
+        router.replace("/manager/dashboard");
+        return;
+      }
+
       const requiresBranch = currentUser.role === "employee" || currentUser.role === "manager_assistant" || currentUser.role === "manager";
       if (requiresBranch && !currentUser.branchName) {
         router.replace("/awaiting-assignment");

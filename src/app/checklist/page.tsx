@@ -24,6 +24,19 @@ export default function ChecklistRoutePage() {
       }
       return;
     }
+    const isExecutiveOrCommittee =
+      currentUser.role === "general_manager" ||
+      currentUser.role === "committee" ||
+      (currentUser.position?.includes("ผู้จัดการทั่วไป") ?? false) ||
+      (currentUser.position?.includes("กรรมการ") ?? false);
+
+    if (isExecutiveOrCommittee) {
+      if (!redirectedRef.current) {
+        redirectedRef.current = true;
+        router.replace("/manager/dashboard");
+      }
+      return;
+    }
     if (!activeSession) {
       const stored = getActiveSession();
       if (stored) {

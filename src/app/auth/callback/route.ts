@@ -66,9 +66,14 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(new URL("/awaiting-assignment", request.url));
         }
 
-        if (user.role === "admin" || user.role === "committee" || user.role === "general_manager") {
+        if (user.role === "admin") {
           return NextResponse.redirect(new URL("/admin/dashboard", request.url));
-        } else if (user.role === "manager" || user.role === "manager_assistant") {
+        } else if (
+          user.role === "manager" ||
+          user.role === "manager_assistant" ||
+          user.role === "committee" ||
+          user.role === "general_manager"
+        ) {
           return NextResponse.redirect(new URL("/manager/dashboard", request.url));
         } else {
           return NextResponse.redirect(new URL("/position", request.url));
