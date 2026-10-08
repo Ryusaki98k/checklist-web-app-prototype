@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { ShiftType, User, LeaveQuotaInfo } from "../../types";
+import { ShiftType, User } from "../../types";
 import { MANAGEMENT_POSITIONS, STAFF_POSITIONS } from "../../types";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { RoleSwitcher } from "../common/RoleSwitcher";
@@ -19,7 +19,7 @@ import {
   AlertCircle, 
   X
 } from "lucide-react";
-import { getEmployeeLeaveQuotaAction, requestEmployeeLeaveAction } from "../../actions/manager";
+import { requestEmployeeLeaveAction } from "../../actions/manager";
 
 export function PositionSelectPage({
   user,
@@ -43,7 +43,6 @@ export function PositionSelectPage({
 
   // Leave Modal State
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
-  const [quota, setQuota] = useState<LeaveQuotaInfo | null>(null);
   const [leaveReason, setLeaveReason] = useState("");
   const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
@@ -65,38 +64,12 @@ export function PositionSelectPage({
     }).format(new Date());
   }, []);
 
-  // Fetch employee quota
-  const loadQuota = useCallback(async () => {
-    if (!user.id) return;
-    try {
-      const res = await getEmployeeLeaveQuotaAction({ userId: user.id, branchId: user.branchId });
-      if (res.success && res.quota) {
-        setQuota(res.quota);
-      }
-    } catch (e) {
-      console.error("Error loading leave quota:", e);
-    }
-  }, [user.id, user.branchId]);
-
-  useEffect(() => {
-    let ignore = false;
-    getEmployeeLeaveQuotaAction({ userId: user.id, branchId: user.branchId }).then((res) => {
-      if (!ignore && res.success && res.quota) {
-        setQuota(res.quota);
-      }
-    }).catch(console.error);
-    return () => {
-      ignore = true;
-    };
-  }, [user.id, user.branchId]);
-
   const handleOpenLeaveModal = () => {
     setLeaveError(null);
     setLeaveSuccess(null);
     setLeaveReason("");
     setLeaveDate(todayStr);
     setIsLeaveModalOpen(true);
-    loadQuota();
   };
 
   const handleSubmitLeave = async (e: React.FormEvent) => {
@@ -112,16 +85,6 @@ export function PositionSelectPage({
     }
 
     const targetDate = leaveDate.trim() || todayStr;
-
-    if (quota && quota.remainingDays <= 0) {
-      setLeaveError("โควตาการลาของคุณหมดแล้ว ไม่สามารถส่งคำขอเพิ่มได้");
-      return;
-    }
-
-    if (quota && (quota.remainingDays - quota.pendingDays <= 0)) {
-      setLeaveError(`โควตาการลาคงเหลือของคุณ (${quota.remainingDays} วัน) มีคำขอลางานรอการอนุมัติอยู่ครบแล้ว (${quota.pendingDays} วัน)`);
-      return;
-    }
 
     setIsSubmittingLeave(true);
     setLeaveError(null);
@@ -149,9 +112,8 @@ export function PositionSelectPage({
       setLeaveSuccess(
         res.autoApproved
           ? `บันทึกการลางานสำหรับวันที่ ${targetDate} เรียบร้อยแล้ว (อนุมัติอัตโนมัติ)`
-          : `ส่งคำขอลางานวันที่ ${targetDate} เรียบร้อยแล้ว กรุณารอผู้จัดการร้านอนุมัติ (ระบบจะหักโควตาเมื่อได้รับอนุมัติ)`
+          : `ส่งคำขอลางานวันที่ ${targetDate} เรียบร้อยแล้ว กรุณารอผู้จัดการร้านอนุมัติ`
       );
-      loadQuota();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการส่งคำขอ";
       setLeaveError(msg);
@@ -366,19 +328,9 @@ export function PositionSelectPage({
                 <h4 className="text-base font-extrabold text-[var(--color-text)]">
                   ขอลางานสำหรับวันนี้
                 </h4>
-                {quota ? (
-                  <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border shadow-2xs ${
-                    quota.remainingDays <= 3
-                      ? "bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950 dark:text-rose-200 dark:border-rose-800"
-                      : "bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800"
-                  }`}>
-                    คงเหลือ {quota.remainingDays} วัน (ใช้แล้ว {quota.usedDays}/{quota.allocatedQuota})
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
-                    โควตา 3 วัน/ปี
-                  </span>
-                )}
+                <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700/60 shadow-2xs">
+                  ส่งคำขอได้ 1 ครั้ง/วัน
+                </span>
               </div>
               <p className="text-xs sm:text-sm text-[var(--color-text-muted)] mt-0.5 leading-relaxed">
                 {user.role === "manager"
@@ -469,39 +421,15 @@ export function PositionSelectPage({
                 </div>
               ) : (
                 <form onSubmit={handleSubmitLeave} className="space-y-5">
-                  {/* Quota Overview Card */}
-                  <div className="p-4 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-[var(--color-text)]">สิทธิการลาของพนักงาน</span>
-                      <span className="font-mono font-bold text-amber-700 dark:text-amber-400">
-                        {quota ? `คงเหลือ ${quota.remainingDays} วัน` : "กำลังโหลด..."}
-                      </span>
+                  {/* Leave Request Guidance Banner */}
+                  <div className="p-3.5 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] flex items-start gap-2.5 text-xs">
+                    <CalendarOff size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="font-bold text-[var(--color-text)] block">ส่งคำขอลางานประจำวัน</span>
+                      <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
+                        พนักงานสามารถส่งคำขอลางานได้ครั้งละ 1 วัน (1 คำขอต่อวัน) หากต้องการลาต่อเนื่องหลายวัน กรุณาแจ้งผู้จัดการร้านโดยตรงเพื่อบันทึกการลาให้
+                      </p>
                     </div>
-
-                    {/* Progress Bar */}
-                    {quota && (
-                      <>
-                        <div className="w-full h-2 rounded-full bg-[var(--color-border)] overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              quota.remainingDays <= 3 ? "bg-rose-500" : "bg-emerald-500"
-                            }`}
-                            style={{
-                              width: `${Math.min(100, (quota.usedDays / Math.max(1, quota.allocatedQuota)) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)] pt-1">
-                          <span>ใช้ไปแล้ว: <strong className="text-[var(--color-text)]">{quota.usedDays}</strong> วัน</span>
-                          {quota.pendingDays > 0 && (
-                            <span className="text-amber-600 dark:text-amber-400">
-                              รออนุมัติ: <strong>{quota.pendingDays}</strong> วัน
-                            </span>
-                          )}
-                          <span>สิทธิทั้งหมด: <strong className="text-[var(--color-text)]">{quota.allocatedQuota}</strong> วัน/ปี</span>
-                        </div>
-                      </>
-                    )}
                   </div>
 
                   {/* Date Selection */}
@@ -548,7 +476,7 @@ export function PositionSelectPage({
                         </span>
                       ) : (
                         <span>
-                          <strong>เงื่อนไขการลาและโควตา:</strong> โควตาวันลาจะถูกหักเมื่อผู้จัดการร้านอนุมัติรับรองคำขอเรียบร้อยแล้ว • พนักงานสามารถส่งคำขอได้ 1 รายการต่อวัน (หากต้องการลาต่อเนื่องหลายวัน กรุณาแจ้งผู้จัดการร้านโดยตรงเพื่อออกใบลาให้)
+                          <strong>เงื่อนไขการส่งคำขอ:</strong> พนักงานสามารถส่งคำขอลางานได้ครั้งละ 1 วัน (1 รายการต่อวัน) เมื่อผู้จัดการร้านอนุมัติรับรองแล้วจะมีผลทันที (หากต้องการลาต่อเนื่องหลายวัน กรุณาแจ้งผู้จัดการร้านโดยตรงเพื่อบันทึกการลาให้)
                         </span>
                       )}
                     </div>
@@ -574,7 +502,7 @@ export function PositionSelectPage({
                     </button>
                     <button
                       type="submit"
-                      disabled={isSubmittingLeave || !leaveReason.trim() || (quota !== null && quota.remainingDays <= 0)}
+                      disabled={isSubmittingLeave || !leaveReason.trim()}
                       className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-2"
                     >
                       {isSubmittingLeave ? (

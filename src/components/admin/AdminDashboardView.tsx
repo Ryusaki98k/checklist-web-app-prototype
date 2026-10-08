@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
-import { User, Role, LeaveQuotaInfo } from "../../types";
+import { User, Role } from "../../types";
 import { BrandLogo } from "../common/BrandLogo";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { RoleSwitcher } from "../common/RoleSwitcher";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { LogOut, RefreshCw, Snowflake, ShieldCheck, Settings2 } from "lucide-react";
 
-import { createBranchAction, assignStaffToBranchAction, assignTasksToBranchAction, updateBranchLeaveQuotaAction, DashboardBranch as Branch } from "../../actions/branch";
+import { createBranchAction, assignStaffToBranchAction, assignTasksToBranchAction, DashboardBranch as Branch } from "../../actions/branch";
 import { fetchBranchesWithCache, invalidateBranchCache } from "../../utils/cache";
 import { getAllUsersAction, updateUserRoleAction, updateUserPermissionsAction } from "../../actions/auth";
 import { getAllTasksAction, createTaskAction, toggleTaskDisabledAction } from "../../actions/task";
-import { getAllUsersLeaveQuotasAction, updateEmployeeLeaveQuotaAction } from "../../actions/manager";
 import { AdminCronSettingsTab } from "./AdminCronSettingsTab";
 import { AdminAddUserModal } from "./AdminAddUserModal";
 import { AdminManageRefrigeratorsModal } from "./AdminManageRefrigeratorsModal";
@@ -114,9 +113,6 @@ export function AdminDashboardView({
   // Modal states
   const [isNewBranchModalOpen, setIsNewBranchModalOpen] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
-  const [selectedBranchForQuota, setSelectedBranchForQuota] = useState<Branch | null>(null);
-  const [branchQuotaInput, setBranchQuotaInput] = useState<number>(3);
-  const [isUpdatingQuota, setIsUpdatingQuota] = useState<boolean>(false);
   const [selectedBranchForRefrigerators, setSelectedBranchForRefrigerators] = useState<Branch | null>(null);
 
   const [isManageStaffModalOpen, setIsManageStaffModalOpen] = useState(false);
@@ -148,10 +144,6 @@ export function AdminDashboardView({
   const [taskRoleFilter, setTaskRoleFilter] = useState<"all" | "cashier" | "stock" | "manager_assistant">("all");
   const [userSearch, setUserSearch] = useState("");
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
-  const [userQuotas, setUserQuotas] = useState<Record<string, LeaveQuotaInfo>>({});
-  const [editingQuotaUser, setEditingQuotaUser] = useState<User | null>(null);
-  const [customQuotaInput, setCustomQuotaInput] = useState<number | string>("");
-  const [isSavingQuota, setIsSavingQuota] = useState(false);
   const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null);
   const [editingPermissionsUser, setEditingPermissionsUser] = useState<User | null>(null);
 
@@ -175,19 +167,12 @@ export function AdminDashboardView({
   };
 
   const loadUsers = async () => {
-    const [resUsers, resQuotas] = await Promise.all([
-      getAllUsersAction(),
-      getAllUsersLeaveQuotasAction(),
-    ]);
+    const resUsers = await getAllUsersAction();
 
     if (resUsers.success && resUsers.users) {
       setUsersList(resUsers.users);
     } else {
       showToast(resUsers.error || "โหลดข้อมูลผู้ใช้ไม่สำเร็จ");
-    }
-
-    if (resQuotas.success && resQuotas.quotas) {
-      setUserQuotas(resQuotas.quotas);
     }
   };
 
@@ -272,26 +257,7 @@ export function AdminDashboardView({
     }
   }
 
-  async function handleUpdateBranchQuota(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedBranchForQuota) return;
-    setIsUpdatingQuota(true);
-    try {
-      const res = await updateBranchLeaveQuotaAction(selectedBranchForQuota.id, branchQuotaInput);
-      if (res.success) {
-        showToast(`อัปเดตโควตาการลาของสาขา ${selectedBranchForQuota.name} เป็น ${branchQuotaInput} วัน สำเร็จ`);
-        setSelectedBranchForQuota(null);
-        invalidateBranchCache();
-        loadBranches(true);
-      } else {
-        showToast(res.error || "ไม่สามารถอัปเดตโควตาสาขาได้");
-      }
-    } catch (err: any) {
-      showToast(err.message || "เกิดข้อผิดพลาด");
-    } finally {
-      setIsUpdatingQuota(false);
-    }
-  }
+
 
   function openManageStaffModal(branchId: string) {
     setSelectedBranchForStaff(branchId);
@@ -434,75 +400,7 @@ export function AdminDashboardView({
     }
   }
 
-  function handleOpenQuotaModal(targetUser: User, currentQuota?: LeaveQuotaInfo) {
-    setEditingQuotaUser(targetUser);
-    const initialQuota = currentQuota?.customQuota !== null && currentQuota?.customQuota !== undefined
-      ? currentQuota.customQuota
-      : (currentQuota?.allocatedQuota ?? 3);
-    setCustomQuotaInput(initialQuota);
-  }
 
-  async function handleSaveQuota(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingQuotaUser) return;
-
-    const parsed = typeof customQuotaInput === "string" ? parseInt(customQuotaInput, 10) : customQuotaInput;
-    if (isNaN(parsed) || parsed < 0) {
-      showToast("กรุณาระบุจำนวนวันลาที่ถูกต้อง (ตัวเลขตั้งแต่ 0 ขึ้นไป)");
-      return;
-    }
-
-    setIsSavingQuota(true);
-    try {
-      const res = await updateEmployeeLeaveQuotaAction({
-        userId: editingQuotaUser.id,
-        quota: parsed,
-      });
-
-      if (res.success) {
-        showToast(`บันทึกโควตาวันลาสำหรับ ${editingQuotaUser.name} เรียบร้อยแล้ว`);
-        setEditingQuotaUser(null);
-        // Refresh quotas
-        const resQuotas = await getAllUsersLeaveQuotasAction();
-        if (resQuotas.success && resQuotas.quotas) {
-          setUserQuotas(resQuotas.quotas);
-        }
-      } else {
-        showToast(res.error || "เกิดข้อผิดพลาดในการบันทึกโควตา");
-      }
-    } catch {
-      showToast("เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล");
-    } finally {
-      setIsSavingQuota(false);
-    }
-  }
-
-  async function handleResetQuotaToBranchDefault() {
-    if (!editingQuotaUser) return;
-    setIsSavingQuota(true);
-    try {
-      const res = await updateEmployeeLeaveQuotaAction({
-        userId: editingQuotaUser.id,
-        quota: null, // null means use branch default
-      });
-
-      if (res.success) {
-        showToast(`รีเซ็ตโควตาวันลาของ ${editingQuotaUser.name} เป็นค่าเริ่มต้นสาขาสำเร็จ`);
-        setEditingQuotaUser(null);
-        // Refresh quotas
-        const resQuotas = await getAllUsersLeaveQuotasAction();
-        if (resQuotas.success && resQuotas.quotas) {
-          setUserQuotas(resQuotas.quotas);
-        }
-      } else {
-        showToast(res.error || "เกิดข้อผิดพลาดในการรีเซ็ตโควตา");
-      }
-    } catch {
-      showToast("เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล");
-    } finally {
-      setIsSavingQuota(false);
-    }
-  }
 
   const filteredBranches = branches.filter((b) =>
     b.name.toLowerCase().includes(branchSearch.toLowerCase()) ||
@@ -796,7 +694,7 @@ export function AdminDashboardView({
                     </span>
                   </div>
 
-                  <div className="pt-3 border-t border-[var(--color-border)] grid grid-cols-3 gap-2 text-xs">
+                  <div className="pt-3 border-t border-[var(--color-border)] grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <p className="text-[var(--color-text-subtle)]">ผู้จัดการสาขา</p>
                       <p className="font-semibold text-[var(--color-text)] mt-0.5 truncate">{b.managerName}</p>
@@ -805,13 +703,9 @@ export function AdminDashboardView({
                       <p className="text-[var(--color-text-subtle)]">จำนวนพนักงาน</p>
                       <p className="font-semibold text-[var(--color-text)] mt-0.5">{b.staffCount} คน</p>
                     </div>
-                    <div>
-                      <p className="text-[var(--color-text-subtle)]">โควตาการลา</p>
-                      <p className="font-semibold text-amber-600 dark:text-amber-400 mt-0.5">{b.leaveQuota ?? 30} วัน/คน</p>
-                    </div>
                   </div>
 
-                  <div className="pt-2 grid grid-cols-2 gap-1.5">
+                  <div className="pt-2 grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
                       onClick={() => openManageStaffModal(b.id)}
@@ -825,17 +719,6 @@ export function AdminDashboardView({
                       className="text-xs font-bold text-amber-950 bg-amber-100 hover:bg-amber-200 min-h-[38px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-amber-300 transition-all cursor-pointer"
                     >
                       จัดการงาน
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedBranchForQuota(b);
-                        setBranchQuotaInput(b.leaveQuota ?? 3);
-                      }}
-                      className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 bg-[var(--color-surface-2)] hover:bg-amber-100 min-h-[38px] inline-flex items-center justify-center px-2 py-1.5 rounded-xl border border-[var(--color-border)] transition-all cursor-pointer"
-                      title="ตั้งค่าโควตาการลาเริ่มต้นของสาขานี้"
-                    >
-                      ตั้งโควตาลา
                     </button>
                     <button
                       type="button"
@@ -973,7 +856,6 @@ export function AdminDashboardView({
                       <th className="py-3.5 px-3">บทบาทระบบ (Role)</th>
                       <th className="py-3.5 px-3">ตำแหน่งที่กำหนด</th>
                       <th className="py-3.5 px-3">คะแนนสะสม (แต้ม)</th>
-                      <th className="py-3.5 px-3">สิทธิ์วันลาคงเหลือ / สูงสุด</th>
                       <th className="py-3.5 px-3 text-right">ปรับเปลี่ยนสิทธิ์</th>
                     </tr>
                   </thead>
@@ -1025,36 +907,7 @@ export function AdminDashboardView({
                           </span>
                           <span className="text-[10px] text-[var(--color-text-subtle)] ml-1">แต้ม</span>
                         </td>
-                        <td className="py-3.5 px-3">
-                          {userQuotas[u.id] ? (
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span
-                                className={`inline-flex items-center font-bold px-2 py-0.5 rounded-lg text-xs font-mono shadow-2xs ${
-                                  userQuotas[u.id].remainingDays > 0
-                                    ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30"
-                                    : "bg-rose-500/15 text-rose-800 dark:text-rose-300 border border-rose-500/30"
-                                }`}
-                                title={`สิทธิ์คงเหลือ ${userQuotas[u.id].remainingDays} วัน จากทั้งหมด ${userQuotas[u.id].allocatedQuota} วัน (ใช้ไป ${userQuotas[u.id].usedDays} วัน${userQuotas[u.id].pendingDays > 0 ? `, รออนุมัติ ${userQuotas[u.id].pendingDays} วัน` : ""})`}
-                              >
-                                {userQuotas[u.id].remainingDays} / {userQuotas[u.id].allocatedQuota} วัน
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenQuotaModal(u, userQuotas[u.id])}
-                                className="text-[var(--color-text-subtle)] hover:text-amber-700 dark:hover:text-amber-300 p-1 rounded-md hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
-                                title={`ปรับโควตาวันลาของ ${u.name}`}
-                                aria-label={`ปรับโควตาวันลาของ ${u.name}`}
-                              >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M12 20h9" />
-                                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                                </svg>
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-[var(--color-text-subtle)] font-mono text-[11px]">-</span>
-                          )}
-                        </td>
+
                         <td className="py-3.5 px-3 text-right">
                           <div className="flex items-center justify-end gap-2 flex-wrap">
                             <div className="flex items-center gap-1 flex-wrap justify-end">
@@ -1113,112 +966,7 @@ export function AdminDashboardView({
           <AdminCronSettingsTab showToast={showToast} />
         )}
 
-        {/* MODALS */}
-        {editingQuotaUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in">
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-              <div className="px-6 py-4 border-b border-[var(--color-border)] flex justify-between items-center bg-[var(--color-surface-2)]">
-                <div>
-                  <h3 className="font-bold text-[var(--color-text)] text-base">ปรับโควตาวันลา (Leave Quota)</h3>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                    สำหรับ: <span className="font-semibold text-[var(--color-text)]">{editingQuotaUser.name}</span> (@{editingQuotaUser.username || editingQuotaUser.name})
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingQuotaUser(null)}
-                  aria-label="ปิดหน้าต่างปรับโควตา"
-                  title="ปิดหน้าต่าง"
-                  className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
 
-              <form onSubmit={handleSaveQuota} className="p-6 space-y-4">
-                {/* Stats Summary Box */}
-                {userQuotas[editingQuotaUser.id] && (
-                  <div className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-2xl p-3.5 space-y-2 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[var(--color-text-muted)]">โควตามาตรฐานของสาขา:</span>
-                      <span className="font-bold font-mono text-[var(--color-text)]">
-                        {userQuotas[editingQuotaUser.id].branchDefaultQuota} วัน/ปี
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[var(--color-text-muted)]">วันลาที่อนุมัติแล้วในปีนี้:</span>
-                      <span className="font-bold font-mono text-amber-700 dark:text-amber-400">
-                        {userQuotas[editingQuotaUser.id].usedDays} วัน
-                      </span>
-                    </div>
-                    {userQuotas[editingQuotaUser.id].pendingDays > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-[var(--color-text-muted)]">วันลาที่รออนุมัติ:</span>
-                        <span className="font-bold font-mono text-amber-600 dark:text-amber-300">
-                          {userQuotas[editingQuotaUser.id].pendingDays} วัน
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center pt-1.5 border-t border-[var(--color-border)] font-semibold">
-                      <span className="text-[var(--color-text)]">สิทธิ์คงเหลือปัจจุบัน (Left):</span>
-                      <span className={`font-mono font-bold ${userQuotas[editingQuotaUser.id].remainingDays > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                        {userQuotas[editingQuotaUser.id].remainingDays} / {userQuotas[editingQuotaUser.id].allocatedQuota} วัน
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label htmlFor="custom-quota-input" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">
-                    กำหนดจำนวนวันลาสูงสุดเฉพาะบุคคล (Max Quota Days)
-                  </label>
-                  <input
-                    id="custom-quota-input"
-                    type="number"
-                    min="0"
-                    max="365"
-                    required
-                    value={customQuotaInput}
-                    onChange={(e) => setCustomQuotaInput(e.target.value)}
-                    className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-sm text-[var(--color-text)] font-mono font-bold focus:outline-none focus:border-amber-400 transition-colors"
-                  />
-                  <p className="text-[11px] text-[var(--color-text-subtle)] mt-1">
-                    * ระบุจำนวนวันลาสูงสุดต่อปีของพนักงานคนนี้ (ระบบจะคำนวณวันลาคงเหลือให้อัตโนมัติ)
-                  </p>
-                </div>
-
-                {userQuotas[editingQuotaUser.id]?.customQuota !== null && (
-                  <button
-                    type="button"
-                    onClick={handleResetQuotaToBranchDefault}
-                    disabled={isSavingQuota}
-                    className="w-full py-2 bg-[var(--color-surface-2)] hover:bg-[var(--color-border-subtle)] text-[var(--color-text-muted)] border border-[var(--color-border)] rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <span>🔄 รีเซ็ตเป็นค่ามาตรฐานสาขา ({userQuotas[editingQuotaUser.id]?.branchDefaultQuota} วัน)</span>
-                  </button>
-                )}
-
-                <div className="flex gap-2.5 pt-3 border-t border-[var(--color-border)]">
-                  <button
-                    type="button"
-                    onClick={() => setEditingQuotaUser(null)}
-                    disabled={isSavingQuota}
-                    className="flex-1 py-2.5 bg-[var(--color-surface-2)] hover:bg-[var(--color-border-subtle)] text-[var(--color-text-muted)] border border-[var(--color-border)] rounded-xl text-xs font-bold transition-all cursor-pointer"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSavingQuota}
-                    className="flex-1 py-2.5 bg-[var(--color-brown)] hover:bg-[var(--color-brown-light)] disabled:opacity-50 text-amber-300 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
-                  >
-                    {isSavingQuota ? "กำลังบันทึก..." : "บันทึกโควตา"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {isNewBranchModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in">
@@ -1715,69 +1463,7 @@ export function AdminDashboardView({
           </div>
         )}
 
-        {/* Set Branch Quota Modal */}
-        {selectedBranchForQuota && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-            <div className="w-full max-w-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl p-5 space-y-4 animate-scale-up">
-              <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
-                <h3 className="text-sm font-extrabold text-[var(--color-text)]">
-                  กำหนดโควตาการลาสาขา
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setSelectedBranchForQuota(null)}
-                  className="w-7 h-7 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] flex items-center justify-center cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
 
-              <div>
-                <p className="text-xs text-[var(--color-text-muted)]">
-                  สาขา: <strong className="text-[var(--color-text)]">{selectedBranchForQuota.name}</strong> ({selectedBranchForQuota.code})
-                </p>
-                <p className="text-[11px] text-[var(--color-text-muted)] mt-1 leading-relaxed">
-                  กำหนดจำนวนวันลาเริ่มต้นต่อคนต่อปีสำหรับพนักงานทุกคนในสาขานี้ (ผู้จัดการสามารถปรับเพิ่ม/ลดเฉพาะบุคคลได้)
-                </p>
-              </div>
-
-              <form onSubmit={handleUpdateBranchQuota} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-[var(--color-text)] mb-1">
-                    โควตาการลา (วัน/คน/ปี)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="365"
-                    value={branchQuotaInput}
-                    onChange={(e) => setBranchQuotaInput(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-sm font-bold text-[var(--color-text)] focus:outline-none focus:border-amber-400"
-                    required
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedBranchForQuota(null)}
-                    disabled={isUpdatingQuota}
-                    className="px-3.5 py-2 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-xs font-bold text-[var(--color-text)] transition-colors cursor-pointer"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isUpdatingQuota}
-                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 text-xs font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    {isUpdatingQuota ? "กำลังบันทึก..." : "บันทึกโควตาสาขา"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Add User Modal */}
         <AdminAddUserModal

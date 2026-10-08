@@ -3,7 +3,7 @@ import { User, Role } from "../../types";
 import { DashboardBranch as Branch } from "../../actions/branch";
 import { registerAction } from "../../actions/auth";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
-import { UserPlus, Eye, EyeOff, ShieldCheck, Building2, Calendar, AlertCircle } from "lucide-react";
+import { UserPlus, Eye, EyeOff, ShieldCheck, Building2, AlertCircle } from "lucide-react";
 
 interface AdminAddUserModalProps {
   isOpen: boolean;
@@ -24,14 +24,12 @@ export function AdminAddUserModal({
     password: string;
     role: Role;
     branchId: string;
-    leaveQuota: string;
   }>({
     name: "",
     username: "",
     password: "",
     role: "employee",
     branchId: "",
-    leaveQuota: "",
   });
 
   const [showPassword, setShowPassword] = useState(false);
@@ -80,16 +78,6 @@ export function AdminAddUserModal({
       return;
     }
 
-    let parsedQuota: number | null = null;
-    if (form.leaveQuota.trim() !== "") {
-      const q = parseInt(form.leaveQuota.trim(), 10);
-      if (isNaN(q) || q < 0) {
-        setError("โควตาวันลาต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป");
-        return;
-      }
-      parsedQuota = q;
-    }
-
     setIsSubmitting(true);
     try {
       const res = await registerAction({
@@ -98,7 +86,6 @@ export function AdminAddUserModal({
         password: cleanPassword,
         role: form.role,
         branchId: form.branchId || undefined,
-        leaveQuota: parsedQuota,
       });
 
       if (!res.success || !res.user) {
@@ -315,26 +302,7 @@ export function AdminAddUserModal({
             </div>
           </div>
 
-          {/* Leave Quota Option */}
-          <div>
-            <label
-              htmlFor="add-user-quota"
-              className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1 flex items-center gap-1.5"
-            >
-              <Calendar size={14} className="text-amber-600" />
-              <span>โควตาวันลาสูงสุดต่อปี (ค่าเริ่มต้นสาขา หรือระบุเฉพาะ)</span>
-            </label>
-            <input
-              id="add-user-quota"
-              type="number"
-              min="0"
-              max="365"
-              placeholder="เว้นว่างไว้เพื่อใช้ค่ามาตรฐานของสาขา (3 วัน)"
-              value={form.leaveQuota}
-              onChange={(e) => setForm({ ...form, leaveQuota: e.target.value })}
-              className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-text)] font-mono placeholder:text-[var(--color-text-subtle)] focus:outline-none focus:border-amber-400 transition-colors"
-            />
-          </div>
+
 
           {/* Modal Footer Buttons */}
           <div className="flex gap-3 pt-3 border-t border-[var(--color-border)]">

@@ -11,9 +11,6 @@ import {
   getBranchStaffStatusAction,
   approveEmployeeLeaveAction,
   rejectEmployeeLeaveAction,
-  updateEmployeeLeaveQuotaAction,
-  getEmployeeLeaveQuotaAction,
-  LeaveQuotaInfo,
 } from "../../actions/manager";
 import { BrandLogo } from "../common/BrandLogo";
 import { ThemeToggle } from "../common/ThemeToggle";
@@ -42,7 +39,6 @@ import {
   ChevronRight,
   Info,
   Coins,
-  Sliders,
   Check,
   X
 } from "lucide-react";
@@ -84,14 +80,6 @@ export function BranchLeaveManagementView({
   const [rejectModalLeave, setRejectModalLeave] = useState<EmployeeLeave | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
-
-  // Quota Management modal state
-  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
-  const [employeeQuotas, setEmployeeQuotas] = useState<Record<string, LeaveQuotaInfo>>({});
-  const [loadingQuotas, setLoadingQuotas] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [editingQuotaValue, setEditingQuotaValue] = useState<string>("");
-  const [isSavingQuota, setIsSavingQuota] = useState(false);
   const [approvalLeaveTypes, setApprovalLeaveTypes] = useState<Record<string, LeaveType>>({});
 
   // Modal State for adding new leave
@@ -229,36 +217,6 @@ export function BranchLeaveManagementView({
     });
   }, [leaves, typeFilter, streakFilter, dateFilter, searchQuery, thaiTodayStr]);
 
-  // Load employee quotas
-  const loadBranchEmployeeQuotas = useCallback(async () => {
-    if (!employees.length) return;
-    setLoadingQuotas(true);
-    try {
-      const quotaMap: Record<string, LeaveQuotaInfo> = {};
-      await Promise.all(
-        employees.map(async (emp) => {
-          const res = await getEmployeeLeaveQuotaAction({ userId: emp.id, branchId: selectedBranchId });
-          if (res.success && res.quota) {
-            quotaMap[emp.id] = res.quota;
-          }
-        })
-      );
-      setEmployeeQuotas(quotaMap);
-    } catch (e) {
-      console.error("Error loading employee quotas:", e);
-    } finally {
-      setLoadingQuotas(false);
-    }
-  }, [employees, selectedBranchId]);
-
-  useEffect(() => {
-    if (isQuotaModalOpen) {
-      queueMicrotask(() => {
-        loadBranchEmployeeQuotas();
-      });
-    }
-  }, [isQuotaModalOpen, loadBranchEmployeeQuotas]);
-
   // Approval handlers
   const handleApprove = async (leaveId: string, leaveType?: LeaveType, preserveStreak: boolean = true) => {
     setIsApproving(leaveId);
@@ -304,29 +262,6 @@ export function BranchLeaveManagementView({
       setErrorMsg(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
     } finally {
       setIsRejecting(false);
-    }
-  };
-
-  const handleSaveEmployeeQuota = async (userId: string) => {
-    setIsSavingQuota(true);
-    try {
-      const val = editingQuotaValue.trim();
-      const quotaNum = val === "" ? null : Math.max(0, parseInt(val, 10));
-      const res = await updateEmployeeLeaveQuotaAction({
-        userId,
-        quota: quotaNum,
-      });
-      if (res.success) {
-        setSuccessMsg("อัปเดตโควตาพนักงานเรียบร้อยแล้ว");
-        setEditingUserId(null);
-        loadBranchEmployeeQuotas();
-      } else {
-        setErrorMsg(res.error || "ไม่สามารถอัปเดตโควตาได้");
-      }
-    } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
-    } finally {
-      setIsSavingQuota(false);
     }
   };
 
@@ -556,17 +491,6 @@ export function BranchLeaveManagementView({
             </button>
 
             <ThemeToggle />
-
-            {/* Manage Employee Quotas Button */}
-            <button
-              type="button"
-              onClick={() => setIsQuotaModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-              title="จัดการโควตาการลาของพนักงานในสาขา"
-            >
-              <Sliders size={14} className="text-amber-600 dark:text-amber-400" />
-              <span className="hidden sm:inline">โควตา</span>
-            </button>
 
             {/* Primary Action Button */}
             <button
@@ -1520,136 +1444,7 @@ export function BranchLeaveManagementView({
         </div>
       )}
 
-      {/* ─── MODAL: MANAGE EMPLOYEE QUOTAS ─────────────────────────────── */}
-      {isQuotaModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-2xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-6 space-y-5 animate-scale-up max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                  <Sliders size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-[var(--color-text)]">
-                    จัดการโควตาการลาพนักงาน
-                  </h3>
-                  <p className="text-xs text-[var(--color-text-muted)]">
-                    กำหนดจำกัดวันลาเฉพาะบุคคลของพนักงานในสาขา (หากไม่กำหนด จะใช้ค่าเริ่มต้นของสาขา)
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsQuotaModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] flex items-center justify-center cursor-pointer transition-colors"
-              >
-                ✕
-              </button>
-            </div>
 
-            {loadingQuotas ? (
-              <div className="py-12 text-center text-xs text-[var(--color-text-muted)]">
-                กำลังโหลดข้อมูลโควตาพนักงาน...
-              </div>
-            ) : employees.length === 0 ? (
-              <div className="py-8 text-center text-xs text-[var(--color-text-muted)]">
-                ยังไม่มีข้อมูลพนักงานในสาขานี้
-              </div>
-            ) : (
-              <div className="divide-y divide-[var(--color-border)]">
-                {employees.map((emp) => {
-                  const q = employeeQuotas[emp.id];
-                  const isEditing = editingUserId === emp.id;
-                  const currentLimit = q?.customQuota !== null && q?.customQuota !== undefined ? q.customQuota : null;
-                  const branchDef = q?.branchDefaultQuota ?? 30;
-
-                  return (
-                    <div key={emp.id} className="py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-sm text-[var(--color-text)]">{emp.name}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-muted)]">
-                            {emp.position || "พนักงาน"}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)] mt-1">
-                          <span>
-                            โควตา:{" "}
-                            {currentLimit !== null ? (
-                              <strong className="text-amber-600 dark:text-amber-400">{currentLimit} วัน/ปี (กำหนดเฉพาะบุคคล)</strong>
-                            ) : (
-                              <span>ค่าเริ่มต้นสาขา ({branchDef} วัน/ปี)</span>
-                            )}
-                          </span>
-                          {q && (
-                            <span>
-                              ใช้แล้ว: <strong className="text-[var(--color-text)]">{q.usedDays}</strong> วัน (คงเหลือ {q.remainingDays} วัน)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-                        {isEditing ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="0"
-                              max="365"
-                              placeholder={`${branchDef}`}
-                              value={editingQuotaValue}
-                              onChange={(e) => setEditingQuotaValue(e.target.value)}
-                              className="w-20 px-2.5 py-1.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs font-bold text-[var(--color-text)] focus:outline-none focus:border-amber-400"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEmployeeQuota(emp.id)}
-                              disabled={isSavingQuota}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer"
-                            >
-                              บันทึก
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingUserId(null)}
-                              className="px-2.5 py-1.5 rounded-xl border border-[var(--color-border)] text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
-                            >
-                              ยกเลิก
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingUserId(emp.id);
-                              setEditingQuotaValue(currentLimit !== null ? String(currentLimit) : "");
-                            }}
-                            className="px-3 py-1.5 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface-2)] text-xs font-bold text-[var(--color-text)] transition-all cursor-pointer"
-                          >
-                            {currentLimit !== null ? "แก้ไขโควตา" : "ตั้งโควตาเฉพาะคน"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="pt-3 border-t border-[var(--color-border)] flex items-center justify-between text-xs text-[var(--color-text-muted)]">
-              <span>* เว้นว่างเพื่อคืนค่าเป็นค่าเริ่มต้นของสาขา</span>
-              <button
-                type="button"
-                onClick={() => setIsQuotaModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-[var(--color-surface-2)] hover:bg-[var(--color-border)] text-[var(--color-text)] font-bold text-xs cursor-pointer transition-colors"
-              >
-                ปิด
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

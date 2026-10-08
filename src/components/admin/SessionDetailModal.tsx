@@ -31,7 +31,7 @@ export function SessionDetailModal({
 }) {
   const [sessionOverride, setSessionOverride] = useState<Partial<ShiftSession> | null>(null);
   const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
-  const [incompleteAction, setIncompleteAction] = useState<"no_penalty" | "deduct_points" | "break_streak" | "deduct_leave_quota">("no_penalty");
+  const [incompleteAction, setIncompleteAction] = useState<"no_penalty" | "deduct_points" | "break_streak">("no_penalty");
   const [pointsToDeduct, setPointsToDeduct] = useState<number>(5);
   const [incompleteNote, setIncompleteNote] = useState<string>("");
   const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
@@ -218,8 +218,8 @@ export function SessionDetailModal({
                         </span>
                       </div>
 
-                      {/* 4 Options Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {/* 3 Options Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         {/* 1. No Penalty */}
                         <button
                           type="button"
@@ -284,29 +284,6 @@ export function SessionDetailModal({
                               </span>
                               <span className="text-[10px] text-[var(--color-text-muted)] line-clamp-1">
                                 รีเซ็ตสตรีคทำงานต่อเนื่อง
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-
-                        {/* 4. Deduct Leave Quota */}
-                        <button
-                          type="button"
-                          onClick={() => setIncompleteAction("deduct_leave_quota")}
-                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                            incompleteAction === "deduct_leave_quota"
-                              ? "bg-purple-50 dark:bg-purple-950/60 border-purple-500 ring-2 ring-purple-500/20 shadow-xs"
-                              : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-purple-300"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">📅</span>
-                            <div className="min-w-0">
-                              <span className="font-bold text-xs text-[var(--color-text)] block">
-                                หักโควตาวันลา 1 วัน
-                              </span>
-                              <span className="text-[10px] text-[var(--color-text-muted)] line-clamp-1">
-                                ตัดสิทธิ์วันลาพักร้อน/ลากิจ
                               </span>
                             </div>
                           </div>

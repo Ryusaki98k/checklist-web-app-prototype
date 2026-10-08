@@ -615,13 +615,7 @@ export class ManagerService implements IManagerService {
           .set({ point_streak: 0, point_streak_type: "none" })
           .where(eq(users.id, targetUser.id));
       } else if (action === "deduct_leave_quota") {
-        const currentQuota = targetUser.leave_quota ?? 3;
-        const newQuota = Math.max(0, currentQuota - 1);
-        actionDesc = "หักโควตาการลา 1 วัน";
-        await this.db
-          .update(users)
-          .set({ leave_quota: newQuota })
-          .where(eq(users.id, targetUser.id));
+        actionDesc = "ยกเว้นการลงโทษ (ยกเลิกระบบโควตาวันลาแล้ว)";
       }
 
       await this.db
@@ -1534,34 +1528,15 @@ export class ManagerService implements IManagerService {
         if (hasApprovedOnDate) {
           return {
             success: false,
-            error: `คุณได้รับการอนุมัติการลาสำหรับวันที่ ${startDate} ไปแล้ว (สามารถอนุมัติการลาได้ 1 รายการต่อวันสำหรับพนักงาน)`,
+            error: `คุณได้รับการอนุมัติการลาสำหรับวันที่ ${startDate} ไปแล้ว (พนักงานสามารถส่งคำขอลางานได้ 1 รายการต่อวัน)`,
           };
         }
 
         if (hasPendingOnDate) {
           return {
             success: false,
-            error: `คุณมีคำขอลางานสำหรับวันที่ ${startDate} รอการอนุมัติอยู่แล้ว (สามารถส่งคำขอได้ 1 รายการต่อวันสำหรับพนักงาน)`,
+            error: `คุณมีคำขอลางานสำหรับวันที่ ${startDate} รอการอนุมัติอยู่แล้ว (พนักงานสามารถส่งคำขอได้ 1 รายการต่อวัน)`,
           };
-        }
-
-        // Quota check for employee paid leave request
-        if (isPaidLeave(leaveType)) {
-          const quotaRes = await this.getEmployeeLeaveQuota({ userId, branchId });
-          if (quotaRes.success && quotaRes.quota) {
-            if (quotaRes.quota.remainingDays <= 0) {
-              return {
-                success: false,
-                error: `โควตาการลาของคุณหมดแล้ว (ใช้ไปแล้ว ${quotaRes.quota.usedDays}/${quotaRes.quota.allocatedQuota} วัน)`,
-              };
-            }
-            if (quotaRes.quota.remainingDays - quotaRes.quota.pendingDays <= 0) {
-              return {
-                success: false,
-                error: `โควตาการลาคงเหลือของคุณ (${quotaRes.quota.remainingDays} วัน) มีคำขอรอการอนุมัติอยู่ครบแล้ว (${quotaRes.quota.pendingDays} วัน)`,
-              };
-            }
-          }
         }
       }
 

@@ -610,8 +610,6 @@ export function BranchOperationsPage({
                             <span>ผู้จัดการสาขา: <strong className="text-[var(--color-text)]">{branch.managerName}</strong></span>
                             <span>•</span>
                             <span>พนักงานทั้งหมด: <strong className="text-[var(--color-text)]">{branch.staffCount}</strong> คน</span>
-                            <span>•</span>
-                            <span>โควตาลาสาขา: <strong className="text-[var(--color-text)]">{branch.leaveQuota}</strong> วัน/คน</span>
                           </p>
                         </div>
                       </div>
