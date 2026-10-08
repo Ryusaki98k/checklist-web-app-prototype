@@ -28,6 +28,15 @@ export default function ManagerDashboardPage() {
     }
     if (currentUser.role === "admin") {
       router.replace("/admin/dashboard");
+      return;
+    }
+    const hasNoBranch =
+      (!currentUser.branchId || !currentUser.branchName) &&
+      !currentUser.isAdmin &&
+      currentUser.executiveType === "none";
+    if (hasNoBranch) {
+      router.replace("/awaiting-assignment");
+      return;
     }
   }, [currentUser, isReady, router]);
 

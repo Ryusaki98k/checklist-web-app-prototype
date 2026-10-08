@@ -532,27 +532,16 @@ export class RefrigeratorService implements IRefrigeratorService {
       }
 
       if (!targetBranchId) {
-        const [anyBranch] = await this.db
-          .select({ id: branches.id, name: branches.name })
-          .from(branches)
-          .limit(1);
-        if (anyBranch) {
-          targetBranchId = anyBranch.id;
-          branchName = anyBranch.name;
-        } else {
-          return { success: true, data: [], branchName: "" };
-        }
-      } else if (!branchName) {
+        return { success: false, data: [], branchName: "", error: "ผู้ใช้งานไม่มีสาขาประจำการ ไม่สามารถเข้าถึงข้อมูลตู้แช่ได้" };
+      }
+
+      if (!branchName) {
         const [b] = await this.db
           .select({ name: branches.name })
           .from(branches)
           .where(eq(branches.id, targetBranchId))
           .limit(1);
         if (b) branchName = b.name;
-      }
-
-      if (!targetBranchId) {
-        return { success: true, data: [], branchName: "" };
       }
 
       // Fast check: check if tasks for today already exist first before running heavy sync
@@ -673,6 +662,18 @@ export class RefrigeratorService implements IRefrigeratorService {
 
       if (!existingTask) {
         return { success: false, error: "ไม่พบรายการงานตู้แช่ที่ระบุ" };
+      }
+
+      if (userId) {
+        const [u] = await this.db
+          .select({ branch_id: users.branch_id })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        if (!u?.branch_id) {
+          return { success: false, error: "ผู้ใช้งานไม่มีสาขาประจำการ ไม่สามารถบันทึกตรวจตู้แช่ได้" };
+        }
       }
 
       // Check if refrigerator is disabled

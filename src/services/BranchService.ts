@@ -241,8 +241,18 @@ export class BranchService implements IBranchService {
         // 1. Unassign users previously assigned to this branch who were unselected
         await this.db
           .update(users)
-          .set({ branch_id: null })
-          .where(and(eq(users.branch_id, branchId), notInArray(users.id, validUserIds)));
+          .set({ 
+            branch_id: null,
+            manager_type: "none",
+          })
+          .where(
+            and(
+              eq(users.branch_id, branchId),
+              notInArray(users.id, validUserIds),
+              eq(users.is_admin, false),
+              eq(users.executive_type, "none")
+            )
+          );
 
         // 2. Assign selected users to this branch
         await this.db
@@ -253,8 +263,17 @@ export class BranchService implements IBranchService {
         // Unassign all users from this branch
         await this.db
           .update(users)
-          .set({ branch_id: null })
-          .where(eq(users.branch_id, branchId));
+          .set({ 
+            branch_id: null,
+            manager_type: "none",
+          })
+          .where(
+            and(
+              eq(users.branch_id, branchId),
+              eq(users.is_admin, false),
+              eq(users.executive_type, "none")
+            )
+          );
       }
 
       // Touch branch last_update

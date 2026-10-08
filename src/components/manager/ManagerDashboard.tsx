@@ -887,12 +887,21 @@ export function ManagerDashboard({
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             <Link
-              href="/manager/leaves"
+              href="/manager/staff-status"
               className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface)] hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
+              title="จัดการพนักงานและสถานะกะในสาขา"
+            >
+              <Users size={16} className="text-amber-600 shrink-0" />
+              <span className="hidden sm:inline">จัดการพนักงาน</span>
+            </Link>
+
+            <Link
+              href="/manager/leaves"
+              className="text-xs font-bold text-[var(--color-text)] hover:text-rose-950 dark:hover:text-rose-200 bg-[var(--color-surface)] hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-[var(--color-border)] hover:border-rose-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
               title="ระบบจัดการการลาและสถานะพนักงาน"
             >
               <HeartPulse size={16} className="text-rose-500 shrink-0" />
-              <span className="hidden sm:inline">การลา & สถานะพนักงาน</span>
+              <span className="hidden sm:inline">จัดการการลา</span>
             </Link>
 
             <RoleSwitcher />

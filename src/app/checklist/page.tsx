@@ -37,6 +37,17 @@ export default function ChecklistRoutePage() {
       }
       return;
     }
+    const hasNoBranch =
+      (!currentUser.branchId || !currentUser.branchName) &&
+      !currentUser.isAdmin &&
+      currentUser.executiveType === "none";
+    if (hasNoBranch) {
+      if (!redirectedRef.current) {
+        redirectedRef.current = true;
+        router.replace("/awaiting-assignment");
+      }
+      return;
+    }
     if (!activeSession) {
       const stored = getActiveSession();
       if (stored) {

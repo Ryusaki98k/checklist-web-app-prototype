@@ -167,4 +167,40 @@ export async function getAllUsersLeaveQuotasAction(): Promise<{
   return await services.manager.getAllUsersLeaveQuotas();
 }
 
+export async function getUnassignedUsersAction(): Promise<{
+  success: boolean;
+  users?: Array<{ id: string; name: string; username: string; createdAt?: string }>;
+  error?: string;
+}> {
+  const services = getServices();
+  return await services.manager.getUnassignedUsers();
+}
+
+export async function addEmployeeToBranchAction(params: {
+  managerId: string;
+  branchId: string;
+  userId?: string;
+  newUserData?: {
+    name: string;
+    username: string;
+    password?: string;
+    role?: "employee" | "manager_assistant";
+    position?: string;
+  };
+  role?: "employee" | "manager_assistant";
+  position?: string;
+}): Promise<{ success: boolean; user?: any; error?: string }> {
+  const services = getServices();
+  return await services.manager.addEmployeeToBranch(params);
+}
+
+export async function removeEmployeeFromBranchAction(params: {
+  managerId: string;
+  branchId: string;
+  targetUserId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const services = getServices();
+  return await services.manager.removeEmployeeFromBranch(params);
+}
+
 

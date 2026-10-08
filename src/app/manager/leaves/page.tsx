@@ -16,6 +16,14 @@ export default function ManagerLeavesPage() {
       router.replace("/");
       return;
     }
+    const hasNoBranch =
+      (!currentUser.branchId || !currentUser.branchName) &&
+      !currentUser.isAdmin &&
+      currentUser.executiveType === "none";
+    if (hasNoBranch) {
+      router.replace("/awaiting-assignment");
+      return;
+    }
     // Disallow regular employees; allow manager, manager_assistant, general_manager, committee, admin
     if (currentUser.role === "employee") {
       router.replace("/checklist");

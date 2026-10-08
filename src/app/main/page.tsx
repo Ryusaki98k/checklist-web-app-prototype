@@ -17,17 +17,14 @@ export default function MainRedirectPage() {
 
     if (currentUser.role === "admin") {
       router.replace("/admin/dashboard");
-    } else if (
-      currentUser.role === "manager" ||
-      currentUser.role === "manager_assistant" ||
-      currentUser.role === "committee" ||
-      currentUser.role === "general_manager"
-    ) {
+    } else if (currentUser.role === "committee" || currentUser.role === "general_manager") {
       router.replace("/manager/dashboard");
-    } else if (currentUser.branchName) {
-      router.replace("/position");
-    } else {
+    } else if (!currentUser.branchId || !currentUser.branchName) {
       router.replace("/awaiting-assignment");
+    } else if (currentUser.role === "manager" || currentUser.role === "manager_assistant") {
+      router.replace("/manager/dashboard");
+    } else {
+      router.replace("/position");
     }
   }, [currentUser, isReady, router]);
 

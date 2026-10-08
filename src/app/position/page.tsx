@@ -26,9 +26,13 @@ export default function PositionRoutePage() {
         return;
       }
 
-      const requiresBranch = currentUser.role === "employee" || currentUser.role === "manager_assistant" || currentUser.role === "manager";
-      if (requiresBranch && !currentUser.branchName) {
+      const hasNoBranch =
+        (!currentUser.branchId || !currentUser.branchName) &&
+        !currentUser.isAdmin &&
+        currentUser.executiveType === "none";
+      if (hasNoBranch) {
         router.replace("/awaiting-assignment");
+        return;
       }
     }
   }, [currentUser, isReady, router]);

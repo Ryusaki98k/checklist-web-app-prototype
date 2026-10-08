@@ -14,7 +14,7 @@ export default function ManagerLoginPage() {
         if (currentUser) {
             const role = currentUser.activeRole || currentUser.role;
             if (role === "manager" || role === "manager_assistant") {
-                if (!currentUser.branchName) {
+                if (!currentUser.branchId || !currentUser.branchName) {
                     router.replace("/awaiting-assignment");
                 } else {
                     router.replace("/manager/dashboard");

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useTransition, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { ShiftSession, ShiftType, User, ActiveRole } from "../types";
 import { getUserAvailableRoles, canAccessRole, getRoleDisplayTitle } from "../utils/roles";
 import { STAFF_POSITIONS } from "../types";
@@ -54,6 +54,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { startLoading, withLoading, resetLoading } = useLoading();
   const [, startTransition] = useTransition();
   const [isReady, setIsReady] = useState(false);
@@ -68,6 +69,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     activeSessionRef.current = activeSession;
   });
+
+  // Enforce branch association: any user without a branch cannot access operational pages
+  useEffect(() => {
+    if (!isReady || !currentUser) return;
+    const hasNoBranch =
+      (!currentUser.branchId || !currentUser.branchName) &&
+      !currentUser.isAdmin &&
+      currentUser.executiveType === "none";
+    if (hasNoBranch) {
+      const allowedPaths = [
+        "/awaiting-assignment",
+        "/",
+        "/login/employee",
+        "/login/manager",
+        "/login",
+        "/guide",
+        "/readme",
+        "/auth/callback",
+      ];
+      const isAllowed = allowedPaths.some(
+        (p) => pathname === p || pathname?.startsWith("/guide") || pathname?.startsWith("/readme") || pathname?.startsWith("/auth")
+      );
+      if (!isAllowed) {
+        router.replace("/awaiting-assignment");
+      }
+    }
+  }, [isReady, currentUser, pathname, router]);
 
   const refreshUserData = async () => {
     if (!currentUser?.id) return;
@@ -391,7 +419,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (newRole === "admin") {
         targetPath = "/admin/dashboard";
       } else if (newRole === "manager" || newRole === "manager_assistant") {
-        if (!currentUser.branchName) {
+        if (!currentUser.branchId || !currentUser.branchName) {
           targetPath = "/awaiting-assignment";
         } else {
           targetPath = "/manager/dashboard";
@@ -400,7 +428,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         targetPath = "/manager/dashboard";
       } else {
         // Employee role
-        if (!currentUser.branchName) {
+        if (!currentUser.branchId || !currentUser.branchName) {
           targetPath = "/awaiting-assignment";
         } else {
           targetPath = "/position";
@@ -514,10 +542,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveCurrentUser(activeUser);
     }
 
-    // Role verification for branch association
-    const requiresBranch =
-      activeUser.role === "employee" || activeUser.role === "manager_assistant" || activeUser.role === "manager";
-    if (requiresBranch && !activeUser.branchName) {
+    // Strict branch verification: any non-admin/non-executive user without a branch cannot access the app
+    const hasNoBranch =
+      (!activeUser.branchId || !activeUser.branchName) &&
+      !activeUser.isAdmin &&
+      activeUser.executiveType === "none";
+    if (hasNoBranch) {
       setCurrentUser(activeUser);
       startTransition(() => {
         router.push("/awaiting-assignment");

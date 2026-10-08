@@ -213,6 +213,8 @@ export interface BranchEmployeeStatus {
   name: string;
   username?: string;
   role: Role;
+  managerType?: ManagerType;
+  isAdmin?: boolean;
   position?: string;
   branchId?: string;
   branchName?: string;
@@ -376,6 +378,33 @@ export interface IManagerService {
     quotas?: Record<string, LeaveQuotaInfo>;
     error?: string;
   }>;
+
+  getUnassignedUsers(): Promise<{
+    success: boolean;
+    users?: Array<{ id: string; name: string; username: string; createdAt?: string }>;
+    error?: string;
+  }>;
+
+  addEmployeeToBranch(params: {
+    managerId: string;
+    branchId: string;
+    userId?: string;
+    newUserData?: {
+      name: string;
+      username: string;
+      password?: string;
+      role?: "employee" | "manager_assistant";
+      position?: string;
+    };
+    role?: "employee" | "manager_assistant";
+    position?: string;
+  }): Promise<{ success: boolean; user?: any; error?: string }>;
+
+  removeEmployeeFromBranch(params: {
+    managerId: string;
+    branchId: string;
+    targetUserId: string;
+  }): Promise<{ success: boolean; error?: string }>;
 }
 
 export interface BranchEmployeeStatusItem {

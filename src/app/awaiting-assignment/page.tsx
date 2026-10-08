@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useApp } from "../../context/AppContext";
 import { getUserByIdAction } from "../../actions/auth";
 import { Store, RotateCw, LogOut, AlertCircle, Sparkles } from "lucide-react";
@@ -9,6 +10,7 @@ import { ThemeToggle } from "../../components/common/ThemeToggle";
 
 export default function AwaitingAssignmentPage() {
     const { logout, currentUser, login } = useApp();
+    const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
 
@@ -19,10 +21,10 @@ export default function AwaitingAssignmentPage() {
         try {
             const res = await getUserByIdAction(currentUser.id);
             if (res.success && res.user) {
-                if (res.user.branchName) {
-                    login(res.user);
+                if (res.user.branchId || res.user.branchName) {
+                    await login(res.user);
                 } else {
-                    setErrorMsg("บัญชีของคุณยังไม่ได้รับการอนุมัติสาขา");
+                    setErrorMsg("บัญชีของคุณยังไม่ได้รับการกำหนดสาขาประจำการ กรุณาแจ้งผู้จัดการร้าน");
                 }
             } else {
                 setErrorMsg(res.error || "ดึงข้อมูลผู้ใช้สำเร็จ แต่ยังไม่ได้รับกำหนดสาขา");

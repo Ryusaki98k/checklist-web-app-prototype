@@ -120,30 +120,28 @@ export class ChecklistService implements IChecklistService {
       let branchId: string = "";
       let branchNameForSession: string = "";
 
-      if (currentUserRecord?.branchId) {
-        const [b] = await this.db
-          .select({ id: branches.id, name: branches.name })
-          .from(branches)
-          .where(eq(branches.id, currentUserRecord.branchId))
-          .limit(1);
-        if (b) {
-          branchId = b.id;
-          branchNameForSession = b.name;
-        }
+      if (!currentUserRecord?.branchId) {
+        return {
+          success: false,
+          error: "บัญชีของคุณยังไม่ได้รับการกำหนดสาขาประจำการ ไม่สามารถเริ่มกะปฏิบัติงานได้",
+        };
       }
 
-      if (!branchId!) {
-        const [anyBranch] = await this.db
-          .select({ id: branches.id, name: branches.name })
-          .from(branches)
-          .limit(1);
-        if (anyBranch) {
-          branchId = anyBranch.id;
-          branchNameForSession = anyBranch.name;
-        } else {
-          return { success: false, error: "กรุณาสร้างสาขาอย่างน้อย 1 สาขาก่อนเริ่มกะ" };
-        }
+      const [b] = await this.db
+        .select({ id: branches.id, name: branches.name })
+        .from(branches)
+        .where(eq(branches.id, currentUserRecord.branchId))
+        .limit(1);
+
+      if (!b) {
+        return {
+          success: false,
+          error: "ไม่พบข้อมูลสาขาที่สังกัดอยู่ในระบบ กรุณาติดต่อผู้จัดการหรือผู้ดูแลระบบ",
+        };
       }
+
+      branchId = b.id;
+      branchNameForSession = b.name;
 
       const allowedShifts: ("morning" | "afternoon" | "night" | "morning_afternoon")[] =
         dbShift === "morning_afternoon"

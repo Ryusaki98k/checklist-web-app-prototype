@@ -28,6 +28,16 @@ export default function ShiftRoutePage() {
       router.replace("/manager/dashboard");
       return;
     }
+
+    const hasNoBranch =
+      (!currentUser.branchId || !currentUser.branchName) &&
+      !currentUser.isAdmin &&
+      currentUser.executiveType === "none";
+    if (hasNoBranch) {
+      router.replace("/awaiting-assignment");
+      return;
+    }
+
     if (currentUser.role === "employee" && !currentUser.position) {
       router.replace("/position");
     }

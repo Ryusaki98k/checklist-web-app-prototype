@@ -71,8 +71,14 @@ export function canAccessManagerPortal(user: {
   managerType?: ManagerType | null;
   isAdmin?: boolean | null;
   role?: ActiveRole | null;
+  branchId?: string | null;
+  branchName?: string | null;
+  executiveType?: ExecutiveType | null;
 } | null | undefined): boolean {
   if (!user) return false;
+  if (!user.isAdmin && user.executiveType !== "executive" && user.executiveType !== "committee") {
+    if (!user.branchId && !user.branchName) return false;
+  }
   return (
     Boolean(user.isAdmin) ||
     user.managerType === "store" ||

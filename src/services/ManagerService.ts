@@ -1,8 +1,9 @@
 import { eq, ne, and, gte, lte, lt, desc, inArray, sql } from "drizzle-orm";
 import { tasks, taskWork, shiftSession, users, branches, employeeLeaves, pointTransactions } from "../db/schema";
 import { IManagerService, IPointService, INotificationService, BranchEmployeeStatus } from "./types";
-import { ShiftType, Role, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
+import { ShiftType, Role, LeaveType, EmployeeLeave, LeaveQuotaInfo, ManagerType } from "../types";
 import { isPaidLeave, toDbLeaveType } from "../utils/leave";
+import { computePrimaryRole } from "../utils/roles";
 
 export interface ManagerShiftSummary {
   id: string;
@@ -75,7 +76,8 @@ export class ManagerService implements IManagerService {
   constructor(
     private db: any,
     private pointService?: IPointService,
-    private notificationService?: INotificationService
+    private notificationService?: INotificationService,
+    private branchService?: any
   ) {}
 
   async getManagerShiftSessions(filterDate?: string): Promise<{
@@ -672,18 +674,11 @@ export class ManagerService implements IManagerService {
 
       const activeBranchId = activeBranch.id;
 
-      // 2. Fetch users who belong to this branch, or fallback to all staff
-      let candidateUsers = await this.db
+      // 2. Fetch users who belong strictly to this branch
+      const candidateUsers = await this.db
         .select()
         .from(users)
         .where(eq(users.branch_id, activeBranchId));
-
-      if (candidateUsers.length === 0) {
-        candidateUsers = await this.db
-          .select()
-          .from(users)
-          .where(inArray(users.manager_type, ["none", "assistant"]));
-      }
 
       // 3. Today's time boundary (Asia/Bangkok)
       const { startOfDay, endOfDay } = getThaiStartAndEndOfDay(new Date());
@@ -815,11 +810,15 @@ export class ManagerService implements IManagerService {
             }
           : undefined;
 
+        const primaryRole = computePrimaryRole(u.manager_type, u.executive_type, u.is_admin);
+
         return {
           id: u.id,
           name: u.name,
           username: u.username,
-          role: u.role,
+          role: primaryRole,
+          managerType: u.manager_type,
+          isAdmin: u.is_admin,
           position,
           branchId: activeBranchId,
           branchName: activeBranch.name,
@@ -1116,6 +1115,9 @@ export class ManagerService implements IManagerService {
       const [targetUser] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
       if (!targetUser) {
         return { success: false, error: "ไม่พบข้อมูลพนักงาน" };
+      }
+      if (!targetUser.branch_id) {
+        return { success: false, error: "พนักงานยังไม่มีสาขาประจำการ ไม่สามารถบันทึกการลาได้" };
       }
       const [recorder] = await this.db.select().from(users).where(eq(users.id, recordedBy)).limit(1);
       const [branch] = await this.db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
@@ -1479,6 +1481,7 @@ export class ManagerService implements IManagerService {
 
       const [targetUser] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
       if (!targetUser) return { success: false, error: "ไม่พบข้อมูลพนักงาน" };
+      if (!targetUser.branch_id) return { success: false, error: "พนักงานยังไม่มีสาขาประจำการ ไม่สามารถยื่นคำขอลาได้" };
       const [requester] = await this.db.select().from(users).where(eq(users.id, requestedBy)).limit(1);
       const [branch] = await this.db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
 
@@ -1900,6 +1903,312 @@ export class ManagerService implements IManagerService {
     } catch (err: unknown) {
       console.error("ManagerService.getAllUsersLeaveQuotas error:", err);
       return { success: false, error: "เกิดข้อผิดพลาดในการคำนวณโควตาวันลาของผู้ใช้งาน" };
+    }
+  }
+
+  async getUnassignedUsers(): Promise<{
+    success: boolean;
+    users?: Array<{ id: string; name: string; username: string; createdAt?: string }>;
+    error?: string;
+  }> {
+    try {
+      const rows = await this.db
+        .select({
+          id: users.id,
+          name: users.name,
+          username: users.username,
+          createdAt: users.created_at,
+          manager_type: users.manager_type,
+          executive_type: users.executive_type,
+          is_admin: users.is_admin,
+        })
+        .from(users)
+        .where(
+          and(
+            sql`${users.branch_id} IS NULL`,
+            eq(users.is_admin, false),
+            eq(users.executive_type, "none")
+          )
+        );
+
+      const formatted = rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        username: r.username,
+        createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
+      }));
+
+      return { success: true, users: formatted };
+    } catch (err: any) {
+      console.error("ManagerService.getUnassignedUsers error:", err);
+      return { success: false, error: "เกิดข้อผิดพลาดในการดึงรายชื่อพนักงานที่รอสาขา" };
+    }
+  }
+
+  async addEmployeeToBranch(params: {
+    managerId: string;
+    branchId: string;
+    userId?: string;
+    newUserData?: {
+      name: string;
+      username: string;
+      password?: string;
+      role?: "employee" | "manager_assistant";
+      position?: string;
+    };
+    role?: "employee" | "manager_assistant";
+    position?: string;
+  }): Promise<{ success: boolean; user?: any; error?: string }> {
+    try {
+      const { managerId, branchId, userId, newUserData, role, position } = params;
+
+      if (!managerId || !branchId) {
+        return { success: false, error: "ข้อมูลไม่ครบถ้วน กรุณาระบุผู้จัดการและสาขา" };
+      }
+
+      // 1. Verify manager permissions
+      const [manager] = await this.db
+        .select()
+        .from(users)
+        .where(eq(users.id, managerId))
+        .limit(1);
+
+      if (!manager) {
+        return { success: false, error: "ไม่พบข้อมูลผู้จัดการที่ทำรายการ" };
+      }
+
+      const isAuthorizedManager =
+        manager.is_admin ||
+        manager.executive_type === "executive" ||
+        manager.executive_type === "committee" ||
+        (manager.manager_type === "store" && manager.branch_id === branchId);
+
+      if (!isAuthorizedManager) {
+        return { success: false, error: "คุณไม่มีสิทธิ์จัดการพนักงานในสาขานี้" };
+      }
+
+      // 2. Verify branch exists
+      const [branch] = await this.db
+        .select()
+        .from(branches)
+        .where(eq(branches.id, branchId))
+        .limit(1);
+
+      if (!branch) {
+        return { success: false, error: "ไม่พบข้อมูลสาขาในระบบ" };
+      }
+
+      const assignedRole = role || (newUserData?.role) || "employee";
+      const managerType: ManagerType = assignedRole === "manager_assistant" ? "assistant" : "none";
+
+      if (userId) {
+        // Mode A: Assign existing unassigned employee to this branch
+        const [target] = await this.db
+          .select()
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        if (!target) {
+          return { success: false, error: "ไม่พบข้อมูลพนักงานที่เลือก" };
+        }
+
+        if (target.is_admin || target.executive_type !== "none") {
+          return { success: false, error: "ไม่สามารถกำหนดสาขาให้กับผู้ดูแลระบบหรือผู้บริหารได้" };
+        }
+
+        await this.db
+          .update(users)
+          .set({
+            branch_id: branchId,
+            manager_type: managerType,
+          })
+          .where(eq(users.id, userId));
+
+        // Touch branch last_update
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, branchId));
+
+        if (this.branchService) {
+          this.branchService.invalidateCache();
+        }
+
+        // Notify employee
+        if (this.notificationService) {
+          await this.notificationService.createNotification({
+            recipientId: userId,
+            branchId: branchId,
+            title: `🏪 ได้รับการกำหนดสาขาประจำการ`,
+            message: `ผู้จัดการได้กำหนดให้คุณเข้าประจำการที่สาขา "${branch.name}" เรียบร้อยแล้ว ขณะนี้คุณสามารถเข้าปฏิบัติงานได้ทันที`,
+            type: "system",
+          });
+        }
+
+        return { success: true };
+      } else if (newUserData) {
+        // Mode B: Register brand new employee directly for this branch
+        const cleanName = (newUserData.name || "").trim();
+        const cleanUsername = (newUserData.username || "").trim().toLowerCase();
+        const cleanPassword = newUserData.password ? newUserData.password.trim() : "123";
+
+        if (!cleanName || !cleanUsername) {
+          return { success: false, error: "กรุณาระบุชื่อ-นามสกุล และชื่อผู้ใช้ให้ครบถ้วน" };
+        }
+
+        const [existing] = await this.db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(sql`lower(${users.username})`, cleanUsername))
+          .limit(1);
+
+        if (existing) {
+          return { success: false, error: "ชื่อผู้ใช้นี้มีผู้อื่นใช้งานแล้วในระบบ กรุณาใช้ชื่ออื่น" };
+        }
+
+        const [created] = await this.db
+          .insert(users)
+          .values({
+            name: cleanName,
+            username: cleanUsername,
+            password: cleanPassword,
+            branch_id: branchId,
+            manager_type: managerType,
+            executive_type: "none",
+            is_admin: false,
+            created_at: new Date(),
+          })
+          .returning();
+
+        // Touch branch last_update
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, branchId));
+
+        if (this.branchService) {
+          this.branchService.invalidateCache();
+        }
+
+        return { success: true, user: created };
+      }
+
+      return { success: false, error: "กรุณาระบุพนักงานหรือข้อมูลพนักงานใหม่" };
+    } catch (err: any) {
+      console.error("ManagerService.addEmployeeToBranch error:", err);
+      return { success: false, error: "เกิดข้อผิดพลาดในการเพิ่มพนักงานเข้าสาขา" };
+    }
+  }
+
+  async removeEmployeeFromBranch(params: {
+    managerId: string;
+    branchId: string;
+    targetUserId: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { managerId, branchId, targetUserId } = params;
+
+      if (!managerId || !branchId || !targetUserId) {
+        return { success: false, error: "ข้อมูลไม่ครบถ้วน" };
+      }
+
+      if (managerId === targetUserId) {
+        return { success: false, error: "ผู้จัดการไม่สามารถนำตนเองออกจากสาขาได้" };
+      }
+
+      // 1. Verify manager permissions
+      const [manager] = await this.db
+        .select()
+        .from(users)
+        .where(eq(users.id, managerId))
+        .limit(1);
+
+      if (!manager) {
+        return { success: false, error: "ไม่พบข้อมูลผู้จัดการที่ทำรายการ" };
+      }
+
+      const isAuthorizedManager =
+        manager.is_admin ||
+        manager.executive_type === "executive" ||
+        manager.executive_type === "committee" ||
+        (manager.manager_type === "store" && manager.branch_id === branchId);
+
+      if (!isAuthorizedManager) {
+        return { success: false, error: "คุณไม่มีสิทธิ์จัดการพนักงานในสาขานี้" };
+      }
+
+      // 2. Verify target employee belongs to this branch
+      const [target] = await this.db
+        .select()
+        .from(users)
+        .where(eq(users.id, targetUserId))
+        .limit(1);
+
+      if (!target) {
+        return { success: false, error: "ไม่พบข้อมูลพนักงานที่ต้องการนำออก" };
+      }
+
+      if (target.branch_id !== branchId) {
+        return { success: false, error: "พนักงานคนนี้ไม่ได้สังกัดอยู่ในสาขานี้" };
+      }
+
+      if (target.is_admin || target.executive_type !== "none") {
+        return { success: false, error: "ไม่สามารถนำผู้ดูแลระบบหรือผู้บริหารออกจากสาขาได้" };
+      }
+
+      // 3. Strip branch and strip all roles
+      await this.db
+        .update(users)
+        .set({
+          branch_id: null,
+          manager_type: "none",
+          executive_type: "none",
+          is_admin: false,
+        })
+        .where(eq(users.id, targetUserId));
+
+      // 4. End any open shift sessions for this user today at this branch so they do not remain open
+      const { startOfDay, endOfDay } = getThaiStartAndEndOfDay();
+      await this.db
+        .update(shiftSession)
+        .set({
+          end: new Date(),
+        })
+        .where(
+          and(
+            eq(shiftSession.user, targetUserId),
+            eq(shiftSession.branch, branchId),
+            sql`${shiftSession.end} IS NULL`,
+            gte(shiftSession.start, startOfDay),
+            lte(shiftSession.start, endOfDay)
+          )
+        );
+
+      // 5. Touch branch last_update
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, branchId));
+
+      if (this.branchService) {
+        this.branchService.invalidateCache();
+      }
+
+      // 6. Notification to the user
+      if (this.notificationService) {
+        await this.notificationService.createNotification({
+          recipientId: targetUserId,
+          title: "แจ้งเตือนการพ้นสภาพจากสาขา",
+          message: `คุณถูกนำออกจากสาขาโดยผู้จัดการ บัญชีของคุณยังคงอยู่ในระบบแต่จะไม่สามารถปฏิบัติงานได้จนกว่าจะได้รับการกำหนดสาขาใหม่`,
+          type: "system",
+        });
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("ManagerService.removeEmployeeFromBranch error:", err);
+      return { success: false, error: "เกิดข้อผิดพลาดในการนำพนักงานออกจากสาขา" };
     }
   }
 }

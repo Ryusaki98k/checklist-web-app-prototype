@@ -16,6 +16,14 @@ export default function ManagerStaffStatusPage() {
       router.replace("/");
       return;
     }
+    const hasNoBranch =
+      (!currentUser.branchId || !currentUser.branchName) &&
+      !currentUser.isAdmin &&
+      currentUser.executiveType === "none";
+    if (hasNoBranch) {
+      router.replace("/awaiting-assignment");
+      return;
+    }
     // Allow manager, manager_assistant, general_manager, committee, and admin
     if (currentUser.role === "employee") {
       router.replace("/checklist");

@@ -14,7 +14,7 @@ export default function EmployeeLoginPage() {
         if (currentUser) {
             const role = currentUser.activeRole || currentUser.role;
             if (role === "employee") {
-                if (!currentUser.branchName) {
+                if (!currentUser.branchId || !currentUser.branchName) {
                     router.replace("/awaiting-assignment");
                 } else {
                     router.replace("/position");

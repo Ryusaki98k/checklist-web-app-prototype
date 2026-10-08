@@ -27,13 +27,16 @@ import {
   HeartPulse,
   ShieldCheck,
   FileText,
-  HelpCircle,
   Coins,
-  ZapOff
+  ZapOff,
+  UserPlus,
+  UserX,
 } from "lucide-react";
 import Link from "next/link";
 import { isPaidLeave, getLeaveTypeLabel } from "../../utils/leave";
 import { getShiftBadge, getShiftName } from "../common/Badge";
+import { AddStaffToBranchModal } from "./AddStaffToBranchModal";
+import { RemoveStaffConfirmModal } from "./RemoveStaffConfirmModal";
 
 interface BranchStaffPresenceViewProps {
   currentUser: User;
@@ -64,6 +67,18 @@ export function BranchStaffPresenceView({
 
   // Selected Employee for detail drawer/modal
   const [inspectedEmployee, setInspectedEmployee] = useState<BranchEmployeeStatus | null>(null);
+
+  // Management modals & toast
+  const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
+  const [employeeToRemove, setEmployeeToRemove] = useState<BranchEmployeeStatus | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  const canManageBranchStaff =
+    Boolean(currentUser.isAdmin) ||
+    currentUser.role === "general_manager" ||
+    currentUser.role === "committee" ||
+    currentUser.managerType === "store" ||
+    currentUser.role === "manager";
 
   const loadData = useCallback(async (branchId?: string, isManual = false) => {
     try {
@@ -274,6 +289,20 @@ export function BranchStaffPresenceView({
                 </Link>
               )}
             </div>
+
+            {/* Add Employee Button (Manager/Admin) */}
+            {canManageBranchStaff && (
+              <button
+                type="button"
+                onClick={() => setIsAddStaffModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                title="เพิ่มพนักงานเข้าสาขานี้"
+              >
+                <UserPlus size={14} />
+                <span className="hidden sm:inline">เพิ่มพนักงาน</span>
+                <span className="sm:hidden">เพิ่ม</span>
+              </button>
+            )}
 
             {/* Refresh Button */}
             <button
@@ -702,6 +731,18 @@ export function BranchStaffPresenceView({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {canManageBranchStaff && emp.id !== currentUser.id && !emp.isAdmin && emp.role !== "general_manager" && emp.role !== "committee" && (
+                        <button
+                          type="button"
+                          onClick={() => setEmployeeToRemove(emp)}
+                          className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 flex items-center gap-1 transition-colors cursor-pointer"
+                          title="ปลดพนักงานออกจากสาขาและรีเซ็ตสิทธิ์"
+                        >
+                          <UserX size={12} />
+                          <span className="hidden sm:inline">ปลดออก</span>
+                        </button>
+                      )}
+
                       {onSwitchToLeaves ? (
                         <button
                           type="button"
@@ -870,29 +911,48 @@ export function BranchStaffPresenceView({
               )}
             </div>
 
-            <div className="pt-2 flex justify-between items-center gap-2">
-              {onSwitchToLeaves ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const targetId = inspectedEmployee.id;
-                    setInspectedEmployee(null);
-                    onSwitchToLeaves(targetId);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
-                >
-                  <HeartPulse size={14} />
-                  <span>บันทึกการลาให้พนักงานคนนี้</span>
-                </button>
-              ) : (
-                <Link
-                  href={`/manager/leaves?userId=${inspectedEmployee.id}`}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
-                >
-                  <HeartPulse size={14} />
-                  <span>บันทึกการลาให้พนักงานคนนี้</span>
-                </Link>
-              )}
+            <div className="pt-2 flex flex-wrap justify-between items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {onSwitchToLeaves ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetId = inspectedEmployee.id;
+                      setInspectedEmployee(null);
+                      onSwitchToLeaves(targetId);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                  >
+                    <HeartPulse size={14} />
+                    <span>บันทึกการลาให้พนักงานคนนี้</span>
+                  </button>
+                ) : (
+                  <Link
+                    href={`/manager/leaves?userId=${inspectedEmployee.id}`}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
+                  >
+                    <HeartPulse size={14} />
+                    <span>บันทึกการลาให้พนักงานคนนี้</span>
+                  </Link>
+                )}
+
+                {canManageBranchStaff && inspectedEmployee.id !== currentUser.id && !inspectedEmployee.isAdmin && inspectedEmployee.role !== "general_manager" && inspectedEmployee.role !== "committee" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = inspectedEmployee;
+                      setInspectedEmployee(null);
+                      setEmployeeToRemove(target);
+                    }}
+                    className="px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="ปลดพนักงานออกจากสาขา"
+                  >
+                    <UserX size={14} />
+                    <span>ปลดออกจากสาขา</span>
+                  </button>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setInspectedEmployee(null)}
@@ -903,6 +963,54 @@ export function BranchStaffPresenceView({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Toast Notification */}
+      {successToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl bg-emerald-600 text-white font-semibold text-xs shadow-xl animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle2 size={16} />
+          <span>{successToast}</span>
+          <button
+            type="button"
+            onClick={() => setSuccessToast(null)}
+            className="ml-2 text-emerald-200 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Add Staff Modal */}
+      {isAddStaffModalOpen && (
+        <AddStaffToBranchModal
+          isOpen={isAddStaffModalOpen}
+          onClose={() => setIsAddStaffModalOpen(false)}
+          branchId={selectedBranchId || currentUser.branchId || ""}
+          branchName={branches.find(b => b.id === (selectedBranchId || currentUser.branchId))?.name || activeBranchName}
+          currentUser={currentUser}
+          onStaffAdded={() => {
+            setSuccessToast("เพิ่มพนักงานเข้าสู่สาขาเรียบร้อยแล้ว");
+            loadData(selectedBranchId, true);
+            setTimeout(() => setSuccessToast(null), 4000);
+          }}
+        />
+      )}
+
+      {/* Remove Staff Confirmation Modal */}
+      {employeeToRemove && (
+        <RemoveStaffConfirmModal
+          isOpen={Boolean(employeeToRemove)}
+          onClose={() => setEmployeeToRemove(null)}
+          employee={employeeToRemove}
+          branchId={selectedBranchId || currentUser.branchId || ""}
+          branchName={branches.find(b => b.id === (selectedBranchId || currentUser.branchId))?.name || activeBranchName}
+          currentUser={currentUser}
+          onStaffRemoved={() => {
+            setSuccessToast(`ปลดคุณ ${employeeToRemove.name} ออกจากสาขาและรีเซ็ตสิทธิ์เรียบร้อยแล้ว`);
+            loadData(selectedBranchId, true);
+            setTimeout(() => setSuccessToast(null), 4000);
+          }}
+        />
       )}
 
       {/* Footer */}
