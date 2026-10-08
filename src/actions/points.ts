@@ -1,7 +1,7 @@
 "use server";
 
 import { getServices } from "../services/container";
-import { PointTransaction, LeaderboardEntry } from "../types";
+import { PointTransaction, LeaderboardEntry, BranchLeaderboardEntry } from "../types";
 
 export async function getUserPointsAction(userId: string): Promise<{
   success: boolean;
@@ -21,16 +21,47 @@ export async function getUserPointsAction(userId: string): Promise<{
   }
 }
 
-export async function getLeaderboardAction(branchId?: string): Promise<{
+export async function getLeaderboardAction(params?: string | {
+  branchId?: string;
+  view?: "weekly" | "current";
+}): Promise<{
   success: boolean;
   leaderboard?: LeaderboardEntry[];
+  isSnapshot?: boolean;
+  snapshotInfo?: {
+    weekStartDate: string;
+    weekEndDate: string;
+    processedAt: string;
+    totalParticipants?: number;
+    topScore?: number;
+  };
   error?: string;
 }> {
   try {
     const services = getServices();
-    return await services.points.getLeaderboard(branchId);
+    return await services.points.getLeaderboard(params);
   } catch (err: any) {
     console.error("getLeaderboardAction error:", err);
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function getBranchLeaderboardAction(view?: "weekly" | "current"): Promise<{
+  success: boolean;
+  branchLeaderboard?: BranchLeaderboardEntry[];
+  isSnapshot?: boolean;
+  snapshotInfo?: {
+    weekStartDate: string;
+    weekEndDate: string;
+    processedAt: string;
+  };
+  error?: string;
+}> {
+  try {
+    const services = getServices();
+    return await services.points.getBranchLeaderboard(view);
+  } catch (err: any) {
+    console.error("getBranchLeaderboardAction error:", err);
     return { success: false, error: err?.message };
   }
 }

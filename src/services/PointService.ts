@@ -1,9 +1,10 @@
 import { eq, desc, sql, inArray, and, lte, gte } from "drizzle-orm";
 import { users, pointTransactions, shiftSession, taskWork, tasks, branches, employeeLeaves } from "../db/schema";
 import { IPointService, INotificationService } from "./types";
-import { PointTransaction, LeaderboardEntry, ActiveRole } from "../types";
+import { PointTransaction, LeaderboardEntry, BranchLeaderboardEntry, ActiveRole } from "../types";
 import { getUserAvailableRoles, isScoreboardEligible } from "../utils/roles";
-import { getThaiStartAndEndOfDay } from "../utils/date";
+import { getThaiStartAndEndOfDay, getThaiWeekRange } from "../utils/date";
+import { saveWeeklyLeaderboardToStorage, getWeeklyLeaderboardFromStorage } from "../utils/leaderboardStorage";
 
 export class PointService implements IPointService {
   constructor(private db: any, private notificationService?: INotificationService) {}
@@ -282,57 +283,279 @@ export class PointService implements IPointService {
     }
   }
 
-  async getLeaderboard(branchId?: string): Promise<{
+  async getLiveLeaderboard(branchId?: string): Promise<LeaderboardEntry[]> {
+    const allBranches = await this.db.select().from(branches);
+
+    const conditions = [
+      eq(users.is_admin, false),
+      eq(users.executive_type, "none"),
+      inArray(users.manager_type, ["none", "assistant"]),
+    ];
+
+    if (branchId) {
+      conditions.push(eq(users.branch_id, branchId));
+    }
+
+    const allUsers = await this.db
+      .select()
+      .from(users)
+      .where(and(...conditions))
+      .orderBy(desc(users.point))
+      .limit(30);
+
+    return allUsers.map((u: any) => {
+      const userBranch = allBranches.find((b: any) => b.id === u.branch_id);
+      const role: ActiveRole = u.manager_type === "assistant" ? "manager_assistant" : "employee";
+      const defaultPosition = u.manager_type === "assistant" ? "ผู้ช่วยผู้จัดการร้าน" : "พนักงานสาขา";
+
+      return {
+        userId: u.id,
+        name: u.name,
+        role,
+        position: defaultPosition,
+        branchName: userBranch ? userBranch.name : undefined,
+        point: u.point || 0,
+        pointStreak: u.point_streak || 0,
+        pointStreakType: (u.point_streak_type as any) || "none",
+        profile_id: u.profile_id || null,
+      };
+    });
+  }
+
+  async getLeaderboard(
+    params?: string | {
+      branchId?: string;
+      view?: "weekly" | "current";
+    }
+  ): Promise<{
     success: boolean;
     leaderboard: LeaderboardEntry[];
+    isSnapshot?: boolean;
+    snapshotInfo?: {
+      weekStartDate: string;
+      weekEndDate: string;
+      processedAt: string;
+      totalParticipants?: number;
+      topScore?: number;
+    };
     error?: string;
   }> {
     try {
-      const allBranches = await this.db.select().from(branches);
+      const branchId = typeof params === "string" ? params : params?.branchId;
+      const requestedView = typeof params === "object" ? params?.view : undefined;
 
-      // Only employees and assistant managers participate in the scoreboard.
-      // Managers (manager_type = 'store'), executives (executive_type = 'executive'),
-      // committee (executive_type = 'committee'), and admins (is_admin = true) are excluded
-      // from the leaderboard display, while their scores remain intact in the database.
-      const conditions = [
-        eq(users.is_admin, false),
-        eq(users.executive_type, "none"),
-        inArray(users.manager_type, ["none", "assistant"]),
-      ];
+      // 1. If "weekly" is requested (or view not specified), check if a finalized weekly snapshot exists in Supabase Storage
+      if (requestedView !== "current") {
+        const stored = await getWeeklyLeaderboardFromStorage();
+        if (stored) {
+          const rankings = branchId
+            ? stored.branches?.[branchId] || []
+            : stored.overall || [];
 
-      if (branchId) {
-        conditions.push(eq(users.branch_id, branchId));
+          return {
+            success: true,
+            leaderboard: rankings,
+            isSnapshot: true,
+            snapshotInfo: {
+              weekStartDate: stored.weekStartDate,
+              weekEndDate: stored.weekEndDate,
+              processedAt: stored.processedAt,
+              totalParticipants: branchId ? rankings.length : stored.totalParticipants,
+              topScore: rankings[0]?.point ?? 0,
+            },
+          };
+        }
       }
 
-      const allUsers = await this.db
-        .select()
-        .from(users)
-        .where(and(...conditions))
-        .orderBy(desc(users.point))
-        .limit(30);
-
-      const mapped: LeaderboardEntry[] = allUsers.map((u: any) => {
-        const userBranch = allBranches.find((b: any) => b.id === u.branch_id);
-        const role: ActiveRole = u.manager_type === "assistant" ? "manager_assistant" : "employee";
-        const defaultPosition = u.manager_type === "assistant" ? "ผู้ช่วยผู้จัดการร้าน" : "พนักงานสาขา";
-
-        return {
-          userId: u.id,
-          name: u.name,
-          role,
-          position: defaultPosition,
-          branchName: userBranch ? userBranch.name : undefined,
-          point: u.point || 0,
-          pointStreak: u.point_streak || 0,
-          pointStreakType: (u.point_streak_type as any) || "none",
-          profile_id: u.profile_id || null,
-        };
-      });
-
-      return { success: true, leaderboard: mapped };
+      // 2. Otherwise return live current week leaderboard
+      const live = await this.getLiveLeaderboard(branchId);
+      return {
+        success: true,
+        leaderboard: live,
+        isSnapshot: false,
+      };
     } catch (err: any) {
       console.error("getLeaderboard error:", err);
       return { success: false, leaderboard: [], error: err?.message };
+    }
+  }
+
+  async getLiveBranchLeaderboard(): Promise<BranchLeaderboardEntry[]> {
+    try {
+      const allBranches = await this.db.select().from(branches);
+      const allUsers = await this.db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.is_admin, false),
+            eq(users.executive_type, "none"),
+            inArray(users.manager_type, ["none", "assistant"])
+          )
+        );
+
+      const result: BranchLeaderboardEntry[] = allBranches.map((b: any) => {
+        const branchUsers = allUsers.filter((u: any) => u.branch_id === b.id);
+        const totalPoints = branchUsers.reduce((sum: number, u: any) => sum + (u.point || 0), 0);
+        const memberCount = branchUsers.length;
+        const averagePoints = memberCount > 0 ? Math.round(totalPoints / memberCount) : 0;
+
+        const sortedUsers = [...branchUsers].sort((a: any, b: any) => (b.point || 0) - (a.point || 0));
+        const topUser = sortedUsers[0];
+
+        return {
+          branchId: b.id,
+          branchName: b.name,
+          totalPoints,
+          averagePoints,
+          memberCount,
+          topPerformerName: topUser ? topUser.name : undefined,
+          topPerformerPoints: topUser ? (topUser.point || 0) : 0,
+        };
+      });
+
+      return result.sort((a, b) => b.totalPoints - a.totalPoints);
+    } catch (err) {
+      console.error("getLiveBranchLeaderboard error:", err);
+      return [];
+    }
+  }
+
+  async getBranchLeaderboard(view: "weekly" | "current" = "weekly"): Promise<{
+    success: boolean;
+    branchLeaderboard: BranchLeaderboardEntry[];
+    isSnapshot?: boolean;
+    snapshotInfo?: {
+      weekStartDate: string;
+      weekEndDate: string;
+      processedAt: string;
+    };
+    error?: string;
+  }> {
+    try {
+      if (view === "weekly") {
+        const stored = await getWeeklyLeaderboardFromStorage();
+        if (stored && stored.branchRankings && stored.branchRankings.length > 0) {
+          return {
+            success: true,
+            branchLeaderboard: stored.branchRankings,
+            isSnapshot: true,
+            snapshotInfo: {
+              weekStartDate: stored.weekStartDate,
+              weekEndDate: stored.weekEndDate,
+              processedAt: stored.processedAt,
+            },
+          };
+        }
+      }
+
+      const live = await this.getLiveBranchLeaderboard();
+      return {
+        success: true,
+        branchLeaderboard: live,
+        isSnapshot: false,
+      };
+    } catch (err: any) {
+      console.error("getBranchLeaderboard error:", err);
+      return { success: false, branchLeaderboard: [], error: err?.message };
+    }
+  }
+
+  async processWeeklyLeaderboardAndReset(params?: {
+    resetRoles?: string[];
+    recordTransaction?: boolean;
+    notifyEmployees?: boolean;
+    resetStreaks?: boolean;
+  }): Promise<{
+    success: boolean;
+    weekStartDate: string;
+    weekEndDate: string;
+    processedAt: string;
+    snapshotsCreated: number;
+    affectedUsersCount: number;
+    totalPointsReset: number;
+    error?: string;
+  }> {
+    try {
+      const now = new Date();
+      const { weekStartDate, weekEndDate } = getThaiWeekRange(now);
+      const targetRoles =
+        params?.resetRoles && params.resetRoles.length > 0
+          ? params.resetRoles
+          : ["employee", "manager_assistant"];
+      const shouldRecordTx = params?.recordTransaction !== false;
+      const shouldNotify = params?.notifyEmployees !== false;
+      const shouldResetStreaks = Boolean(params?.resetStreaks); // Defaults to false: keep streaks!
+
+      // 1. Gather live overall rankings across all branches (Global individuals)
+      const allBranchesLeaderboard = await this.getLiveLeaderboard();
+
+      // 2. Gather live rankings per branch (Branch individuals)
+      const allBranches = await this.db.select().from(branches);
+      const branchesMap: Record<string, LeaderboardEntry[]> = {};
+      for (const branch of allBranches) {
+        branchesMap[branch.id] = await this.getLiveLeaderboard(branch.id);
+      }
+
+      // 3. Gather live branch rankings (Branch vs Branch scoreboard)
+      const branchRankings = await this.getLiveBranchLeaderboard();
+
+      // 4. Save JSON snapshot to Supabase Storage bucket
+      const storageSaved = await saveWeeklyLeaderboardToStorage({
+        weekStartDate,
+        weekEndDate,
+        processedAt: now.toISOString(),
+        totalParticipants: allBranchesLeaderboard.length,
+        topScore: allBranchesLeaderboard[0]?.point || 0,
+        overall: allBranchesLeaderboard,
+        branches: branchesMap,
+        branchRankings,
+      });
+
+      if (!storageSaved) {
+        console.warn("processWeeklyLeaderboardAndReset: Failed to save to Supabase Storage");
+      }
+
+      // 4. Reset scores in database for the new week
+      const resetRes = await this.resetEmployeeScores({
+        resetRoles: targetRoles,
+        recordTransaction: shouldRecordTx,
+        notifyEmployees: false, // Notification handled below with weekly context
+        resetStreaks: shouldResetStreaks,
+      });
+
+      // 4. Send weekly summary notification
+      if (shouldNotify && this.notificationService) {
+        await this.notificationService.createNotification({
+          recipientRole: "employee",
+          title: "🏆 สรุปผลตารางอันดับสัปดาห์และเริ่มต้นสัปดาห์ใหม่!",
+          message: `ระบบได้ประมวลผลตารางอันดับประจำสัปดาห์ (${weekStartDate} ถึง ${weekEndDate}) เรียบร้อยแล้ว พร้อมรีเซ็ตคะแนนสะสมรอบใหม่เพื่อเริ่มสะสมแต้มสัปดาห์นี้! ตรวจสอบผลงานได้ที่ตารางอันดับ`,
+          type: "system",
+        });
+      }
+
+      return {
+        success: true,
+        weekStartDate,
+        weekEndDate,
+        processedAt: now.toISOString(),
+        snapshotsCreated: storageSaved ? 1 + allBranches.length : 0,
+        affectedUsersCount: resetRes.affectedUsersCount,
+        totalPointsReset: resetRes.totalPointsReset,
+      };
+    } catch (err: unknown) {
+      console.error("processWeeklyLeaderboardAndReset error:", err);
+      const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการประมวลผลตารางคะแนนสัปดาห์";
+      return {
+        success: false,
+        weekStartDate: "",
+        weekEndDate: "",
+        processedAt: new Date().toISOString(),
+        snapshotsCreated: 0,
+        affectedUsersCount: 0,
+        totalPointsReset: 0,
+        error: message,
+      };
     }
   }
 
@@ -351,7 +574,7 @@ export class PointService implements IPointService {
       const targetRoles =
         params?.resetRoles && params.resetRoles.length > 0
           ? params.resetRoles
-          : ["employee"];
+          : ["employee", "manager_assistant"];
       const shouldRecordTx = params?.recordTransaction !== false;
       const shouldNotify = params?.notifyEmployees !== false;
       const shouldResetStreaks = Boolean(params?.resetStreaks);
@@ -381,8 +604,8 @@ export class PointService implements IPointService {
               return {
                 user_id: u.id,
                 points: -u.point,
-                type: "monthly_reset",
-                description: `รีเซ็ตคะแนนรอบเดือนใหม่ (ล้างคะแนนเดิม ${u.point} แต้ม)`,
+                type: "weekly_reset",
+                description: `รีเซ็ตคะแนนรอบสัปดาห์ใหม่หลังสรุปผลวันอาทิตย์ (ล้างคะแนนเดิม ${u.point} แต้ม)`,
                 created_at: now,
               };
             });
@@ -421,8 +644,8 @@ export class PointService implements IPointService {
       if (shouldNotify && this.notificationService) {
         await this.notificationService.createNotification({
           recipientRole: "employee",
-          title: "🎉 เริ่มต้นรอบคะแนนประจำเดือนใหม่",
-          message: "ระบบได้ทำการรีเซ็ตคะแนนสะสมประจำเดือนของพนักงานเรียบร้อยแล้ว ขอให้ทุกคนร่วมสนุกกับการสะสมแต้มรอบใหม่ในเดือนนี้!",
+          title: "🎉 เริ่มต้นรอบคะแนนประจำสัปดาห์ใหม่",
+          message: "ระบบได้ทำการรีเซ็ตคะแนนสะสมประจำสัปดาห์ของพนักงานเรียบร้อยแล้ว ขอให้ทุกคนร่วมสนุกกับการสะสมแต้มรอบใหม่ในสัปดาห์นี้!",
           type: "system",
         });
       }
@@ -434,7 +657,7 @@ export class PointService implements IPointService {
       };
     } catch (err: unknown) {
       console.error("resetEmployeeScores error:", err);
-      const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการรีเซ็ตคะแนนพนักงานประจำเดือน";
+      const message = err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการรีเซ็ตคะแนนพนักงานประจำสัปดาห์";
       return {
         success: false,
         affectedUsersCount: 0,

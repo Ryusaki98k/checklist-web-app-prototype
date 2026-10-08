@@ -641,10 +641,10 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                           <div className="space-y-0.5">
                             <span className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1.5">
                               <Bell size={13} className="text-purple-600 dark:text-purple-400" />
-                              ส่งแจ้งเตือนเริ่มรอบเดือนใหม่
+                              ส่งแจ้งเตือนเริ่มรอบสัปดาห์ใหม่
                             </span>
                             <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed">
-                              แจ้งเตือนพนักงานทุกคนว่าคะแนนสะสมเริ่มรอบใหม่แล้ว เพื่อกระตุ้นการมีส่วนร่วม
+                              แจ้งเตือนพนักงานทุกคนว่าคะแนนสะสมเริ่มรอบสัปดาห์ใหม่แล้ว และสามารถตรวจสอบทำเนียบอันดับสัปดาห์ที่ผ่านมาได้
                             </p>
                           </div>
                         </label>
@@ -665,7 +665,7 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                               รีเซ็ตสตรีคความต่อเนื่อง (Streak)
                             </span>
                             <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed">
-                              ค่าเริ่มต้นคือปิดไว้ (คงสตรีคไว้เพื่อวัดความต่อเนื่องข้ามเดือน หากเปิดจะล้างสตรีคเป็น 0 ด้วย)
+                              ค่าเริ่มต้นคือปิดไว้ (คงสตรีคไว้เพื่อวัดความต่อเนื่องข้ามสัปดาห์ หากเปิดจะล้างสตรีคเป็น 0 ด้วย)
                             </p>
                           </div>
                         </label>

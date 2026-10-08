@@ -43,13 +43,13 @@ const DEFAULT_CRON_JOBS: CronSetting[] = [
   },
   {
     id: "reset-scores",
-    name: "รีเซ็ตคะแนนพนักงานประจำเดือน (Monthly Employee Score Reset)",
-    description: "รีเซ็ตคะแนนสะสมของพนักงานให้เริ่มต้นใหม่ทุกวันแรกของเดือน เพื่อเริ่มรอบคะแนนและแข่งขันในตารางคะแนน (Leaderboard) ประจำเดือนใหม่",
-    schedule_cron: "0 0 1 * *",
-    schedule_description: "วันที่ 1 ของทุกเดือน เวลา 07:00 น.",
+    name: "ประมวลผลตารางคะแนนสัปดาห์และรีเซ็ตคะแนน (Weekly Leaderboard & Score Reset)",
+    description: "รวบรวมและบันทึกตารางอันดับประจำสัปดาห์ (Weekly Leaderboard Snapshot) ทุกคืนวันอาทิตย์ เวลา 23:55 น. ก่อนขึ้นวันใหม่ จากนั้นรีเซ็ตคะแนนสะสมของพนักงานเพื่อเริ่มรอบการแข่งขันใหม่ในวันจันทร์",
+    schedule_cron: "55 16 * * 0",
+    schedule_description: "ทุกวันอาทิตย์ เวลา 23:55 น.",
     enabled: true,
     config: {
-      resetRoles: ["employee"],
+      resetRoles: ["employee", "manager_assistant"],
       recordTransaction: true,
       notifyEmployees: true,
       resetStreaks: false,
@@ -114,7 +114,7 @@ export class CronService implements ICronService {
         return DEFAULT_CRON_JOBS;
       }
 
-      // Ensure any newly added DEFAULT_CRON_JOBS exist in DB
+      // Ensure any newly added DEFAULT_CRON_JOBS exist in DB and auto-migrate weekly reset-scores
       for (const defaultJob of DEFAULT_CRON_JOBS) {
         const found = records.find((r: typeof cronSettings.$inferSelect) => r.id === defaultJob.id);
         if (!found) {
@@ -143,6 +143,27 @@ export class CronService implements ICronService {
             });
           } catch {
             // Ignore insert conflicts
+          }
+        } else if (found.id === "reset-scores" && (found.schedule_cron === "0 0 1 * *" || found.name?.includes("ประจำเดือน"))) {
+          // Auto-migrate legacy monthly job to weekly Sunday 23:55 schedule
+          try {
+            await this.db
+              .update(cronSettings)
+              .set({
+                name: defaultJob.name,
+                description: defaultJob.description,
+                schedule_cron: defaultJob.schedule_cron,
+                schedule_description: defaultJob.schedule_description,
+                updated_at: new Date(),
+              })
+              .where(eq(cronSettings.id, "reset-scores"));
+
+            found.name = defaultJob.name;
+            found.description = defaultJob.description;
+            found.schedule_cron = defaultJob.schedule_cron;
+            found.schedule_description = defaultJob.schedule_description;
+          } catch {
+            // Ignore update errors
           }
         }
       }
@@ -419,12 +440,12 @@ export class CronService implements ICronService {
           throw new Error("PointService is not configured in CronService");
         }
 
-        const resetRoles = (mergedConfig.resetRoles as string[]) || ["employee"];
+        const resetRoles = (mergedConfig.resetRoles as string[]) || ["employee", "manager_assistant"];
         const recordTransaction = mergedConfig.recordTransaction !== false;
         const notifyEmployees = mergedConfig.notifyEmployees !== false;
         const resetStreaks = Boolean(mergedConfig.resetStreaks);
 
-        const res = await this.pointService.resetEmployeeScores({
+        const res = await this.pointService.processWeeklyLeaderboardAndReset({
           resetRoles,
           recordTransaction,
           notifyEmployees,
@@ -432,10 +453,10 @@ export class CronService implements ICronService {
         });
 
         if (!res.success) {
-          throw new Error(res.error || "เกิดข้อผิดพลาดในการรีเซ็ตคะแนนพนักงานประจำเดือน");
+          throw new Error(res.error || "เกิดข้อผิดพลาดในการประมวลผลตารางอันดับและรีเซ็ตคะแนนประจำสัปดาห์");
         }
 
-        const summaryMsg = `รีเซ็ตคะแนนประจำเดือนสำเร็จ: พนักงานที่ได้รับผลกระทบ ${res.affectedUsersCount} คน (ล้างคะแนนสะสมรวม ${res.totalPointsReset} แต้ม, สตรีค: ${resetStreaks ? "รีเซ็ต" : "คงเดิม"})`;
+        const summaryMsg = `ประมวลผลตารางคะแนนประจำสัปดาห์สำเร็จ (รอบ ${res.weekStartDate} ถึง ${res.weekEndDate}): บันทึก Snapshot ${res.snapshotsCreated} ชุด, พนักงานที่รีเซ็ตคะแนน ${res.affectedUsersCount} คน (ล้างแต้มเดิมรวม ${res.totalPointsReset} แต้ม, สตรีค: ${resetStreaks ? "รีเซ็ต" : "รักษาสถิติเดิม"})`;
 
         await this.recordExecution(id, {
           status: "success",

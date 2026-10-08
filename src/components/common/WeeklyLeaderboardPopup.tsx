@@ -145,7 +145,7 @@ export function WeeklyLeaderboardPopup() {
       setIsLoading(true);
       try {
         const branchId = targetScope === "branch" ? currentUser.branchId : undefined;
-        const res = await getLeaderboardAction(branchId);
+        const res = await getLeaderboardAction({ branchId, view: "weekly" });
         if (res.success && res.leaderboard) {
           setLeaderboard(res.leaderboard);
         }
@@ -310,26 +310,28 @@ export function WeeklyLeaderboardPopup() {
               <button
                 type="button"
                 onClick={() => handleScopeChange("branch")}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   scope === "branch"
                     ? "bg-[var(--color-brown)] text-amber-200 dark:bg-amber-400 dark:text-amber-950 shadow-xs"
                     : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                 }`}
+                title="อันดับเฉพาะในสาขาของคุณ (Branch-wide)"
               >
                 <Store size={12} />
-                <span>สาขาของฉัน</span>
+                <span>สาขาของฉัน (Branch-wide)</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleScopeChange("all")}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   scope === "all"
                     ? "bg-[var(--color-brown)] text-amber-200 dark:bg-amber-400 dark:text-amber-950 shadow-xs"
                     : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                 }`}
+                title="อันดับรวมพนักงานทุกสาขา (Global-wide)"
               >
                 <Globe size={12} />
-                <span>ทุกสาขา</span>
+                <span>ทุกสาขา (Global-wide)</span>
               </button>
             </div>
           </div>

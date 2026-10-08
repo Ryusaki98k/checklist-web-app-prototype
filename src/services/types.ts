@@ -1,4 +1,4 @@
-import { Role, ManagerType, ExecutiveType, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
+import { Role, ManagerType, ExecutiveType, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, BranchLeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
 
 export interface IAuthService {
   login(username: string, password: string, requestedRole?: Role): Promise<{ success: boolean; user?: User; error?: string }>;
@@ -89,9 +89,48 @@ export interface IPointService {
     error?: string;
   }>;
 
-  getLeaderboard(branchId?: string): Promise<{
+  getLeaderboard(params?: string | {
+    branchId?: string;
+    view?: "weekly" | "current";
+  }): Promise<{
     success: boolean;
     leaderboard: LeaderboardEntry[];
+    isSnapshot?: boolean;
+    snapshotInfo?: {
+      weekStartDate: string;
+      weekEndDate: string;
+      processedAt: string;
+      totalParticipants?: number;
+      topScore?: number;
+    };
+    error?: string;
+  }>;
+
+  getBranchLeaderboard(view?: "weekly" | "current"): Promise<{
+    success: boolean;
+    branchLeaderboard: BranchLeaderboardEntry[];
+    isSnapshot?: boolean;
+    snapshotInfo?: {
+      weekStartDate: string;
+      weekEndDate: string;
+      processedAt: string;
+    };
+    error?: string;
+  }>;
+
+  processWeeklyLeaderboardAndReset(params?: {
+    resetRoles?: string[];
+    recordTransaction?: boolean;
+    notifyEmployees?: boolean;
+    resetStreaks?: boolean;
+  }): Promise<{
+    success: boolean;
+    weekStartDate: string;
+    weekEndDate: string;
+    processedAt: string;
+    snapshotsCreated: number;
+    affectedUsersCount: number;
+    totalPointsReset: number;
     error?: string;
   }>;
 

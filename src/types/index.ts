@@ -147,6 +147,16 @@ export interface LeaderboardEntry {
   profile_id?: string | null;
 }
 
+export interface BranchLeaderboardEntry {
+  branchId: string;
+  branchName: string;
+  totalPoints: number;
+  averagePoints: number;
+  memberCount: number;
+  topPerformerName?: string;
+  topPerformerPoints?: number;
+}
+
 export const STAFF_POSITIONS = [
   "แคชเชียร์",
   "พนักงานสต็อก/จัดเรียง",

@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Flame, Award, History, X, Trophy, Sparkles, Users, Store, Globe } from "lucide-react";
-import { PointTransaction, LeaderboardEntry } from "../../types";
-import { getUserPointsAction, getLeaderboardAction } from "../../actions/points";
+import { Flame, Award, History, X, Trophy, Sparkles, Users, Store, Globe, Calendar, Zap, Building2 } from "lucide-react";
+import { PointTransaction, LeaderboardEntry, BranchLeaderboardEntry } from "../../types";
+import { getUserPointsAction, getLeaderboardAction, getBranchLeaderboardAction } from "../../actions/points";
 import { useApp } from "../../context/AppContext";
 
 export function PointStreakBadge() {
@@ -21,9 +21,21 @@ export function PointStreakBadge() {
   const [activeTab, setActiveTab] = useState<PopupTab>("my_stats");
 
   // Leaderboard state
+  type LeaderboardViewType = "weekly" | "current";
+  type LeaderboardScopeType = "branch" | "all" | "branches";
+  const [leaderboardView, setLeaderboardView] = useState<LeaderboardViewType>("weekly");
+  const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScopeType>("branch");
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [branchLeaderboard, setBranchLeaderboard] = useState<BranchLeaderboardEntry[]>([]);
+  const [isSnapshot, setIsSnapshot] = useState<boolean>(false);
+  const [snapshotInfo, setSnapshotInfo] = useState<{
+    weekStartDate: string;
+    weekEndDate: string;
+    processedAt: string;
+    totalParticipants?: number;
+    topScore?: number;
+  } | null>(null);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState<boolean>(false);
-  const [leaderboardScope, setLeaderboardScope] = useState<"branch" | "all">("branch");
 
   useEffect(() => {
     setMounted(true);
@@ -46,20 +58,41 @@ export function PointStreakBadge() {
   }, [currentUserId]);
 
   const currentBranchId = currentUser?.branchId;
-  const fetchLeaderboard = useCallback(async (scope: "branch" | "all" = leaderboardScope) => {
+  const fetchLeaderboard = useCallback(async (
+    scope: LeaderboardScopeType = leaderboardScope,
+    view: LeaderboardViewType = leaderboardView
+  ) => {
     setIsLoadingLeaderboard(true);
     try {
-      const bId = scope === "branch" ? currentBranchId : undefined;
-      const res = await getLeaderboardAction(bId);
-      if (res.success && res.leaderboard) {
-        setLeaderboard(res.leaderboard);
+      if (scope === "branches") {
+        const res = await getBranchLeaderboardAction(view);
+        if (res.success && res.branchLeaderboard) {
+          setBranchLeaderboard(res.branchLeaderboard);
+          setIsSnapshot(Boolean(res.isSnapshot));
+          if (res.snapshotInfo) {
+            setSnapshotInfo({
+              ...res.snapshotInfo,
+              totalParticipants: res.branchLeaderboard.length,
+            });
+          } else {
+            setSnapshotInfo(null);
+          }
+        }
+      } else {
+        const bId = scope === "branch" ? currentBranchId : undefined;
+        const res = await getLeaderboardAction({ branchId: bId, view });
+        if (res.success && res.leaderboard) {
+          setLeaderboard(res.leaderboard);
+          setIsSnapshot(Boolean(res.isSnapshot));
+          setSnapshotInfo(res.snapshotInfo || null);
+        }
       }
     } catch (err) {
       console.error("Failed to load leaderboard:", err);
     } finally {
       setIsLoadingLeaderboard(false);
     }
-  }, [currentBranchId, leaderboardScope]);
+  }, [currentBranchId, leaderboardScope, leaderboardView]);
 
   useEffect(() => {
     void fetchPointDetails();
@@ -123,12 +156,17 @@ export function PointStreakBadge() {
   const handleOpenModal = () => {
     setIsModalOpen(true);
     fetchPointDetails();
-    fetchLeaderboard(leaderboardScope);
+    fetchLeaderboard(leaderboardScope, leaderboardView);
   };
 
-  const handleScopeChange = (newScope: "branch" | "all") => {
+  const handleScopeChange = (newScope: LeaderboardScopeType) => {
     setLeaderboardScope(newScope);
-    fetchLeaderboard(newScope);
+    fetchLeaderboard(newScope, leaderboardView);
+  };
+
+  const handleViewChange = (newView: LeaderboardViewType) => {
+    setLeaderboardView(newView);
+    fetchLeaderboard(leaderboardScope, newView);
   };
 
   const getTier = (pts: number) => {
@@ -341,134 +379,283 @@ export function PointStreakBadge() {
             {/* ─── TAB 2: LEADERBOARD ────────────────────────────────────────── */}
             {activeTab === "leaderboard" && (
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 flex flex-col">
-                {/* Scope selector */}
-                <div className="flex items-center justify-between gap-2">
+                {/* Mode & Scope Selectors */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                  {/* View Type Switcher (Weekly Snapshot vs Live Current) */}
                   <div className="flex items-center gap-1 bg-[var(--color-surface-2)] p-1 rounded-xl text-xs font-semibold border border-[var(--color-border)]">
                     <button
                       type="button"
-                      onClick={() => handleScopeChange("branch")}
-                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                        leaderboardScope === "branch"
-                          ? "bg-[var(--color-surface)] text-[var(--color-text)] font-bold shadow-xs"
+                      onClick={() => handleViewChange("weekly")}
+                      className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        leaderboardView === "weekly"
+                          ? "bg-[var(--color-surface)] text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
                           : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                       }`}
+                      title="แสดงผลตารางอันดับที่ประมวลผลเมื่อวันอาทิตย์ 23:55 น."
                     >
-                      <Store size={13} />
-                      <span>สาขาของฉัน</span>
+                      <Trophy size={13} className={leaderboardView === "weekly" ? "text-amber-500" : ""} />
+                      <span>สรุปสัปดาห์ (Weekly)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleScopeChange("all")}
-                      className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                        leaderboardScope === "all"
-                          ? "bg-[var(--color-surface)] text-[var(--color-text)] font-bold shadow-xs"
+                      onClick={() => handleViewChange("current")}
+                      className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        leaderboardView === "current"
+                          ? "bg-[var(--color-surface)] text-cyan-700 dark:text-cyan-300 font-extrabold shadow-xs"
                           : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                       }`}
+                      title="แสดงคะแนนที่กำลังสะสมในรอบสัปดาห์ปัจจุบัน (Live)"
                     >
-                      <Globe size={13} />
-                      <span>ทุกสาขา</span>
+                      <Zap size={13} className={leaderboardView === "current" ? "text-cyan-500" : ""} />
+                      <span>รอบปัจจุบัน (Live)</span>
                     </button>
                   </div>
 
-                  <span className="text-[11px] font-mono text-[var(--color-text-muted)] px-2 py-0.5 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-                    {leaderboard.length} คน
-                  </span>
+                  {/* Scope Selector & Count */}
+                  <div className="flex items-center justify-between sm:justify-end gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1 bg-[var(--color-surface-2)] p-1 rounded-xl text-xs font-semibold border border-[var(--color-border)]">
+                      <button
+                        type="button"
+                        onClick={() => handleScopeChange("branch")}
+                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                          leaderboardScope === "branch"
+                            ? "bg-[var(--color-surface)] text-amber-800 dark:text-amber-300 font-bold shadow-xs border border-amber-500/30"
+                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        }`}
+                        title="อันดับเฉพาะในสาขาของคุณ (Branch-wide)"
+                      >
+                        <Store size={12} />
+                        <span>สาขา</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleScopeChange("all")}
+                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                          leaderboardScope === "all"
+                            ? "bg-[var(--color-surface)] text-blue-800 dark:text-blue-300 font-bold shadow-xs border border-blue-500/30"
+                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        }`}
+                        title="อันดับรวมพนักงานทุกสาขา (Global-wide)"
+                      >
+                        <Globe size={12} />
+                        <span>ทุกสาขา</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleScopeChange("branches")}
+                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                          leaderboardScope === "branches"
+                            ? "bg-[var(--color-surface)] text-purple-800 dark:text-purple-300 font-bold shadow-xs border border-purple-500/30"
+                            : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        }`}
+                        title="อันดับคะแนนรวมของแต่ละสาขา"
+                      >
+                        <Building2 size={12} />
+                        <span>อันดับสาขา</span>
+                      </button>
+                    </div>
+
+                    <span className="text-[11px] font-mono text-[var(--color-text-muted)] px-2 py-0.5 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] shrink-0">
+                      {leaderboardScope === "branches" ? `${branchLeaderboard.length} สาขา` : `${leaderboard.length} คน`}
+                    </span>
+                  </div>
                 </div>
 
-                {/* My Ranking Spotlight Card */}
-                {(() => {
-                  const myIndex = leaderboard.findIndex(u => u.userId === currentUser.id);
-                  return (
-                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[var(--color-surface-2)] to-orange-500/10 border-2 border-amber-500/30 flex items-center justify-between text-xs shadow-xs">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-500 text-amber-950 font-black flex items-center justify-center text-sm shadow-xs shrink-0">
-                          {myIndex >= 0 ? `#${myIndex + 1}` : "-"}
-                        </div>
-                        <div>
-                          <p className="font-extrabold text-[var(--color-text)]">
-                            {myIndex >= 0 ? `คุณอยู่อันดับที่ #${myIndex + 1}` : "อันดับของคุณ"}
-                          </p>
-                          <p className="text-[11px] text-[var(--color-text-muted)]">
-                            {leaderboardScope === "branch" ? "เปรียบเทียบในสาขาของคุณ" : "เปรียบเทียบรวมทุกสาขา"}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-right">
-                        {streak > 0 && (
-                          <span className="flex items-center gap-0.5 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded-lg border border-orange-500/20">
-                            <Flame className="w-3.5 h-3.5 fill-orange-500" /> {streak}
-                          </span>
-                        )}
-                        <span className="font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-lg border border-amber-500/20">
-                          {points} แต้ม
-                        </span>
-                      </div>
+                {/* Contextual Status Banner */}
+                {leaderboardView === "weekly" ? (
+                  <div className="p-2.5 rounded-xl border border-amber-500/25 bg-amber-500/10 flex items-start gap-2.5">
+                    <Trophy size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0 text-[11px] leading-relaxed">
+                      <span className="font-bold text-amber-900 dark:text-amber-300 block">
+                        {isSnapshot && snapshotInfo
+                          ? `🏆 ผลสรุปประจำสัปดาห์ (${snapshotInfo.weekStartDate} ถึง ${snapshotInfo.weekEndDate})`
+                          : "🏆 ผลสรุปการจัดอันดับประจำสัปดาห์ (Weekly Leaderboard)"}
+                        {" • "}
+                        {leaderboardScope === "branch" ? "ในสาขาของคุณ" : leaderboardScope === "all" ? "รวมทุกสาขา" : "เปรียบเทียบสาขา"}
+                      </span>
+                      <span className="text-amber-800/80 dark:text-amber-300/80">
+                        {isSnapshot && snapshotInfo
+                          ? `ประมวลผลเมื่อวันอาทิตย์ เวลา 23:55 น. • รายการที่แข่งขัน ${snapshotInfo.totalParticipants ?? (leaderboardScope === "branches" ? branchLeaderboard.length : leaderboard.length)} รายการ`
+                          : "ข้อมูลรวบรวมทุกคืนวันอาทิตย์ เวลา 23:55 น. เพื่อแสดงผลตลอดสัปดาห์จันทร์ถึงเสาร์"}
+                      </span>
                     </div>
-                  );
-                })()}
-
-                {/* Leaderboard List */}
-                {isLoadingLeaderboard ? (
-                  <div className="p-8 text-center text-xs text-[var(--color-text-muted)] flex flex-col items-center gap-2.5">
-                    <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                    <span>กำลังโหลดตารางอันดับ...</span>
-                  </div>
-                ) : leaderboard.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-[var(--color-text-muted)] flex flex-col items-center gap-2 bg-[var(--color-surface-2)]/30 rounded-2xl border border-[var(--color-border)]">
-                    <Users className="w-8 h-8 opacity-30 text-[var(--color-text-muted)]" />
-                    <p className="font-bold text-[var(--color-text)]">ยังไม่มีข้อมูลคะแนนสะสม</p>
-                    <p className="text-[11px] max-w-xs text-[var(--color-text-subtle)]">
-                      เมื่อเริ่มส่งมอบงานเช็คลิสต์และได้รับการอนุมัติ คะแนนและสถิติจะแสดงที่นี่
-                    </p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-[var(--color-border)] max-h-72 overflow-y-auto pr-1 space-y-1">
-                    {leaderboard.map((user, idx) => {
-                      const isMe = user.userId === currentUser.id;
-                      return (
-                        <div
-                          key={user.userId}
-                          className={`py-2 px-2.5 rounded-xl flex items-center justify-between gap-2.5 transition-colors ${
-                            isMe 
-                              ? "bg-amber-500/15 border-2 border-amber-400 dark:border-amber-600 shadow-xs my-1" 
-                              : "hover:bg-[var(--color-surface-2)]/60"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-5 flex items-center justify-center shrink-0">
-                              {getRankBadge(idx)}
+                  <div className="p-2.5 rounded-xl border border-cyan-500/25 bg-cyan-500/10 flex items-start gap-2.5">
+                    <Zap size={15} className="text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0 text-[11px] leading-relaxed">
+                      <span className="font-bold text-cyan-900 dark:text-cyan-300 block">
+                        ⚡ คะแนนสะสมรอบสัปดาห์ปัจจุบัน (Live Progress) • {leaderboardScope === "branch" ? "ในสาขาของคุณ" : leaderboardScope === "all" ? "รวมทุกสาขา" : "เปรียบเทียบสาขา"}
+                      </span>
+                      <span className="text-cyan-800/80 dark:text-cyan-300/80">
+                        เริ่มสะสมแต้มใหม่ตั้งแต่วันจันทร์ • จะถูกประมวลผลเป็นทำเนียบสัปดาห์และรีเซ็ตในวันอาทิตย์ 23:55 น.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Branch Rankings View */}
+                {leaderboardScope === "branches" ? (
+                  isLoadingLeaderboard ? (
+                    <div className="p-8 text-center text-xs text-[var(--color-text-muted)] flex flex-col items-center gap-2.5">
+                      <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                      <span>กำลังโหลดอันดับสาขา...</span>
+                    </div>
+                  ) : branchLeaderboard.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-[var(--color-text-muted)] flex flex-col items-center gap-2 bg-[var(--color-surface-2)]/30 rounded-2xl border border-[var(--color-border)]">
+                      <Building2 className="w-8 h-8 opacity-30 text-[var(--color-text-muted)]" />
+                      <p className="font-bold text-[var(--color-text)]">ยังไม่มีข้อมูลอันดับสาขา</p>
+                      <p className="text-[11px] max-w-xs text-[var(--color-text-subtle)]">
+                        คะแนนรวมของแต่ละสาขาจะแสดงที่นี่เมื่อมีการสะสมแต้ม
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[var(--color-border)] max-h-72 overflow-y-auto pr-1 space-y-1">
+                      {branchLeaderboard.map((b, idx) => {
+                        const isMyBranch = currentUser?.branchId && b.branchId === currentUser.branchId;
+                        return (
+                          <div
+                            key={b.branchId}
+                            className={`py-2 px-2.5 rounded-xl flex items-center justify-between gap-2.5 transition-colors ${
+                              isMyBranch
+                                ? "bg-amber-500/15 border-2 border-amber-400 dark:border-amber-600 shadow-xs my-1"
+                                : "hover:bg-[var(--color-surface-2)]/60"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-5 flex items-center justify-center shrink-0">
+                                {getRankBadge(idx)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-[var(--color-text)] truncate flex items-center gap-1.5">
+                                  <span>{b.branchName}</span>
+                                  {isMyBranch && (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-500 text-amber-950 font-extrabold shadow-xs">
+                                      สาขาของคุณ
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-[11px] text-[var(--color-text-muted)] truncate">
+                                  ทีม {b.memberCount} คน • เฉลี่ย {b.averagePoints} แต้ม/คน
+                                  {b.topPerformerName && ` • ⭐ ${b.topPerformerName}`}
+                                </p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-[var(--color-text)] truncate flex items-center gap-1.5">
-                                <span>{user.name}</span>
-                                {isMe && (
-                                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-500 text-amber-950 font-extrabold shadow-xs">
-                                    คุณ
-                                  </span>
-                                )}
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-1 text-xs font-black text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 py-0.5 rounded-lg">
+                                <Award className="w-3 h-3 text-amber-500" />
+                                <span>{b.totalPoints}</span>
+                                <span className="text-[10px] font-normal text-amber-700 dark:text-amber-300">แต้ม</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : (
+                  <>
+                    {/* My Ranking Spotlight Card (Individual) */}
+                    {(() => {
+                      const myIndex = leaderboard.findIndex(u => u.userId === currentUser.id);
+                      const myRecord = myIndex >= 0 ? leaderboard[myIndex] : null;
+                      const displayScore = leaderboardView === "weekly" && myRecord ? myRecord.point : points;
+                      return (
+                        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[var(--color-surface-2)] to-orange-500/10 border-2 border-amber-500/30 flex items-center justify-between text-xs shadow-xs">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-amber-500 text-amber-950 font-black flex items-center justify-center text-sm shadow-xs shrink-0">
+                              {myIndex >= 0 ? `#${myIndex + 1}` : "-"}
+                            </div>
+                            <div>
+                              <p className="font-extrabold text-[var(--color-text)]">
+                                {myIndex >= 0 ? `คุณอยู่อันดับที่ #${myIndex + 1}` : "อันดับของคุณ"}
                               </p>
-                              <p className="text-[11px] text-[var(--color-text-muted)] truncate">
-                                {user.position || user.role} {user.branchName ? `• ${user.branchName}` : ""}
+                              <p className="text-[11px] text-[var(--color-text-muted)]">
+                                {leaderboardView === "weekly" ? "ผลสรุปสัปดาห์ที่แล้ว" : "คะแนนสะสมรอบปัจจุบัน"}
+                                {" • "}
+                                {leaderboardScope === "branch" ? "ในสาขาของคุณ" : "รวมทุกสาขา"}
                               </p>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            {user.pointStreak > 0 && (
-                              <div className="flex items-center gap-0.5 text-xs font-bold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/60 border border-orange-200 dark:border-orange-800 px-1.5 py-0.5 rounded-lg">
-                                <Flame className="w-3 h-3 fill-orange-500" />
-                                <span>{user.pointStreak}</span>
-                              </div>
+                          <div className="flex items-center gap-2 text-right">
+                            {streak > 0 && (
+                              <span className="flex items-center gap-0.5 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded-lg border border-orange-500/20" title="สตรีคการปฏิบัติงานต่อเนื่อง">
+                                <Flame className="w-3.5 h-3.5 fill-orange-500" /> {streak}
+                              </span>
                             )}
-                            <div className="flex items-center gap-1 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-lg">
-                              <Award className="w-3 h-3 text-amber-500" />
-                              <span>{user.point}</span>
-                            </div>
+                            <span className="font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-lg border border-amber-500/20">
+                              {displayScore} แต้ม
+                            </span>
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
+                    })()}
+
+                    {/* Leaderboard List */}
+                    {isLoadingLeaderboard ? (
+                      <div className="p-8 text-center text-xs text-[var(--color-text-muted)] flex flex-col items-center gap-2.5">
+                        <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                        <span>กำลังโหลดตารางอันดับ...</span>
+                      </div>
+                    ) : leaderboard.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-[var(--color-text-muted)] flex flex-col items-center gap-2 bg-[var(--color-surface-2)]/30 rounded-2xl border border-[var(--color-border)]">
+                        <Users className="w-8 h-8 opacity-30 text-[var(--color-text-muted)]" />
+                        <p className="font-bold text-[var(--color-text)]">ยังไม่มีข้อมูลคะแนนสะสม</p>
+                        <p className="text-[11px] max-w-xs text-[var(--color-text-subtle)]">
+                          เมื่อเริ่มส่งมอบงานเช็คลิสต์และได้รับการอนุมัติ คะแนนและสถิติจะแสดงที่นี่
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-[var(--color-border)] max-h-72 overflow-y-auto pr-1 space-y-1">
+                        {leaderboard.map((user, idx) => {
+                          const isMe = user.userId === currentUser.id;
+                          return (
+                            <div
+                              key={user.userId}
+                              className={`py-2 px-2.5 rounded-xl flex items-center justify-between gap-2.5 transition-colors ${
+                                isMe 
+                                  ? "bg-amber-500/15 border-2 border-amber-400 dark:border-amber-600 shadow-xs my-1" 
+                                  : "hover:bg-[var(--color-surface-2)]/60"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-5 flex items-center justify-center shrink-0">
+                                  {getRankBadge(idx)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-[var(--color-text)] truncate flex items-center gap-1.5">
+                                    <span>{user.name}</span>
+                                    {isMe && (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-500 text-amber-950 font-extrabold shadow-xs">
+                                        คุณ
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-[11px] text-[var(--color-text-muted)] truncate">
+                                    {user.position || user.role} {user.branchName ? `• ${user.branchName}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {user.pointStreak > 0 && (
+                                  <div className="flex items-center gap-0.5 text-xs font-bold text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/60 border border-orange-200 dark:border-orange-800 px-1.5 py-0.5 rounded-lg">
+                                    <Flame className="w-3 h-3 fill-orange-500" />
+                                    <span>{user.pointStreak}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-lg">
+                                  <Award className="w-3 h-3 text-amber-500" />
+                                  <span>{user.point}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
