@@ -4,7 +4,7 @@ import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, Divider, getShiftBadge } from "../common/Badge";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
 import { UserAvatar } from "../common/UserAvatar";
-import { AlertCircle, AlertTriangle, ShieldCheck, CheckCircle2, ShieldAlert } from "lucide-react";
+import { AlertCircle, AlertTriangle, ShieldCheck, CheckCircle2, ShieldAlert, Check } from "lucide-react";
 import { reviewIncompleteShiftAction } from "../../actions/manager";
 
 export function SessionDetailModal({
@@ -499,14 +499,18 @@ export function SessionDetailModal({
           </div>
         </div>
 
-        {/* Modal Bottom Action: Approve Button */}
+        {/* Modal Bottom Action: Approve Buttons */}
         {canApprove && onApprove && !isApproved && (
-          <div className="mt-5 pt-4 border-t border-[var(--color-border)]">
+          <div className="mt-5 pt-4 border-t border-[var(--color-border)] flex flex-col sm:flex-row items-stretch gap-2.5">
+            {/* Option 1: Standard Approval */}
             <button
               type="button"
               disabled={isApproving}
-              onClick={() => setShowApprovalPrompt(true)}
-              className="w-full min-h-[44px] py-3 sm:py-2.5 px-4 bg-[var(--color-brown)] hover:bg-[var(--color-brown-light)] disabled:opacity-60 text-amber-100 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
+              onClick={() => {
+                onApprove?.(currentSession.id, false);
+              }}
+              className="flex-1 min-h-[44px] py-2.5 px-4 bg-[var(--color-brown)] hover:bg-[var(--color-brown-light)] disabled:opacity-60 text-amber-100 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
+              title="รับรองผลตามเกณฑ์ปกติ: งานตรงเวลาครบ +10 แต้ม / มีรายการล่าช้า +8 แต้มและตัดสตรีค"
             >
               {isApproving ? (
                 <>
@@ -514,14 +518,38 @@ export function SessionDetailModal({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                   </svg>
-                  <span>กำลังดำเนินการรับรองผล...</span>
+                  <span>กำลังดำเนินการ...</span>
                 </>
               ) : (
                 <>
-                  <span>รับรองผลการตรวจงาน ({approveRoleTitle})</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
+                  <Check size={16} strokeWidth={2.5} />
+                  <span>รับรองตามปกติ (Standard)</span>
+                </>
+              )}
+            </button>
+
+            {/* Option 2: Exception Approval (อนุโลม) */}
+            <button
+              type="button"
+              disabled={isApproving}
+              onClick={() => {
+                onApprove?.(currentSession.id, true);
+              }}
+              className="flex-1 min-h-[44px] py-2.5 px-4 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-amber-950 font-extrabold rounded-xl text-xs sm:text-sm transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2 border border-amber-600/30"
+              title="อนุมัติแบบอนุโลม: รักษาสตรีคต่อเนื่องและมอบ 10 แต้มเต็ม"
+            >
+              {isApproving ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-amber-950" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                   </svg>
+                  <span>กำลังดำเนินการ...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={17} strokeWidth={2.5} />
+                  <span>อนุโลม (รักษาสตรีค & 10 แต้ม)</span>
                 </>
               )}
             </button>
@@ -583,7 +611,7 @@ export function SessionDetailModal({
                   <span className="text-[10px] font-mono text-[var(--color-text-muted)]">เกณฑ์ปกติ</span>
                 </div>
                 <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
-                  คำนวณคะแนนตามผลการตรวจจริง (หากมีรายการล่าช้า สตรีคจะถูกรีเซ็ตเป็น 0)
+                  คำนวณคะแนนตามผลการตรวจจริง (งานผ่านตรงเวลาครบ +10 แต้ม / หากมีรายการล่าช้า +8 แต้มและตัดสตรีคเป็น 0)
                 </p>
               </button>
 
@@ -602,11 +630,11 @@ export function SessionDetailModal({
                     <span>🛡️ อนุมัติแบบอนุโลม (Exception Approval)</span>
                   </span>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-amber-950">
-                    รักษาสตรีค
+                    รักษาสตรีค & 10 แต้ม
                   </span>
                 </div>
                 <p className="text-[11px] text-amber-900 dark:text-amber-300 mt-1 leading-relaxed">
-                  ให้สิทธิประโยชน์รักษาสตรีคต่อเนื่อง โดยปรับสถานะเป็น <strong className="font-bold underline">Flawed (มีข้อบกพร่อง/อนุโลม)</strong> แทนที่จะถูกตัดสตรีคเป็น 0
+                  อนุโลมให้สิทธิประโยชน์รักษาสตรีคต่อเนื่อง (สถานะ Flawed) และ <strong className="font-bold underline">มอบ 10 แต้มเต็ม</strong> แทนที่จะถูกตัดสตรีคและได้ 8 แต้ม
                 </p>
               </button>
             </div>

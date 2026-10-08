@@ -711,7 +711,7 @@ export function BranchLeaveManagementView({
                         }`}
                       >
                         <Coins size={14} className={(!approvalLeaveTypes[pl.id] || isPaidLeave(approvalLeaveTypes[pl.id])) ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-muted)]"} />
-                        <span>ลาเเบบได้เงิน (รักษาสตรีค)</span>
+                        <span>ลาเเบบได้เงิน (รักษาสตรีค & ไม่หักแต้ม)</span>
                       </button>
                       <button
                         type="button"
@@ -722,7 +722,7 @@ export function BranchLeaveManagementView({
                         }`}
                       >
                         <Clock size={14} className={isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "text-amber-600 dark:text-amber-400" : "text-[var(--color-text-muted)]"} />
-                        <span>ลาเเบบไม่ได้รับเงิน (ตัดสตรีค 0)</span>
+                        <span>ลาเเบบไม่ได้รับเงิน (หัก 2 แต้ม & ตัดสตรีค)</span>
                       </button>
                     </div>
                   </div>
@@ -1395,12 +1395,12 @@ export function BranchLeaveManagementView({
                       {/* Streak policy badge/pill line */}
                       <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
                         <ShieldCheck size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span>รักษาสตรีคคะแนนต่อเนื่อง (สตรีคไม่ขาด)</span>
+                        <span>รักษาสตรีคคะแนนต่อเนื่อง (สตรีคไม่ขาด & ไม่หักแต้ม)</span>
                       </div>
 
                       {/* Clear explanation paragraph */}
                       <p className="text-[11px] sm:text-xs text-[var(--color-text-muted)] leading-relaxed">
-                        ลาป่วยตามสิทธิ, ลาพักร้อน หรือลาได้รับค่าจ้างตามเกณฑ์ — พนักงานได้รับค่าจ้าง และสตรีคสะสมต่อเนื่อง (ไม่ถูกตัด)
+                        ลาป่วยตามสิทธิ, ลาพักร้อน หรือลาได้รับค่าจ้างตามเกณฑ์ — พนักงานได้รับค่าจ้าง ไม่ถูกหักแต้ม และสตรีคสะสมต่อเนื่อง (ไม่ถูกตัด)
                       </p>
                     </div>
 
@@ -1447,19 +1447,19 @@ export function BranchLeaveManagementView({
                           </span>
                         </div>
                         <span className="text-[10px] sm:text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-500/30 shrink-0 whitespace-nowrap">
-                          ไม่ได้รับเงิน • ตัดสตรีค 0
+                          ไม่ได้รับเงิน • หัก 2 แต้ม • ตัดสตรีค 0
                         </span>
                       </div>
 
                       {/* Streak policy badge/pill line */}
                       <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400">
                         <ZapOff size={14} className="shrink-0 text-rose-600 dark:text-rose-400" />
-                        <span>ตัดสตรีคเป็น 0 (สตรีคขาด)</span>
+                        <span>หัก 2 แต้ม และตัดสตรีคเป็น 0</span>
                       </div>
 
                       {/* Clear explanation paragraph */}
                       <p className="text-[11px] sm:text-xs text-[var(--color-text-muted)] leading-relaxed">
-                        ลากิจส่วนตัว, ขาดงาน หรือลาไม่มีค่าจ้าง (Leave without pay) — ไม่ได้รับค่าจ้าง และสตรีคสะสมจะถูกตัดเป็น 0 ทันที
+                        ลากิจส่วนตัว, ขาดงาน หรือลาไม่มีค่าจ้าง (Leave without pay) — ไม่ได้รับค่าจ้าง หัก 2 แต้ม และสตรีคสะสมจะถูกตัดเป็น 0 ทันที
                       </p>
                     </div>
 

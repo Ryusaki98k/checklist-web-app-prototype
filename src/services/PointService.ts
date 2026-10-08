@@ -138,27 +138,21 @@ export class PointService implements IPointService {
           newStreakCount = 1;
         }
 
-        totalPoints = 2;
-        pointReasons.push("เช็คลิสต์สมบูรณ์ตรงเวลา (+2 แต้ม)");
-
-        // Bonus: every 5 perfect in a row == 3 bonus points
-        if (newStreakCount > 0 && newStreakCount % 5 === 0) {
-          totalPoints += 3;
-          pointReasons.push(`โบนัสสตรีคสมบูรณ์ทุกๆ 5 ครั้งติดต่อกัน (สตรีคที่ ${newStreakCount}) (+3 แต้ม)`);
-        }
+        totalPoints = 10;
+        pointReasons.push("เช็คลิสต์สมบูรณ์ตรงเวลา (+10 แต้ม)");
       } else if (isException) {
         // Exception approval (อนุโลม): Do NOT break the streak!
-        // Sets streak type to 'flawed' while keeping and incrementing the streak count
+        // Sets streak type to 'flawed' while keeping and incrementing the streak count, and gives 10 points!
         newStreakType = "flawed";
         newStreakCount = (targetUser?.point_streak || 0) + 1;
-        totalPoints = 1;
-        pointReasons.push("ผู้บริหารอนุมัติแบบอนุโลม (Exception): รักษาสตรีคต่อเนื่องเป็นสถานะ Flawed (+1 แต้ม)");
+        totalPoints = 10;
+        pointReasons.push("ผู้บริหารอนุมัติแบบอนุโลม (Exception): รักษาสตรีคต่อเนื่องและมอบ 10 แต้ม (+10 แต้ม)");
       } else {
-        // Standard imperfect shift: breaks the streak
+        // Standard imperfect shift (one of the jobs was late or missing): breaks streak and gives 8 points
         newStreakType = "flawed";
         newStreakCount = 0;
-        totalPoints = 1;
-        pointReasons.push("เช็คลิสต์มีรายการล่าช้าหรือไม่สมบูรณ์ (+1 แต้ม)");
+        totalPoints = 8;
+        pointReasons.push("เช็คลิสต์มีรายการส่งล่าช้า (+8 แต้ม)");
       }
 
       if (newStreakCount > longestStreak) {
@@ -191,13 +185,13 @@ export class PointService implements IPointService {
         const notifTitle = isPerfect
           ? "🌟 ผลงานยอดเยี่ยมตรงเวลา!"
           : isException
-          ? "🛡️ อนุมัติแบบอนุโลม (รักษาสตรีค Flawed)"
-          : "✅ อนุมัติการส่งงานสำเร็จ";
+          ? "🛡️ อนุมัติแบบอนุโลม (รักษาสตรีค & 10 แต้ม)"
+          : "✅ ตรวจรับรองกะงานเรียบร้อยแล้ว";
         const notifMsg = isPerfect
           ? `ยินดีด้วย! คุณปฏิบัติงานตรงเวลาครบถ้วน (+${totalPoints} แต้ม) สตรีคสมบูรณ์ ${newStreakCount} วันติด`
           : isException
-          ? `ผู้จัดการได้อนุมัติแบบอนุโลมให้กะของคุณ (+${totalPoints} แต้ม) รักษาสตรีคต่อเนื่องที่ ${newStreakCount} วัน (สถานะ Flawed)`
-          : `คุณได้รับคะแนนจากการปฏิบัติงาน (+${totalPoints} แต้ม)`;
+          ? `ผู้จัดการได้อนุมัติแบบอนุโลมให้กะของคุณ (+${totalPoints} แต้ม) รักษาสตรีคต่อเนื่องที่ ${newStreakCount} วัน`
+          : `ตรวจรับรองกะงานเรียบร้อยแล้ว มีรายการส่งล่าช้า (+${totalPoints} แต้ม)`;
 
         await this.notificationService.createNotification({
           recipientId: session.user,
@@ -531,6 +525,7 @@ export class PointService implements IPointService {
       const userUpdates: Array<{
         userId: string;
         streakType: "none" | "flawed" | "perfect";
+        resetCount?: boolean;
       }> = [];
 
       for (const staff of participatingStaff) {
@@ -600,17 +595,16 @@ export class PointService implements IPointService {
           if (staffLeave) {
             // Has approved leave notice
             if (staffLeave.preserve_streak) {
-              // Manager enabled preserve streak -> streak is preserved
+              // Manager enabled preserve streak (paid leave) -> streak is preserved
               preservedCount++;
             } else {
-              // Manager did not enable preserve streak -> change to flawed
+              // Unpaid leave / preserve streak not enabled -> cut streak
               flawedCount++;
-              if (staff.point_streak_type !== "flawed") {
-                userUpdates.push({
-                  userId: staff.id,
-                  streakType: "flawed",
-                });
-              }
+              userUpdates.push({
+                userId: staff.id,
+                streakType: "none",
+                resetCount: true,
+              });
             }
           } else {
             // Absent without leave notice -> change to flawed
@@ -631,6 +625,7 @@ export class PointService implements IPointService {
           .update(users)
           .set({
             point_streak_type: update.streakType,
+            ...(update.resetCount ? { point_streak: 0 } : {}),
           })
           .where(eq(users.id, update.userId));
       }

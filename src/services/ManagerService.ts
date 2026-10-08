@@ -1142,9 +1142,29 @@ export class ManagerService implements IManagerService {
 
       const previousStreak = targetUser.point_streak ?? 0;
       const dbLeaveType = toDbLeaveType(leaveType);
+      const isUnpaid = dbLeaveType === "unpaid";
+      const finalPreserveStreak = isUnpaid ? false : (preserveStreak ?? true);
 
-      // If the manager decided not to preserve streak (e.g. invalid leave or unexcused), break streak
-      if (!preserveStreak) {
+      // Unpaid leave rule: cut 2 points and cut streak
+      if (isUnpaid) {
+        await this.db
+          .update(users)
+          .set({
+            point: sql`GREATEST(0, ${users.point} - 2)`,
+            point_streak: 0,
+            point_streak_type: "none",
+          })
+          .where(eq(users.id, userId));
+
+        await this.db.insert(pointTransactions).values({
+          user_id: userId,
+          points: -2,
+          type: "unpaid_leave_penalty",
+          description: "ลางานแบบไม่ได้รับค่าจ้าง (หัก 2 แต้ม และตัดสตรีคเป็น 0)",
+          created_at: new Date(),
+        });
+      } else if (!finalPreserveStreak) {
+        // If not unpaid but manager chose not to preserve streak
         await this.db
           .update(users)
           .set({
@@ -1164,7 +1184,7 @@ export class ManagerService implements IManagerService {
           start_date: startDate,
           end_date: endDate,
           reason: reason.trim(),
-          preserve_streak: preserveStreak,
+          preserve_streak: finalPreserveStreak,
           previous_streak: previousStreak,
           recorded_by: recordedBy,
           status: "approved",
@@ -1181,9 +1201,9 @@ export class ManagerService implements IManagerService {
           ? "ลาเเบบได้เงิน (Paid Leave)" 
           : "ลาเเบบไม่ได้รับเงิน (Unpaid Leave)";
         const dateDesc = startDate === endDate ? startDate : `${startDate} ถึง ${endDate}`;
-        const streakDecisionText = preserveStreak 
-          ? "(สตรีคคะแนนสะสมได้รับการคุ้มครอง ไม่ขาด)" 
-          : "(ดุลยพินิจผู้บริหาร: ไม่อนุมัติรักษาสตรีค ส่งผลให้สตรีคคะแนนถูกตัดเป็น 0)";
+        const streakDecisionText = isUnpaid 
+          ? "(ลาแบบไม่ได้รับค่าจ้าง: หัก 2 แต้ม และตัดสตรีคเป็น 0)" 
+          : "(ลาแบบได้รับค่าจ้าง: ไม่หักแต้ม และรักษาสตรีคสะสมต่อเนื่อง)";
         
         await this.notificationService.createNotification({
           recipientId: userId,
@@ -1342,6 +1362,22 @@ export class ManagerService implements IManagerService {
         .limit(1);
 
       if (leaveRecord) {
+        // If this was an unpaid leave that penalized 2 points, refund the 2 points
+        if (leaveRecord.leave_type === "unpaid" && leaveRecord.status === "approved") {
+          await this.db
+            .update(users)
+            .set({ point: sql`${users.point} + 2` })
+            .where(eq(users.id, leaveRecord.user_id));
+
+          await this.db.insert(pointTransactions).values({
+            user_id: leaveRecord.user_id,
+            points: 2,
+            type: "leave_cancelled_refund",
+            description: "คืน 2 แต้มจากการยกเลิกรายการลาแบบไม่ได้รับค่าจ้าง",
+            created_at: new Date(),
+          });
+        }
+
         // If this leave broke the streak and there was a previous streak, restore it if current streak is still 0
         if (!leaveRecord.preserve_streak && leaveRecord.previous_streak && leaveRecord.previous_streak > 0) {
           const [userRecord] = await this.db
@@ -1584,15 +1620,35 @@ export class ManagerService implements IManagerService {
       const initialStatus = autoApproved ? "approved" : "pending";
 
       const previousStreak = targetUser.point_streak ?? 0;
-
-      if (autoApproved && !preserveStreak) {
-        await this.db
-          .update(users)
-          .set({ point_streak: 0, point_streak_type: "none" })
-          .where(eq(users.id, userId));
-      }
-
       const dbLeaveType = toDbLeaveType(leaveType);
+      const isUnpaid = dbLeaveType === "unpaid";
+      const finalPreserveStreak = isUnpaid ? false : (preserveStreak ?? true);
+
+      if (autoApproved) {
+        if (isUnpaid) {
+          await this.db
+            .update(users)
+            .set({
+              point: sql`GREATEST(0, ${users.point} - 2)`,
+              point_streak: 0,
+              point_streak_type: "none",
+            })
+            .where(eq(users.id, userId));
+
+          await this.db.insert(pointTransactions).values({
+            user_id: userId,
+            points: -2,
+            type: "unpaid_leave_penalty",
+            description: "ลางานแบบไม่ได้รับค่าจ้าง (หัก 2 แต้ม และตัดสตรีคเป็น 0)",
+            created_at: new Date(),
+          });
+        } else if (!finalPreserveStreak) {
+          await this.db
+            .update(users)
+            .set({ point_streak: 0, point_streak_type: "none" })
+            .where(eq(users.id, userId));
+        }
+      }
 
       const [newLeave] = await this.db
         .insert(employeeLeaves)
@@ -1603,7 +1659,7 @@ export class ManagerService implements IManagerService {
           start_date: startDate,
           end_date: endDate,
           reason: reason.trim(),
-          preserve_streak: preserveStreak,
+          preserve_streak: finalPreserveStreak,
           previous_streak: previousStreak,
           recorded_by: requestedBy,
           status: initialStatus,
@@ -1725,10 +1781,28 @@ export class ManagerService implements IManagerService {
         };
       }
 
-      const finalPreserveStreak = preserveStreak !== undefined ? preserveStreak : existingLeave.preserve_streak;
       const finalLeaveType = toDbLeaveType(leaveType || existingLeave.leave_type);
+      const isUnpaid = finalLeaveType === "unpaid";
+      const finalPreserveStreak = isUnpaid ? false : (preserveStreak !== undefined ? preserveStreak : existingLeave.preserve_streak);
 
-      if (!finalPreserveStreak) {
+      if (isUnpaid) {
+        await this.db
+          .update(users)
+          .set({
+            point: sql`GREATEST(0, ${users.point} - 2)`,
+            point_streak: 0,
+            point_streak_type: "none",
+          })
+          .where(eq(users.id, existingLeave.user_id));
+
+        await this.db.insert(pointTransactions).values({
+          user_id: existingLeave.user_id,
+          points: -2,
+          type: "unpaid_leave_penalty",
+          description: "อนุมัติการลาแบบไม่ได้รับค่าจ้าง (หัก 2 แต้ม และตัดสตรีคเป็น 0)",
+          created_at: new Date(),
+        });
+      } else if (!finalPreserveStreak) {
         await this.db
           .update(users)
           .set({ point_streak: 0, point_streak_type: "none" })

@@ -284,7 +284,7 @@ export function PointStreakBadge() {
                       <span className="text-2xl">{tier.icon}</span>
                       <div>
                         <span className="text-xs font-bold block">{tier.name}</span>
-                        <span className="text-[11px] font-medium leading-tight">ปฏิบัติงานตรงเวลาเพื่อรับโบนัสสตรีคต่อเนื่อง!</span>
+                        <span className="text-[11px] font-medium leading-tight">ปฏิบัติงานตรงเวลาเพื่อรักษาสถิติจำนวนสตรีคต่อเนื่อง!</span>
                       </div>
                     </div>
                     <Sparkles className="w-4 h-4 shrink-0" />
@@ -321,8 +321,14 @@ export function PointStreakBadge() {
                               })}
                             </p>
                           </div>
-                          <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0">
-                            +{t.points}
+                          <span
+                            className={`text-xs font-bold px-2.5 py-1 rounded-lg shrink-0 border ${
+                              t.points >= 0
+                                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                                : "bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800"
+                            }`}
+                          >
+                            {t.points > 0 ? `+${t.points}` : t.points}
                           </span>
                         </div>
                       ))}
