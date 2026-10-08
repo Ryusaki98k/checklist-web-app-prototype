@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   UserCheck,
 } from "lucide-react";
+import { UserAvatar } from "../../common/UserAvatar";
 
 export interface ManagerAuditHistoryViewProps {
   sessions: ShiftSession[];
@@ -694,9 +695,12 @@ export function ManagerAuditHistoryView({
                   >
                     {/* Left: Manager Identity */}
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="w-11 h-11 rounded-2xl bg-amber-500 text-amber-950 flex items-center justify-center text-base font-black shrink-0 shadow-xs ring-2 ring-amber-300 dark:ring-amber-700">
-                        {m.managerName.slice(0, 1)}
-                      </div>
+                      <UserAvatar
+                        name={m.managerName}
+                        role="manager"
+                        size="md"
+                        className="shrink-0 shadow-xs"
+                      />
 
                       <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">

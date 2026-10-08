@@ -197,9 +197,13 @@ export function EmployeeRegisterForm({
               />
             </div>
           ) : (
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[var(--color-surface)] border-2 border-dashed border-[var(--color-border)] flex flex-col items-center justify-center text-[var(--color-text-muted)] group-hover:border-amber-400 group-hover:text-amber-600 transition-colors shadow-2xs">
-              <Camera size={26} strokeWidth={1.8} />
-              <span className="text-[10px] font-bold mt-1">1:1 รูปถ่าย</span>
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden relative shadow-md ring-2 ring-amber-500/20 border-2 border-[var(--color-border)] bg-[var(--color-surface)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/user.png"
+                alt="รูปโปรไฟล์เริ่มต้น"
+                className="w-full h-full object-cover"
+              />
             </div>
           )}
 

@@ -297,9 +297,20 @@ export function EditProfileModal({
                 )}
               </div>
 
-              <p className="text-[11px] text-[var(--color-text-muted)] text-center">
-                รองรับไฟล์ PNG, JPG, WebP (ตัดอัตราส่วน 1:1 พอดีกรอบ)
-              </p>
+              <div className="text-[10px] text-[var(--color-text-muted)] text-center space-y-0.5 pt-1">
+                <p>รองรับไฟล์ PNG, JPG, WebP (ตัดอัตราส่วน 1:1 พอดีกรอบ)</p>
+                <p className="opacity-80">
+                  รูปโปรไฟล์เริ่มต้นดัดแปลงและดาวน์โหลดจาก{" "}
+                  <a
+                    href="https://www.flaticon.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-amber-600 dark:hover:text-amber-400 font-semibold transition-colors"
+                  >
+                    www.flaticon.com
+                  </a>
+                </p>
+              </div>
             </div>
 
             {/* User Form Fields */}

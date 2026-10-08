@@ -5,6 +5,7 @@ import { User, ManagerType, ExecutiveType, Role, ActiveRole } from "../../types"
 import { updateUserPermissionsAction } from "../../actions/auth";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
 import { ShieldCheck, Briefcase, Landmark, Users, Check, AlertCircle, Sparkles } from "lucide-react";
+import { UserAvatar } from "../common/UserAvatar";
 
 interface AdminUserPermissionsModalProps {
   isOpen: boolean;
@@ -134,9 +135,7 @@ export function AdminUserPermissionsModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-[var(--color-border)] flex justify-between items-center bg-[var(--color-surface-2)]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0">
-              <ShieldCheck size={22} />
-            </div>
+            <UserAvatar user={targetUser} size="md" className="shrink-0 shadow-xs" />
             <div>
               <h3 id="perm-modal-title" className="font-bold text-[var(--color-text)] text-base">
                 จัดการสิทธิ์ผู้ใช้งาน (Multi-role Permissions)

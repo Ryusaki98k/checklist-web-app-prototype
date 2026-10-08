@@ -22,6 +22,7 @@ import {
   Layers,
   FileText,
 } from "lucide-react";
+import { UserAvatar } from "../../common/UserAvatar";
 
 export interface SubordinateHistoryAuditViewProps {
   sessions: ShiftSession[];
@@ -701,15 +702,12 @@ export function SubordinateHistoryAuditView({
                   >
                     {/* Left: Avatar & Profile */}
                     <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-extrabold shrink-0 shadow-2xs ${
-                          isAssistantUser
-                            ? "bg-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-700"
-                            : "bg-amber-500 text-amber-950 ring-2 ring-amber-200 dark:ring-amber-800"
-                        }`}
-                      >
-                        {person.userName.slice(0, 1)}
-                      </div>
+                      <UserAvatar
+                        name={person.userName}
+                        role={person.userRole as any}
+                        size="md"
+                        className="shrink-0 shadow-xs"
+                      />
 
                       <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">

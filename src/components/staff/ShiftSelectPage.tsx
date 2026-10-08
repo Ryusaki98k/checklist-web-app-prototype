@@ -532,8 +532,20 @@ export function ShiftSelectPage({
         </div>
       </div>
 
-      <footer className="text-center text-xs sm:text-sm text-[var(--color-text-muted)] font-medium py-3 relative z-10">
-        {user.branchName || "Eater Egg Fresh Mart"} • Checklist System
+      <footer className="text-center text-xs text-[var(--color-text-muted)] font-medium py-3 relative z-10 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+        <span>{user.branchName || "Eater Egg Fresh Mart"} • Checklist System</span>
+        <span className="hidden sm:inline">•</span>
+        <span>
+          User avatar icons modified from{" "}
+          <a
+            href="https://www.flaticon.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+          >
+            www.flaticon.com
+          </a>
+        </span>
       </footer>
 
       {/* Edit Profile Modal */}

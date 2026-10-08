@@ -1571,10 +1571,24 @@ export function ExecutiveDashboard({
 
       {/* ─── Footer with Reset Option (Same style as staff pages) ─────────────── */}
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--color-text-muted)] border-t border-[var(--color-border)] mt-12">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-[var(--color-text)]">Eater Egg Fresh Mart</span>
-          <span>•</span>
-          <span>Operations & Audit Management Portal</span>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-[var(--color-text)]">Eater Egg Fresh Mart</span>
+            <span>•</span>
+            <span>Operations & Audit Management Portal</span>
+          </div>
+          <span className="hidden sm:inline">•</span>
+          <span>
+            User avatar icons modified from{" "}
+            <a
+              href="https://www.flaticon.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            >
+              www.flaticon.com
+            </a>
+          </span>
         </div>
 
         <div className="flex items-center gap-4">

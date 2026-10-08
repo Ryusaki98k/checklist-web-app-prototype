@@ -1851,6 +1851,23 @@ export function ManagerDashboard({
         isOpen={isEditProfileOpen}
         onClose={() => setIsEditProfileOpen(false)}
       />
+
+      {/* Footer */}
+      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+        <span>Eater Egg Fresh Mart • Manager Portal</span>
+        <span className="hidden sm:inline">•</span>
+        <span>
+          User avatar icons modified from{" "}
+          <a
+            href="https://www.flaticon.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+          >
+            www.flaticon.com
+          </a>
+        </span>
+      </footer>
     </div>
   );
 }

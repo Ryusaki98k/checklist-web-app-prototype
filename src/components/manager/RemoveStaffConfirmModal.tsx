@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Info,
 } from "lucide-react";
+import { UserAvatar } from "../common/UserAvatar";
 
 interface RemoveStaffConfirmModalProps {
   isOpen: boolean;
@@ -108,9 +109,7 @@ export function RemoveStaffConfirmModal({
         {/* Employee Info Card */}
         <div className="p-3.5 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[var(--color-surface)] text-[var(--color-text)] flex items-center justify-center font-bold text-xs border border-[var(--color-border)] shrink-0">
-              {employee.name.slice(0, 2)}
-            </div>
+            <UserAvatar user={employee} size="sm" className="shrink-0 shadow-xs" />
             <div className="min-w-0">
               <p className="text-xs sm:text-sm font-bold text-[var(--color-text)] truncate">{employee.name}</p>
               <p className="text-[11px] text-[var(--color-text-muted)] flex items-center gap-1.5">

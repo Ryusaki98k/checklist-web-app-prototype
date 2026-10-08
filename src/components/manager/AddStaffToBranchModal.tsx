@@ -21,6 +21,7 @@ import {
   Sparkles,
   UserCheck,
 } from "lucide-react";
+import { UserAvatar } from "../common/UserAvatar";
 
 interface AddStaffToBranchModalProps {
   isOpen: boolean;
@@ -311,11 +312,7 @@ export function AddStaffToBranchModal({
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                          isSelected ? "bg-amber-500 text-amber-950" : "bg-[var(--color-surface)] text-[var(--color-text-muted)]"
-                        }`}>
-                          {u.name.slice(0, 2)}
-                        </div>
+                        <UserAvatar user={u} size="sm" className="shrink-0 shadow-xs" />
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-[var(--color-text)] truncate">{u.name}</p>
                           <p className="text-[11px] text-[var(--color-text-muted)] font-mono">@{u.username}</p>

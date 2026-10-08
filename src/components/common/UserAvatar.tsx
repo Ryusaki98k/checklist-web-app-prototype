@@ -11,6 +11,7 @@ interface UserAvatarProps {
   user?: Partial<User> | null;
   name?: string;
   profile_id?: string | null;
+  avatarUrl?: string | null;
   role?: Role | ActiveRole;
   size?: AvatarSize;
   className?: string;
@@ -34,6 +35,7 @@ export function UserAvatar({
   user,
   name,
   profile_id,
+  avatarUrl,
   role,
   size = "md",
   className = "",
@@ -42,16 +44,37 @@ export function UserAvatar({
   onClick,
   title,
 }: UserAvatarProps) {
-  const [imageError, setImageError] = useState(false);
+  const [customImageError, setCustomImageError] = useState(false);
+  const [fallbackImageError, setFallbackImageError] = useState(false);
 
   const effectiveName = name || user?.name || user?.username || "";
   const effectiveProfileId = profile_id !== undefined ? profile_id : (user?.profile_id || null);
   const effectiveRole = role || user?.activeRole || user?.role || "employee";
-  const imageUrl = effectiveProfileId && !imageError ? getProfileImageUrl(effectiveProfileId) : null;
+
+  // Reset error states when user or profile_id changes
+  React.useEffect(() => {
+    setCustomImageError(false);
+    setFallbackImageError(false);
+  }, [effectiveProfileId, avatarUrl]);
+
+  // Determine active profile image url:
+  // 1. Explicit avatarUrl or uploaded Supabase image
+  // 2. Default placeholder /user.png (face silhouette)
+  // 3. Fallback to initials if /user.png fails
+  const customImageUrl = avatarUrl || (effectiveProfileId && !customImageError ? getProfileImageUrl(effectiveProfileId) : null);
+  const displayImageUrl = customImageUrl || (!fallbackImageError ? "/user.png" : null);
+
+  const handleImageError = () => {
+    if (customImageUrl) {
+      setCustomImageError(true);
+    } else {
+      setFallbackImageError(true);
+    }
+  };
 
   const sizeCfg = SIZE_MAP[size] || SIZE_MAP.md;
 
-  // Determine fallback initial badge gradient based on role
+  // Determine fallback initial badge gradient based on role (only if image and /user.png both fail)
   const getRoleGradient = () => {
     switch (effectiveRole) {
       case "admin":
@@ -92,15 +115,15 @@ export function UserAvatar({
       <div
         className={`${sizeCfg.container} overflow-hidden shadow-xs ring-1 ring-black/5 dark:ring-white/10 flex items-center justify-center font-bold tracking-tight transition-transform duration-200 ${
           isClickable ? "group-hover:scale-105 active:scale-95" : ""
-        } ${imageUrl ? "bg-[var(--color-surface-2)]" : getRoleGradient()}`}
+        } ${displayImageUrl ? "bg-[var(--color-surface-2)]" : getRoleGradient()}`}
       >
-        {imageUrl ? (
+        {displayImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={imageUrl}
+            src={displayImageUrl}
             alt={effectiveName || "รูปโปรไฟล์"}
             className="w-full h-full object-cover"
-            onError={() => setImageError(true)}
+            onError={handleImageError}
           />
         ) : initials ? (
           <span className={`${sizeCfg.text} uppercase font-extrabold`}>{initials}</span>

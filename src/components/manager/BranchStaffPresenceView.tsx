@@ -37,6 +37,7 @@ import { isPaidLeave, getLeaveTypeLabel } from "../../utils/leave";
 import { getShiftBadge, getShiftName } from "../common/Badge";
 import { AddStaffToBranchModal } from "./AddStaffToBranchModal";
 import { RemoveStaffConfirmModal } from "./RemoveStaffConfirmModal";
+import { UserAvatar } from "../common/UserAvatar";
 
 interface BranchStaffPresenceViewProps {
   currentUser: User;
@@ -565,13 +566,15 @@ export function BranchStaffPresenceView({
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="flex items-start gap-3">
                         <div className="relative">
-                          <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm ${
-                            isOnDuty 
-                              ? "bg-emerald-600 text-white shadow-xs" 
-                              : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
-                          }`}>
-                            {emp.name.slice(0, 2)}
-                          </div>
+                          <UserAvatar
+                            user={{
+                              name: emp.name,
+                              profile_id: emp.profile_id,
+                              role: emp.role,
+                            }}
+                            size="md"
+                            className="shadow-xs"
+                          />
                           {/* Status Dot */}
                           <span
                             className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[var(--color-surface)] ${
@@ -791,11 +794,15 @@ export function BranchStaffPresenceView({
           <div className="w-full max-w-lg bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shadow-2xl p-6 text-[var(--color-text)] flex flex-col gap-4">
             <div className="flex items-start justify-between border-b border-[var(--color-border)] pb-3">
               <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base ${
-                  inspectedEmployee.isOnDuty ? "bg-emerald-600 text-white" : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
-                }`}>
-                  {inspectedEmployee.name.slice(0, 2)}
-                </div>
+                <UserAvatar
+                  user={{
+                    name: inspectedEmployee.name,
+                    profile_id: inspectedEmployee.profile_id,
+                    role: inspectedEmployee.role,
+                  }}
+                  size="lg"
+                  className="shadow-sm"
+                />
                 <div>
                   <h2 className="text-base font-bold text-[var(--color-text)]">{inspectedEmployee.name}</h2>
                   <p className="text-xs text-[var(--color-text-muted)]">@{inspectedEmployee.username || inspectedEmployee.name}</p>
@@ -1014,8 +1021,20 @@ export function BranchStaffPresenceView({
       )}
 
       {/* Footer */}
-      <footer className="py-4 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)]">
-        Eater Egg Fresh Mart • Staff Presence & Shift Tracking Portal
+      <footer className="py-4 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+        <span>Eater Egg Fresh Mart • Staff Presence & Shift Tracking Portal</span>
+        <span className="hidden sm:inline">•</span>
+        <span>
+          User avatar icons modified from{" "}
+          <a
+            href="https://www.flaticon.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+          >
+            www.flaticon.com
+          </a>
+        </span>
       </footer>
     </div>
   );

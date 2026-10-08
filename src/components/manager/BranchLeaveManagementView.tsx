@@ -907,13 +907,28 @@ export function BranchLeaveManagementView({
                   {/* Card Header: Employee info & Type Badge */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
-                        isPaid
-                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                          : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                      }`}>
-                        {isPaid ? <Coins size={20} /> : <FileText size={20} />}
-                      </div>
+                      {(() => {
+                        const leaveEmp = employees.find((e) => e.id === leave.userId);
+                        return (
+                          <div className="relative shrink-0">
+                            <UserAvatar
+                              user={leaveEmp ? { name: leaveEmp.name, profile_id: leaveEmp.profile_id, role: leaveEmp.role } : { name: leave.userName }}
+                              size="md"
+                              className="shadow-xs"
+                            />
+                            <span
+                              className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center border-2 border-[var(--color-surface)] shadow-2xs ${
+                                isPaid
+                                  ? "bg-emerald-500 text-emerald-950"
+                                  : "bg-amber-500 text-amber-950"
+                              }`}
+                              title={isPaid ? "ลาแบบได้รับเงิน" : "ลาแบบไม่ได้รับเงิน"}
+                            >
+                              {isPaid ? <Coins size={11} strokeWidth={2.5} /> : <FileText size={11} strokeWidth={2.5} />}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
                       <div>
                         <div className="flex items-center gap-2">
@@ -1612,6 +1627,22 @@ export function BranchLeaveManagementView({
       )}
 
 
+      {/* Footer */}
+      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+        <span>Eater Egg Fresh Mart • Branch Leave & Streak Policy Portal</span>
+        <span className="hidden sm:inline">•</span>
+        <span>
+          User avatar icons modified from{" "}
+          <a
+            href="https://www.flaticon.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+          >
+            www.flaticon.com
+          </a>
+        </span>
+      </footer>
     </div>
   );
 }

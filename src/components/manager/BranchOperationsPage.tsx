@@ -44,6 +44,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { UserAvatar } from "../common/UserAvatar";
 
 interface BranchOperationsPageProps {
   currentUser: User;
@@ -826,17 +827,15 @@ export function BranchOperationsPage({
                                 {/* Employee Header */}
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-center gap-2.5 min-w-0">
-                                    <div
-                                      className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                                        isWorking
-                                          ? "bg-emerald-500 text-white ring-2 ring-emerald-300 dark:ring-emerald-700"
-                                          : isOnLeave
-                                          ? "bg-amber-500 text-amber-950 ring-2 ring-amber-300 dark:ring-amber-700"
-                                          : "bg-[var(--color-surface-2)] text-[var(--color-text)] border border-[var(--color-border)]"
-                                      }`}
-                                    >
-                                      {emp.name.slice(0, 1)}
-                                    </div>
+                                    <UserAvatar
+                                      user={{
+                                        name: emp.name,
+                                        profile_id: (emp as any).profile_id,
+                                        role: emp.role,
+                                      }}
+                                      size="sm"
+                                      className="shrink-0 shadow-xs"
+                                    />
                                     <div className="min-w-0">
                                       <h4 className="text-xs sm:text-sm font-bold text-[var(--color-text)] truncate">
                                         {emp.name}
@@ -938,6 +937,23 @@ export function BranchOperationsPage({
           </div>
         )}
       </main>
+
+      {/* Footer */}
+      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+        <span>Eater Egg Fresh Mart • Branch Operations Overview</span>
+        <span className="hidden sm:inline">•</span>
+        <span>
+          User avatar icons modified from{" "}
+          <a
+            href="https://www.flaticon.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+          >
+            www.flaticon.com
+          </a>
+        </span>
+      </footer>
     </div>
   );
 }
