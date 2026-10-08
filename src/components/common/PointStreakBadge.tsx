@@ -6,6 +6,7 @@ import { Flame, Award, History, X, Trophy, Sparkles, Users, Store, Globe, Calend
 import { PointTransaction, LeaderboardEntry, BranchLeaderboardEntry } from "../../types";
 import { getUserPointsAction, getLeaderboardAction, getBranchLeaderboardAction } from "../../actions/points";
 import { useApp } from "../../context/AppContext";
+import { UserAvatar } from "./UserAvatar";
 
 export function PointStreakBadge() {
   const { currentUser } = useApp();
@@ -238,7 +239,7 @@ export function PointStreakBadge() {
       {/* Point History, Streak & Leaderboard Modal rendered via Portal */}
       {isModalOpen && mounted && createPortal(
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[88vh] relative z-10">
+          <div className="w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[88vh] relative z-10">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -380,15 +381,15 @@ export function PointStreakBadge() {
             {activeTab === "leaderboard" && (
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 flex flex-col">
                 {/* Mode & Scope Selectors */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-                  {/* View Type Switcher (Weekly Snapshot vs Live Current) */}
-                  <div className="flex items-center gap-1 bg-[var(--color-surface-2)] p-1 rounded-xl text-xs font-semibold border border-[var(--color-border)]">
+                <div className="space-y-2">
+                  {/* Row 1: View Type Switcher (Weekly Snapshot vs Live Current) */}
+                  <div className="flex p-1 bg-[var(--color-surface-2)] rounded-xl text-xs font-semibold border border-[var(--color-border)] shadow-2xs">
                     <button
                       type="button"
                       onClick={() => handleViewChange("weekly")}
-                      className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      className={`flex-1 py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                         leaderboardView === "weekly"
-                          ? "bg-[var(--color-surface)] text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
+                          ? "bg-[var(--color-surface)] text-amber-800 dark:text-amber-300 font-extrabold shadow-xs border border-amber-500/30"
                           : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                       }`}
                       title="แสดงผลตารางอันดับที่ประมวลผลเมื่อวันอาทิตย์ 23:55 น."
@@ -399,9 +400,9 @@ export function PointStreakBadge() {
                     <button
                       type="button"
                       onClick={() => handleViewChange("current")}
-                      className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      className={`flex-1 py-1.5 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                         leaderboardView === "current"
-                          ? "bg-[var(--color-surface)] text-cyan-700 dark:text-cyan-300 font-extrabold shadow-xs"
+                          ? "bg-[var(--color-surface)] text-cyan-700 dark:text-cyan-300 font-extrabold shadow-xs border border-cyan-500/30"
                           : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                       }`}
                       title="แสดงคะแนนที่กำลังสะสมในรอบสัปดาห์ปัจจุบัน (Live)"
@@ -411,15 +412,15 @@ export function PointStreakBadge() {
                     </button>
                   </div>
 
-                  {/* Scope Selector & Count */}
-                  <div className="flex items-center justify-between sm:justify-end gap-1.5 flex-wrap">
-                    <div className="flex items-center gap-1 bg-[var(--color-surface-2)] p-1 rounded-xl text-xs font-semibold border border-[var(--color-border)]">
+                  {/* Row 2: Scope Selector (สาขา vs ทุกสาขา vs อันดับสาขา) & Count */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex p-1 bg-[var(--color-surface-2)] rounded-xl text-xs font-semibold border border-[var(--color-border)] shadow-2xs">
                       <button
                         type="button"
                         onClick={() => handleScopeChange("branch")}
-                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                        className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                           leaderboardScope === "branch"
-                            ? "bg-[var(--color-surface)] text-amber-800 dark:text-amber-300 font-bold shadow-xs border border-amber-500/30"
+                            ? "bg-[var(--color-surface)] text-amber-800 dark:text-amber-300 font-extrabold shadow-xs border border-amber-500/30"
                             : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                         }`}
                         title="อันดับเฉพาะในสาขาของคุณ (Branch-wide)"
@@ -430,9 +431,9 @@ export function PointStreakBadge() {
                       <button
                         type="button"
                         onClick={() => handleScopeChange("all")}
-                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                        className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                           leaderboardScope === "all"
-                            ? "bg-[var(--color-surface)] text-blue-800 dark:text-blue-300 font-bold shadow-xs border border-blue-500/30"
+                            ? "bg-[var(--color-surface)] text-blue-800 dark:text-blue-300 font-extrabold shadow-xs border border-blue-500/30"
                             : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                         }`}
                         title="อันดับรวมพนักงานทุกสาขา (Global-wide)"
@@ -443,9 +444,9 @@ export function PointStreakBadge() {
                       <button
                         type="button"
                         onClick={() => handleScopeChange("branches")}
-                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                        className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                           leaderboardScope === "branches"
-                            ? "bg-[var(--color-surface)] text-purple-800 dark:text-purple-300 font-bold shadow-xs border border-purple-500/30"
+                            ? "bg-[var(--color-surface)] text-purple-800 dark:text-purple-300 font-extrabold shadow-xs border border-purple-500/30"
                             : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                         }`}
                         title="อันดับคะแนนรวมของแต่ละสาขา"
@@ -455,7 +456,7 @@ export function PointStreakBadge() {
                       </button>
                     </div>
 
-                    <span className="text-[11px] font-mono text-[var(--color-text-muted)] px-2 py-0.5 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] shrink-0">
+                    <span className="text-xs font-mono font-bold text-[var(--color-text-muted)] px-2.5 py-1.5 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] shrink-0">
                       {leaderboardScope === "branches" ? `${branchLeaderboard.length} สาขา` : `${leaderboard.length} คน`}
                     </span>
                   </div>
@@ -468,14 +469,14 @@ export function PointStreakBadge() {
                     <div className="min-w-0 text-[11px] leading-relaxed">
                       <span className="font-bold text-amber-900 dark:text-amber-300 block">
                         {isSnapshot && snapshotInfo
-                          ? `🏆 ผลสรุปประจำสัปดาห์ (${snapshotInfo.weekStartDate} ถึง ${snapshotInfo.weekEndDate})`
-                          : "🏆 ผลสรุปการจัดอันดับประจำสัปดาห์ (Weekly Leaderboard)"}
+                          ? `ผลสรุปประจำสัปดาห์ (${snapshotInfo.weekStartDate} ถึง ${snapshotInfo.weekEndDate})`
+                          : "ผลสรุปการจัดอันดับประจำสัปดาห์ (Weekly Leaderboard)"}
                         {" • "}
                         {leaderboardScope === "branch" ? "ในสาขาของคุณ" : leaderboardScope === "all" ? "รวมทุกสาขา" : "เปรียบเทียบสาขา"}
                       </span>
                       <span className="text-amber-800/80 dark:text-amber-300/80">
                         {isSnapshot && snapshotInfo
-                          ? `ประมวลผลเมื่อวันอาทิตย์ เวลา 23:55 น. • รายการที่แข่งขัน ${snapshotInfo.totalParticipants ?? (leaderboardScope === "branches" ? branchLeaderboard.length : leaderboard.length)} รายการ`
+                          ? `ประมวลผลเมื่อวันอาทิตย์ เวลา 23:55 น. • ผู้ร่วมแข่งขัน ${leaderboardScope === "branches" ? `${branchLeaderboard.length} สาขา` : `${leaderboard.length} คน`}`
                           : "ข้อมูลรวบรวมทุกคืนวันอาทิตย์ เวลา 23:55 น. เพื่อแสดงผลตลอดสัปดาห์จันทร์ถึงเสาร์"}
                       </span>
                     </div>
@@ -485,7 +486,7 @@ export function PointStreakBadge() {
                     <Zap size={15} className="text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
                     <div className="min-w-0 text-[11px] leading-relaxed">
                       <span className="font-bold text-cyan-900 dark:text-cyan-300 block">
-                        ⚡ คะแนนสะสมรอบสัปดาห์ปัจจุบัน (Live Progress) • {leaderboardScope === "branch" ? "ในสาขาของคุณ" : leaderboardScope === "all" ? "รวมทุกสาขา" : "เปรียบเทียบสาขา"}
+                        คะแนนสะสมรอบสัปดาห์ปัจจุบัน (Live Progress) • {leaderboardScope === "branch" ? "ในสาขาของคุณ" : leaderboardScope === "all" ? "รวมทุกสาขา" : "เปรียบเทียบสาขา"}
                       </span>
                       <span className="text-cyan-800/80 dark:text-cyan-300/80">
                         เริ่มสะสมแต้มใหม่ตั้งแต่วันจันทร์ • จะถูกประมวลผลเป็นทำเนียบสัปดาห์และรีเซ็ตในวันอาทิตย์ 23:55 น.
@@ -493,6 +494,7 @@ export function PointStreakBadge() {
                     </div>
                   </div>
                 )}
+
 
                 {/* Branch Rankings View */}
                 {leaderboardScope === "branches" ? (
@@ -578,14 +580,15 @@ export function PointStreakBadge() {
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 text-right">
+                          <div className="flex items-center gap-1.5 text-right shrink-0">
                             {streak > 0 && (
-                              <span className="flex items-center gap-0.5 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded-lg border border-orange-500/20" title="สตรีคการปฏิบัติงานต่อเนื่อง">
+                              <span className="flex items-center gap-0.5 text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 px-2 py-1 rounded-lg border border-orange-500/20" title="สตรีคการปฏิบัติงานต่อเนื่อง">
                                 <Flame className="w-3.5 h-3.5 fill-orange-500" /> {streak}
                               </span>
                             )}
-                            <span className="font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-lg border border-amber-500/20">
-                              {displayScore} แต้ม
+                            <span className="flex items-center gap-1 text-xs font-extrabold text-amber-800 dark:text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                              <Award className="w-3.5 h-3.5 text-amber-500" />
+                              <span>{displayScore} แต้ม</span>
                             </span>
                           </div>
                         </div>
@@ -623,6 +626,15 @@ export function PointStreakBadge() {
                                 <div className="w-5 flex items-center justify-center shrink-0">
                                   {getRankBadge(idx)}
                                 </div>
+                                <UserAvatar
+                                  user={{
+                                    name: user.name,
+                                    role: user.role,
+                                    position: user.position,
+                                    profile_id: user.profile_id,
+                                  }}
+                                  size="xs"
+                                />
                                 <div className="min-w-0">
                                   <p className="text-xs font-bold text-[var(--color-text)] truncate flex items-center gap-1.5">
                                     <span>{user.name}</span>
