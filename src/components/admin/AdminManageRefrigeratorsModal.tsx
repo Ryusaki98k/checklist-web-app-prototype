@@ -130,6 +130,10 @@ export function AdminManageRefrigeratorsModal({
       showToast("กรุณาระบุชื่อตู้แช่");
       return;
     }
+    if (newMinTemp < -100 || newMinTemp > 100 || newMaxTemp < -100 || newMaxTemp > 100) {
+      showToast("อุณหภูมิต้องอยู่ระหว่าง -100°C ถึง 100°C");
+      return;
+    }
     if (newMinTemp > newMaxTemp) {
       showToast("อุณหภูมิต่ำสุดต้องไม่มากกว่าอุณหภูมิสูงสุด");
       return;
@@ -179,6 +183,10 @@ export function AdminManageRefrigeratorsModal({
     if (!editingId) return;
     if (!editName.trim()) {
       showToast("กรุณาระบุชื่อตู้แช่");
+      return;
+    }
+    if (editMinTemp < -100 || editMinTemp > 100 || editMaxTemp < -100 || editMaxTemp > 100) {
+      showToast("อุณหภูมิต้องอยู่ระหว่าง -100°C ถึง 100°C");
       return;
     }
     if (editMinTemp > editMaxTemp) {
@@ -534,8 +542,13 @@ export function AdminManageRefrigeratorsModal({
                     </label>
                     <input
                       type="number"
+                      min={-100}
+                      max={100}
                       value={newMinTemp}
-                      onChange={(e) => setNewMinTemp(Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setNewMinTemp(isNaN(val) ? 0 : Math.min(100, Math.max(-100, val)));
+                      }}
                       required
                       className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-text)] font-mono focus:outline-none focus:border-amber-400"
                     />
@@ -547,8 +560,13 @@ export function AdminManageRefrigeratorsModal({
                     </label>
                     <input
                       type="number"
+                      min={-100}
+                      max={100}
                       value={newMaxTemp}
-                      onChange={(e) => setNewMaxTemp(Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setNewMaxTemp(isNaN(val) ? 0 : Math.min(100, Math.max(-100, val)));
+                      }}
                       required
                       className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-text)] font-mono focus:outline-none focus:border-amber-400"
                     />
@@ -659,8 +677,13 @@ export function AdminManageRefrigeratorsModal({
                             </label>
                             <input
                               type="number"
+                              min={-100}
+                              max={100}
                               value={editMinTemp}
-                              onChange={(e) => setEditMinTemp(Number(e.target.value))}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setEditMinTemp(isNaN(val) ? 0 : Math.min(100, Math.max(-100, val)));
+                              }}
                               required
                               className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-1.5 text-xs text-[var(--color-text)] font-mono focus:outline-none focus:border-amber-400"
                             />
@@ -671,8 +694,13 @@ export function AdminManageRefrigeratorsModal({
                             </label>
                             <input
                               type="number"
+                              min={-100}
+                              max={100}
                               value={editMaxTemp}
-                              onChange={(e) => setEditMaxTemp(Number(e.target.value))}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setEditMaxTemp(isNaN(val) ? 0 : Math.min(100, Math.max(-100, val)));
+                              }}
                               required
                               className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-1.5 text-xs text-[var(--color-text)] font-mono focus:outline-none focus:border-amber-400"
                             />

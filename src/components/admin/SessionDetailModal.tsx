@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShiftSession } from "../../types";
 import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, Divider, getShiftBadge } from "../common/Badge";
@@ -36,6 +36,17 @@ export function SessionDetailModal({
   const [incompleteNote, setIncompleteNote] = useState<string>("");
   const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
   const [reviewFeedback, setReviewFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    setSessionOverride(null);
+    setShowApprovalPrompt(false);
+  }, [session?.id]);
+
+  useEffect(() => {
+    if (isApproved && showApprovalPrompt) {
+      setShowApprovalPrompt(false);
+    }
+  }, [isApproved, showApprovalPrompt]);
 
   const currentSession = session ? { ...session, ...sessionOverride } : null;
 
@@ -527,6 +538,15 @@ export function SessionDetailModal({
                 </>
               )}
             </button>
+          </div>
+        )}
+
+        {isApproved && (
+          <div className="mt-5 pt-4 border-t border-[var(--color-border)]">
+            <div className="w-full min-h-[44px] py-2.5 px-4 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>รับรองผลการตรวจงานเรียบร้อยแล้ว ({approveRoleTitle})</span>
+            </div>
           </div>
         )}
       </div>

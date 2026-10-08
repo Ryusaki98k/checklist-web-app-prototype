@@ -146,6 +146,13 @@ export function ExecutiveDashboard({
         }));
         setSessions(mappedSessions);
 
+        // Keep active session in detail modal updated with latest DB state
+        setSelectedSession((prev) => {
+          if (!prev) return null;
+          const fresh = mappedSessions.find((s) => s.id === prev.id);
+          return fresh ? fresh : prev;
+        });
+
         setApprovals((prev) => {
           const merged: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = { ...prev };
           (res.sessions || []).forEach((s) => {

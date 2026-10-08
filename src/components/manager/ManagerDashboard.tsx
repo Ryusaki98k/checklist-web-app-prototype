@@ -168,6 +168,7 @@ export function ManagerDashboard({
   const [hasAssistantLoggedInToday, setHasAssistantLoggedInToday] = useState(true);
   const [approvals, setApprovals] = useState<Record<string, { assistantApproved?: boolean; managerApproved?: boolean }>>({});
   const [approvingSessionIds, setApprovingSessionIds] = useState<Set<string>>(new Set());
+  const approvingStartedAtRef = useRef<Map<string, number>>(new Map());
   const [shiftQueueStatusFilter, setShiftQueueStatusFilter] = useState<"all" | "pending" | "approved">("all");
   const [selectedSession, setSelectedSession] = useState<ShiftSession | null>(null);
 
@@ -243,6 +244,7 @@ export function ManagerDashboard({
 
   // Load live shift sessions from Supabase DB for approvals
   const loadDbSessions = useCallback(async (isManual = false) => {
+    const fetchStartTime = Date.now();
     try {
       if (isManual) setIsLoadingDb(true);
       const res = await getManagerShiftSessionsAction();
@@ -270,24 +272,71 @@ export function ManagerDashboard({
           })),
           notified: true,
           branchName: s.branchName,
+          incompleteReason: s.incompleteReason,
+          incompleteStatus: s.incompleteStatus,
+          incompleteAction: s.incompleteAction,
+          incompleteActionPoints: s.incompleteActionPoints,
+          incompleteActionNote: s.incompleteActionNote,
+          incompleteReviewedBy: s.incompleteReviewedBy,
+          incompleteReviewedByName: s.incompleteReviewedByName,
+          incompleteReviewedAt: s.incompleteReviewedAt,
         }));
         setSessions(mappedSessions);
 
+        // Keep active session in detail modal updated with latest DB state
+        setSelectedSession((prev) => {
+          if (!prev) return null;
+          const fresh = mappedSessions.find((s) => s.id === prev.id);
+          return fresh ? fresh : prev;
+        });
+
+        // Reconcile approvals map from fresh DB records
         const newApprovals: Record<string, { assistantApproved?: boolean; managerApproved?: boolean }> = {};
         res.sessions.forEach((s) => {
           newApprovals[s.id] = {
-            assistantApproved: s.assistantApproved,
-            managerApproved: s.managerApproved,
+            assistantApproved: Boolean(s.assistantApproved),
+            managerApproved: Boolean(s.managerApproved),
           };
         });
-        setApprovals(newApprovals);
+        setApprovals((prev) => ({ ...prev, ...newApprovals }));
+
+        // Reconcile approving button states with fresh DB state
+        setApprovingSessionIds((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set(prev);
+          let changed = false;
+
+          for (const sessionId of prev) {
+            const dbMatch = res.sessions?.find((s) => s.id === sessionId);
+            const startedAt = approvingStartedAtRef.current.get(sessionId) || 0;
+
+            if (dbMatch) {
+              if (dbMatch.managerApproved || dbMatch.assistantApproved) {
+                next.delete(sessionId);
+                approvingStartedAtRef.current.delete(sessionId);
+                changed = true;
+                continue;
+              }
+            }
+
+            // If approval has been pending for >= 5s without DB confirmation, or was initiated
+            // prior to this fetch without showing in DB, revert button so user is never stuck
+            if (startedAt > 0 && (Date.now() - startedAt >= 5000 || fetchStartTime - startedAt >= 3500)) {
+              next.delete(sessionId);
+              approvingStartedAtRef.current.delete(sessionId);
+              changed = true;
+            }
+          }
+
+          return changed ? next : prev;
+        });
       }
     } catch (err) {
       console.error("Failed to load DB sessions:", err);
     } finally {
       if (isManual) setIsLoadingDb(false);
     }
-  }, [setIsLoadingDb, setSessions, setApprovals, setHasAssistantLoggedInToday]);
+  }, [setIsLoadingDb, setSessions, setApprovals, setHasAssistantLoggedInToday, setApprovingSessionIds, setSelectedSession]);
 
   // Load history sessions
   const loadHistory = useCallback(async () => {
@@ -337,13 +386,36 @@ export function ManagerDashboard({
           };
         });
         setApprovals((prev) => ({ ...prev, ...historyApprovals }));
+
+        // Keep open modal in sync
+        setSelectedSession((prev) => {
+          if (!prev) return null;
+          const fresh = mapped.find((s) => s.id === prev.id);
+          return fresh ? fresh : prev;
+        });
+
+        // Reconcile approving state for history items
+        setApprovingSessionIds((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set(prev);
+          let changed = false;
+          for (const sessionId of prev) {
+            const histMatch = res.sessions?.find((s) => s.id === sessionId);
+            if (histMatch && (histMatch.managerApproved || histMatch.assistantApproved)) {
+              next.delete(sessionId);
+              approvingStartedAtRef.current.delete(sessionId);
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
       }
     } catch (err) {
       console.error("Failed to load history sessions:", err);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [setIsLoadingHistory, setHistorySessions, setApprovals]);
+  }, [setIsLoadingHistory, setHistorySessions, setApprovals, setApprovingSessionIds, setSelectedSession]);
 
   // Fetch specific history date (for Manager Audit)
   const fetchSpecificHistoryDate = useCallback(async (dateStr: string) => {
@@ -396,13 +468,46 @@ export function ManagerDashboard({
           };
         });
         setApprovals((prev) => ({ ...prev, ...historyApprovals }));
+
+        setSelectedSession((prev) => {
+          if (!prev) return null;
+          const fresh = mapped.find((s) => s.id === prev.id);
+          return fresh ? fresh : prev;
+        });
+
+        setApprovingSessionIds((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set(prev);
+          let changed = false;
+          for (const sessionId of prev) {
+            const histMatch = res.sessions?.find((s) => s.id === sessionId);
+            if (histMatch && (histMatch.managerApproved || histMatch.assistantApproved)) {
+              next.delete(sessionId);
+              approvingStartedAtRef.current.delete(sessionId);
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
       }
     } catch (err) {
       console.error("Failed to load specific history date:", err);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [setIsLoadingHistory, setSpecificDaySessions, setApprovals]);
+  }, [setIsLoadingHistory, setSpecificDaySessions, setApprovals, setApprovingSessionIds, setSelectedSession]);
+
+  const activeTabRef = useRef(activeTab);
+  const selectedHistoryDateRef = useRef(selectedHistoryDate);
+  const loadHistoryRef = useRef(loadHistory);
+  const fetchSpecificHistoryDateRef = useRef(fetchSpecificHistoryDate);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+    selectedHistoryDateRef.current = selectedHistoryDate;
+    loadHistoryRef.current = loadHistory;
+    fetchSpecificHistoryDateRef.current = fetchSpecificHistoryDate;
+  }, [activeTab, selectedHistoryDate, loadHistory, fetchSpecificHistoryDate]);
 
   // Initial and recurring fetch
   useEffect(() => {
@@ -414,9 +519,67 @@ export function ManagerDashboard({
       if (typeof document !== "undefined" && document.hidden) return;
       void loadChecklist(myChecklistShift, true);
       void loadDbSessions();
+      if (activeTabRef.current === "history") {
+        if (selectedHistoryDateRef.current) {
+          void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current);
+        } else {
+          void loadHistoryRef.current?.();
+        }
+      }
     }, 7000);
 
     return () => clearInterval(interval);
+  }, [myChecklistShift, loadChecklist, loadDbSessions]);
+
+  // Window visibility & real-time score/approval update listeners
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        void loadChecklist(myChecklistShift, true);
+        void loadDbSessions();
+        if (activeTabRef.current === "history") {
+          if (selectedHistoryDateRef.current) {
+            void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current);
+          } else {
+            void loadHistoryRef.current?.();
+          }
+        }
+      }
+    };
+
+    const handleScoreOrApprovalUpdate = () => {
+      void loadDbSessions(false);
+      if (activeTabRef.current === "history") {
+        if (selectedHistoryDateRef.current) {
+          void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current);
+        } else {
+          void loadHistoryRef.current?.();
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("app:scores-updated", handleScoreOrApprovalUpdate);
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        channel = new BroadcastChannel("app_scores_sync");
+        channel.onmessage = (msg) => {
+          if (msg.data?.type === "SCORES_UPDATED") {
+            handleScoreOrApprovalUpdate();
+          }
+        };
+      }
+    } catch (e) {
+      console.warn("BroadcastChannel error:", e);
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("app:scores-updated", handleScoreOrApprovalUpdate);
+      channel?.close();
+    };
   }, [myChecklistShift, loadChecklist, loadDbSessions]);
 
   useEffect(() => {
@@ -575,7 +738,12 @@ export function ManagerDashboard({
   async function handleApproveSession(sessionId: string, type: "assistant" | "manager", isException?: boolean) {
     if (approvingSessionIds.has(sessionId)) return;
 
-    const target = sessions.find((s) => s.id === sessionId);
+    const target =
+      sessions.find((s) => s.id === sessionId) ||
+      historySessions.find((s) => s.id === sessionId) ||
+      specificDaySessions?.find((s) => s.id === sessionId) ||
+      (selectedSession?.id === sessionId ? selectedSession : undefined);
+
     const isAssistantSession =
       target?.taskRole === "manager_assistant" || target?.userPosition === "ผู้ช่วยผู้จัดการร้าน";
 
@@ -596,6 +764,7 @@ export function ManagerDashboard({
     }));
 
     setApprovingSessionIds((prev) => new Set(prev).add(sessionId));
+    approvingStartedAtRef.current.set(sessionId, Date.now());
 
     try {
       const roleForDb = type === "assistant" ? "manager_assistant" : "manager";
@@ -612,6 +781,13 @@ export function ManagerDashboard({
             : "อนุมัติส่งมอบกะงานขั้นสุดท้าย (Manager Approval) สำเร็จ ✓"
         );
         void loadDbSessions(true);
+        if (activeTab === "history") {
+          if (selectedHistoryDate) {
+            void fetchSpecificHistoryDate(selectedHistoryDate);
+          } else {
+            void loadHistory();
+          }
+        }
       } else {
         setApprovals((prev) => ({
           ...prev,
@@ -631,6 +807,7 @@ export function ManagerDashboard({
         next.delete(sessionId);
         return next;
       });
+      approvingStartedAtRef.current.delete(sessionId);
     }
   }
 
@@ -1521,9 +1698,11 @@ export function ManagerDashboard({
                               className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${isAssistantApproved
                                 ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
                                 : "bg-amber-400 text-amber-950 hover:bg-amber-300 shadow-2xs"
-                              } ${approvingSessionIds.has(sess.id) ? "opacity-75 cursor-wait" : ""}`}
+                              } ${approvingSessionIds.has(sess.id) && !isAssistantApproved ? "opacity-75 cursor-wait" : ""}`}
                             >
-                              {approvingSessionIds.has(sess.id) ? (
+                              {isAssistantApproved ? (
+                                "✓ ผู้ช่วยฯ รับรองแล้ว"
+                              ) : approvingSessionIds.has(sess.id) ? (
                                 <>
                                   <svg className="animate-spin h-3.5 w-3.5 text-amber-950" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1531,8 +1710,6 @@ export function ManagerDashboard({
                                   </svg>
                                   <span>กำลังลงนาม...</span>
                                 </>
-                              ) : isAssistantApproved ? (
-                                "✓ ผู้ช่วยฯ รับรองแล้ว"
                               ) : (
                                 "ลงนามรับรอง (ผู้ช่วยฯ)"
                               )}
@@ -1548,9 +1725,11 @@ export function ManagerDashboard({
                               className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${isFullyApproved
                                 ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
                                 : "bg-amber-600 hover:bg-amber-700 text-white shadow-2xs"
-                              } ${approvingSessionIds.has(sess.id) ? "opacity-75 cursor-wait" : ""}`}
+                              } ${approvingSessionIds.has(sess.id) && !isFullyApproved ? "opacity-75 cursor-wait" : ""}`}
                             >
-                              {approvingSessionIds.has(sess.id) ? (
+                              {isFullyApproved ? (
+                                "✓ อนุมัติขั้นสุดท้ายแล้ว"
+                              ) : approvingSessionIds.has(sess.id) ? (
                                 <>
                                   <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1558,8 +1737,6 @@ export function ManagerDashboard({
                                   </svg>
                                   <span>กำลังอนุมัติ...</span>
                                 </>
-                              ) : isFullyApproved ? (
-                                "✓ อนุมัติขั้นสุดท้ายแล้ว"
                               ) : (
                                 "อนุมัติขั้นสุดท้าย (ผู้จัดการ)"
                               )}

@@ -75,7 +75,7 @@ export function BranchRefrigeratorChecklist({
         taskId: activeTask.taskId,
         userId,
         completed: true,
-        temperature: tempValue,
+        temperature: Math.min(100, Math.max(-100, tempValue)),
         isOkay: isOkayValue,
         comment: commentValue.trim() || undefined,
         shiftSessionId,
@@ -407,20 +407,27 @@ export function BranchRefrigeratorChecklist({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setTempValue((prev) => prev - 1)}
+                    onClick={() => setTempValue((prev) => Math.max(-100, prev - 1))}
                     className="w-11 h-11 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:bg-black/5 dark:hover:bg-white/5 font-extrabold text-lg flex items-center justify-center cursor-pointer transition-colors"
                   >
                     -
                   </button>
                   <input
                     type="number"
+                    min={-100}
+                    max={100}
                     value={tempValue}
-                    onChange={(e) => setTempValue(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (!isNaN(val)) {
+                        setTempValue(Math.min(100, Math.max(-100, val)));
+                      }
+                    }}
                     className="flex-1 text-center font-mono font-black text-xl py-2 rounded-xl bg-[var(--color-surface)] border-2 border-sky-400 focus:outline-none"
                   />
                   <button
                     type="button"
-                    onClick={() => setTempValue((prev) => prev + 1)}
+                    onClick={() => setTempValue((prev) => Math.min(100, prev + 1))}
                     className="w-11 h-11 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:bg-black/5 dark:hover:bg-white/5 font-extrabold text-lg flex items-center justify-center cursor-pointer transition-colors"
                   >
                     +

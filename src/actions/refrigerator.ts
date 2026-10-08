@@ -1,7 +1,7 @@
 "use server";
 
 import { getServices } from "../services/container";
-import { RefrigeratorConfig } from "../services/RefrigeratorService";
+import { RefrigeratorConfig, clampTemperature } from "../services/RefrigeratorService";
 import { ShiftType } from "../types";
 
 export type { RefrigeratorConfig };
@@ -29,7 +29,11 @@ export async function createRefrigeratorAction(params: {
   disableCheck: boolean;
 }): Promise<{ success: boolean; data?: RefrigeratorConfig; error?: string }> {
   const services = getServices();
-  return await services.refrigerator.createRefrigerator(params);
+  return await services.refrigerator.createRefrigerator({
+    ...params,
+    minTemperature: clampTemperature(params.minTemperature),
+    maxTemperature: clampTemperature(params.maxTemperature),
+  });
 }
 
 export async function createBranchRefrigeratorAction(params: {
@@ -40,7 +44,11 @@ export async function createBranchRefrigeratorAction(params: {
   disableCheck?: boolean;
 }): Promise<{ success: boolean; data?: RefrigeratorConfig; error?: string }> {
   const services = getServices();
-  return await services.refrigerator.createBranchRefrigerator(params);
+  return await services.refrigerator.createBranchRefrigerator({
+    ...params,
+    minTemperature: clampTemperature(params.minTemperature),
+    maxTemperature: clampTemperature(params.maxTemperature),
+  });
 }
 
 export async function updateRefrigeratorAction(params: {
@@ -51,7 +59,11 @@ export async function updateRefrigeratorAction(params: {
   disableCheck: boolean;
 }): Promise<{ success: boolean; error?: string }> {
   const services = getServices();
-  return await services.refrigerator.updateRefrigerator(params);
+  return await services.refrigerator.updateRefrigerator({
+    ...params,
+    minTemperature: clampTemperature(params.minTemperature),
+    maxTemperature: clampTemperature(params.maxTemperature),
+  });
 }
 
 export async function deleteRefrigeratorAction(
@@ -98,7 +110,10 @@ export async function updateRefrigeratorTaskAction(params: {
   shift?: ShiftType;
 }) {
   const services = getServices();
-  return await services.refrigerator.updateRefrigeratorTask(params);
+  return await services.refrigerator.updateRefrigeratorTask({
+    ...params,
+    temperature: params.temperature !== undefined ? clampTemperature(params.temperature) : undefined,
+  });
 }
 
 export async function ensureDailyRefrigeratorTasksAction(branchId: string, dateStr?: string) {

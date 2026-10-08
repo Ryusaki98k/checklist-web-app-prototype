@@ -11,6 +11,14 @@ export interface RefrigeratorConfig {
   disable_check: boolean;
 }
 
+export const MIN_REFRIGERATOR_TEMP = -100;
+export const MAX_REFRIGERATOR_TEMP = 100;
+
+export function clampTemperature(val: number | undefined | null): number {
+  if (val === undefined || val === null || isNaN(val)) return 0;
+  return Math.min(MAX_REFRIGERATOR_TEMP, Math.max(MIN_REFRIGERATOR_TEMP, Math.round(Number(val))));
+}
+
 function getThaiDateString(baseDate = new Date()): string {
   const y = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", year: "numeric" }).format(baseDate);
   const m = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", month: "2-digit" }).format(baseDate);
@@ -106,13 +114,16 @@ export class RefrigeratorService implements IRefrigeratorService {
         return { success: false, error: "กรุณาระบุข้อมูลให้ครบถ้วน" };
       }
 
+      const clampedMin = clampTemperature(minTemperature);
+      const clampedMax = clampTemperature(maxTemperature);
+
       const [newRef] = await this.db
         .insert(refrigerators)
         .values({
           branch_id: branchId,
           name: name.trim(),
-          min_temperature: minTemperature,
-          max_temperature: maxTemperature,
+          min_temperature: clampedMin,
+          max_temperature: clampedMax,
           disable_check: disableCheck,
         })
         .returning();
@@ -150,13 +161,16 @@ export class RefrigeratorService implements IRefrigeratorService {
         return { success: false, error: "ไม่พบสาขาของผู้ใช้นี้" };
       }
 
+      const clampedMin = clampTemperature(minTemperature);
+      const clampedMax = clampTemperature(maxTemperature);
+
       const [newRef] = await this.db
         .insert(refrigerators)
         .values({
           branch_id: branch.id,
           name,
-          min_temperature: minTemperature,
-          max_temperature: maxTemperature,
+          min_temperature: clampedMin,
+          max_temperature: clampedMax,
           disable_check: disableCheck,
         })
         .returning();
@@ -189,12 +203,15 @@ export class RefrigeratorService implements IRefrigeratorService {
     try {
       const { id, name, minTemperature, maxTemperature, disableCheck } = params;
 
+      const clampedMin = clampTemperature(minTemperature);
+      const clampedMax = clampTemperature(maxTemperature);
+
       const [updatedRef] = await this.db
         .update(refrigerators)
         .set({
           name,
-          min_temperature: minTemperature,
-          max_temperature: maxTemperature,
+          min_temperature: clampedMin,
+          max_temperature: clampedMax,
           disable_check: disableCheck,
         })
         .where(eq(refrigerators.id, id))
@@ -670,13 +687,16 @@ export class RefrigeratorService implements IRefrigeratorService {
       }
 
       const completedAt = completed ? new Date() : null;
+      const clampedTemp = completed && temperature !== undefined && !isNaN(temperature)
+        ? clampTemperature(temperature)
+        : null;
 
       const [updatedTask] = await this.db
         .update(refrigeratorTasks)
         .set({
           completed_by: completed ? userId : null,
           completed_at: completedAt,
-          temperature: completed && temperature !== undefined ? temperature : null,
+          temperature: clampedTemp,
           is_okay: completed && isOkay !== undefined ? isOkay : true,
           comment: completed && comment !== undefined ? comment : null,
           shift_session_id: completed && shiftSessionId ? shiftSessionId : null,

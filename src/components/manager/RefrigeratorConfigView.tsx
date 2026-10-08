@@ -175,6 +175,11 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
             return;
         }
 
+        if (formMinTemp < -100 || formMinTemp > 100 || formMaxTemp < -100 || formMaxTemp > 100) {
+            setFormError("อุณหภูมิต้องอยู่ระหว่าง -100°C ถึง 100°C");
+            return;
+        }
+
         if (formMinTemp > formMaxTemp) {
             setFormError("อุณหภูมิต่ำสุดต้องไม่เกินอุณหภูมิสูงสุด");
             return;
@@ -325,8 +330,13 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                                 <input
                                                     id="ref-min-temp"
                                                     type="number"
+                                                    min={-100}
+                                                    max={100}
                                                     value={formMinTemp}
-                                                    onChange={(e) => setFormMinTemp(Number(e.target.value))}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        setFormMinTemp(isNaN(val) ? 0 : Math.min(100, Math.max(-100, val)));
+                                                    }}
                                                     className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 rounded-xl px-3 py-2 text-sm font-mono font-bold text-[var(--color-text)] outline-none transition-all"
                                                 />
                                             </div>
@@ -337,8 +347,13 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                                 <input
                                                     id="ref-max-temp"
                                                     type="number"
+                                                    min={-100}
+                                                    max={100}
                                                     value={formMaxTemp}
-                                                    onChange={(e) => setFormMaxTemp(Number(e.target.value))}
+                                                    onChange={(e) => {
+                                                        const val = Number(e.target.value);
+                                                        setFormMaxTemp(isNaN(val) ? 0 : Math.min(100, Math.max(-100, val)));
+                                                    }}
                                                     className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 rounded-xl px-3 py-2 text-sm font-mono font-bold text-[var(--color-text)] outline-none transition-all"
                                                 />
                                             </div>
