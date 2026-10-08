@@ -187,6 +187,7 @@ export interface IChecklistService {
   cleanupOldData(
     retentionDays?: number,
     options?: {
+      refrigeratorRetentionDays?: number;
       cleanShiftSessions?: boolean;
       cleanRefrigeratorTasks?: boolean;
       cleanNotifications?: boolean;
@@ -196,6 +197,7 @@ export interface IChecklistService {
   ): Promise<{
     success: boolean;
     cutoffDate?: string;
+    refrigeratorCutoffDate?: string;
     deleted?: {
       shiftSessions: number;
       taskWorks: number;
@@ -216,6 +218,7 @@ export interface BranchEmployeeStatus {
   managerType?: ManagerType;
   isAdmin?: boolean;
   position?: string;
+  profile_id?: string | null;
   branchId?: string;
   branchName?: string;
   isOnDuty: boolean;
@@ -622,6 +625,7 @@ export type CronJobId = "cleanup-data" | "end-shifts" | "daily-refrigerators" | 
 
 export interface CleanupDataConfig {
   retentionDays: number;
+  refrigeratorRetentionDays?: number;
   cleanShiftSessions: boolean;
   cleanRefrigeratorTasks: boolean;
   cleanNotifications: boolean;

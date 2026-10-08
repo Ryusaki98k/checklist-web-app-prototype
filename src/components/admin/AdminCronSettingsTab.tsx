@@ -518,7 +518,7 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                           {[
                             { key: "cleanShiftSessions", label: "ประวัติการเปิด-ปิดกะ และเช็คลิสต์งาน" },
-                            { key: "cleanRefrigeratorTasks", label: "บันทึกอุณหภูมิตู้แช่เก่า" },
+                            { key: "cleanRefrigeratorTasks", label: "บันทึกอุณหภูมิตู้แช่เก่า (เก็บย้อนหลัง 1 เดือน)" },
                             { key: "cleanNotifications", label: "การแจ้งเตือนเก่าที่พ้นระยะเวลา" },
                             { key: "cleanPointTransactions", label: "ประวัติธุรกรรมแต้มเก่า" },
                             { key: "cleanEmployeeLeaves", label: "ประวัติการลาพนักงานเก่า" },

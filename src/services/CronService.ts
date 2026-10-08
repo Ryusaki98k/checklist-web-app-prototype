@@ -61,12 +61,13 @@ const DEFAULT_CRON_JOBS: CronSetting[] = [
   {
     id: "cleanup-data",
     name: "ล้างข้อมูลประวัติและบันทึกเก่า (Data Retention Cleanup)",
-    description: "ลบประวัติงาน กะ และข้อมูลการดำเนินงานที่เก่ากว่ากำหนดโดยอัตโนมัติ เพื่อรักษาประสิทธิภาพของระบบ",
+    description: "ลบประวัติงาน กะ และข้อมูลการดำเนินงานที่เก่ากว่ากำหนดโดยอัตโนมัติ เพื่อรักษาประสิทธิภาพของระบบ (ข้อมูลบันทึกตู้แช่เก็บรักษาย้อนหลัง 1 เดือน)",
     schedule_cron: "50 16 * * 0",
     schedule_description: "ทุกวันอาทิตย์ เวลา 23:50 น.",
     enabled: true,
     config: {
       retentionDays: 14,
+      refrigeratorRetentionDays: 30,
       cleanShiftSessions: true,
       cleanRefrigeratorTasks: true,
       cleanNotifications: true,
@@ -154,19 +155,25 @@ export class CronService implements ICronService {
         "cleanup-data": 4,
       };
 
-      const mapped: CronSetting[] = records.map((r: typeof cronSettings.$inferSelect) => ({
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        schedule_cron: r.schedule_cron,
-        schedule_description: r.schedule_description,
-        enabled: Boolean(r.enabled),
-        config: (r.config as Record<string, unknown>) || {},
-        last_run_at: r.last_run_at ? new Date(r.last_run_at).toISOString() : null,
-        last_run_status: r.last_run_status as "success" | "failed" | "skipped" | null,
-        last_run_message: r.last_run_message,
-        updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
-      }));
+      const mapped: CronSetting[] = records.map((r: typeof cronSettings.$inferSelect) => {
+        const rawConfig = (r.config as Record<string, unknown>) || {};
+        if (r.id === "cleanup-data" && rawConfig.refrigeratorRetentionDays === undefined) {
+          rawConfig.refrigeratorRetentionDays = 30;
+        }
+        return {
+          id: r.id,
+          name: r.name,
+          description: r.description,
+          schedule_cron: r.schedule_cron,
+          schedule_description: r.schedule_description,
+          enabled: Boolean(r.enabled),
+          config: rawConfig,
+          last_run_at: r.last_run_at ? new Date(r.last_run_at).toISOString() : null,
+          last_run_status: r.last_run_status as "success" | "failed" | "skipped" | null,
+          last_run_message: r.last_run_message,
+          updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+        };
+      });
 
       mapped.sort((a, b) => (orderMap[a.id] || 99) - (orderMap[b.id] || 99));
       return mapped;
@@ -290,7 +297,9 @@ export class CronService implements ICronService {
         }
 
         const retentionDays = Number(mergedConfig.retentionDays) || 14;
+        const refrigeratorRetentionDays = Number(mergedConfig.refrigeratorRetentionDays) || 30;
         const options = {
+          refrigeratorRetentionDays,
           cleanShiftSessions: mergedConfig.cleanShiftSessions !== false,
           cleanRefrigeratorTasks: mergedConfig.cleanRefrigeratorTasks !== false,
           cleanNotifications: mergedConfig.cleanNotifications !== false,
@@ -312,7 +321,7 @@ export class CronService implements ICronService {
           employeeLeaves: 0,
         };
 
-        const summaryMsg = `ล้างข้อมูลเก่ากว่า ${retentionDays} วัน สำเร็จ: ปิดกะ/ลบประวัติกะ ${deleted.shiftSessions} กะ, งานย่อย ${deleted.taskWorks} รายการ, บันทึกตู้แช่ ${deleted.refrigeratorTasks} รายการ, แจ้งเตือน ${deleted.notifications} รายการ, คะแนน ${deleted.pointTransactions} รายการ, ข้อมูลลา ${deleted.employeeLeaves} รายการ`;
+        const summaryMsg = `ล้างข้อมูลเก่าสำเร็จ (กะและงานย่อยเก่ากว่า ${retentionDays} วัน, ตู้แช่เก่ากว่า ${refrigeratorRetentionDays} วัน / 1 เดือน): ปิดกะ/ลบประวัติกะ ${deleted.shiftSessions} กะ, งานย่อย ${deleted.taskWorks} รายการ, บันทึกตู้แช่ ${deleted.refrigeratorTasks} รายการ, แจ้งเตือน ${deleted.notifications} รายการ, คะแนน ${deleted.pointTransactions} รายการ, ข้อมูลลา ${deleted.employeeLeaves} รายการ`;
 
         await this.recordExecution(id, {
           status: "success",

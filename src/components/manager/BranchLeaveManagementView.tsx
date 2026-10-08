@@ -40,10 +40,14 @@ import {
   Info,
   Coins,
   Check,
-  X
+  X,
+  Award,
+  ChevronDown,
+  UserCheck
 } from "lucide-react";
 import Link from "next/link";
 import { isPaidLeave, isUnpaidLeave, getLeaveTypeLabel } from "../../utils/leave";
+import { UserAvatar } from "../common/UserAvatar";
 
 interface BranchLeaveManagementViewProps {
   currentUser: User;
@@ -97,6 +101,20 @@ export function BranchLeaveManagementView({
   const [formEndDate, setFormEndDate] = useState<string>(thaiTodayStr);
   const [formReason, setFormReason] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Employee search state in leave modal
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
+  const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
+
+  const filteredFormEmployees = useMemo(() => {
+    if (!employeeSearchQuery.trim()) return employees;
+    const q = employeeSearchQuery.toLowerCase();
+    return employees.filter(e => 
+      e.name.toLowerCase().includes(q) ||
+      (e.username || "").toLowerCase().includes(q) ||
+      (e.position || "").toLowerCase().includes(q)
+    );
+  }, [employees, employeeSearchQuery]);
 
   // Cancel confirmation state
   const [cancelTargetLeave, setCancelTargetLeave] = useState<EmployeeLeave | null>(null);
@@ -267,13 +285,18 @@ export function BranchLeaveManagementView({
 
   // Open modal handler
   const handleOpenAddModal = (userId?: string) => {
-    setFormUserId(userId || (employees[0]?.id ?? ""));
+    const initialUser = userId 
+      ? employees.find(e => e.id === userId)?.id || employees[0]?.id || ""
+      : employees[0]?.id || "";
+    setFormUserId(initialUser);
     setFormLeaveType("paid");
     setFormPreserveStreak(true);
     setFormStartDate(thaiTodayStr);
     setFormEndDate(thaiTodayStr);
     setFormReason("");
     setFormError(null);
+    setEmployeeSearchQuery("");
+    setIsEmployeeDropdownOpen(false);
     setIsModalOpen(true);
   };
 
@@ -677,7 +700,7 @@ export function BranchLeaveManagementView({
                         }`}
                       >
                         <Coins size={14} className={(!approvalLeaveTypes[pl.id] || isPaidLeave(approvalLeaveTypes[pl.id])) ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-text-muted)]"} />
-                        <span>ลาเเบบได้เงิน</span>
+                        <span>ลาเเบบได้เงิน (รักษาสตรีค)</span>
                       </button>
                       <button
                         type="button"
@@ -688,7 +711,7 @@ export function BranchLeaveManagementView({
                         }`}
                       >
                         <Clock size={14} className={isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "text-amber-600 dark:text-amber-400" : "text-[var(--color-text-muted)]"} />
-                        <span>ลาเเบบไม่ได้รับเงิน</span>
+                        <span>ลาเเบบไม่ได้รับเงิน (ตัดสตรีค 0)</span>
                       </button>
                     </div>
                   </div>
@@ -707,7 +730,7 @@ export function BranchLeaveManagementView({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleApprove(pl.id, approvalLeaveTypes[pl.id] || "paid", true)}
+                      onClick={() => handleApprove(pl.id, approvalLeaveTypes[pl.id] || "paid", !isUnpaidLeave(approvalLeaveTypes[pl.id]))}
                       disabled={isApproving === pl.id}
                       className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
                     >
@@ -716,7 +739,7 @@ export function BranchLeaveManagementView({
                       ) : (
                         <Check size={14} />
                       )}
-                      <span>อนุมัติ ({isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "ไม่ได้รับเงิน" : "ได้เงิน"})</span>
+                      <span>อนุมัติ ({isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "ไม่ได้รับเงิน • ตัดสตรีค 0" : "ได้เงิน • รักษาสตรีค"})</span>
                     </button>
                   </div>
                 </div>
@@ -1070,7 +1093,7 @@ export function BranchLeaveManagementView({
               <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
                 <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
-                  <p className="font-bold">อนุมัติรักษาสตรีคและคะแนนสะสม (สตรีคไม่ขาด)</p>
+                  <p className="font-bold">ลาแบบได้เงิน (ได้รับค่าจ้าง) & รักษาสตรีคสะสมต่อเนื่อง</p>
                   <p className="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
                     การบันทึกการลานี้จะไม่หักคะแนน และไม่ตัดสตรีค (Streak) ของพนักงาน และระบบจะไม่แจ้งเตือนการขาดงาน
                   </p>
@@ -1080,9 +1103,9 @@ export function BranchLeaveManagementView({
               <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-300">
                 <ZapOff size={18} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
-                  <p className="font-bold">ตัดสตรีคเป็น 0 ตามดุลยพินิจผู้บริหาร (สตรีคขาด)</p>
+                  <p className="font-bold">ลาแบบไม่ได้รับเงิน & ตัดสตรีคเป็น 0 (สตรีคขาด)</p>
                   <p className="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">
-                    การลานี้ถือว่าไม่ตรงตามเกณฑ์ หรือแจ้งกระชั้นชิดเกินไป สตรีคสะสมของพนักงานจะถูกรีเซ็ตเป็น 0 ทันที
+                    การลานี้ถือเป็นลาไม่มีค่าจ้าง สตรีคสะสมของพนักงานจะถูกรีเซ็ตเป็น 0 ทันที
                   </p>
                 </div>
               </div>
@@ -1096,158 +1119,302 @@ export function BranchLeaveManagementView({
             )}
 
             <form onSubmit={handleSubmitLeave} className="space-y-4">
-              {/* Select Employee */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
-                  <span>เลือกพนักงาน <span className="text-rose-500">*</span></span>
+              {/* Select Employee with Profile & Search */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1.5">
+                    <Users size={14} className="text-amber-600 dark:text-amber-400" />
+                    <span>เลือกพนักงานประจำสาขา <span className="text-rose-500">*</span></span>
+                  </label>
                   {selectedFormUser && (
-                    <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                      <Flame size={12} className="fill-amber-500" />
+                    <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      <Flame size={12} className="fill-amber-500 text-amber-500" />
                       สตรีคปัจจุบัน: {selectedFormUser.pointStreak} วัน
                     </span>
                   )}
-                </label>
-                <select
-                  value={formUserId}
-                  onChange={(e) => setFormUserId(e.target.value)}
-                  required
-                  className="w-full px-3.5 py-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
-                >
-                  <option value="" disabled>-- กรุณาเลือกพนักงาน --</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.name} ({emp.position || "พนักงาน"}) — สตรีค {emp.pointStreak} วัน
-                    </option>
-                  ))}
-                </select>
-              </div>
+                </div>
 
-              {/* Leave Type Selector (2 Options: ลาเเบบได้เงิน vs ลาเเบบไม่ได้รับเงิน) */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[var(--color-text)]">
-                  ประเภทการลา <span className="text-rose-500">*</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {/* Paid Leave Option */}
+                {/* Selected Employee Card Display */}
+                {selectedFormUser ? (
+                  <div className="p-3.5 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)] flex items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <UserAvatar
+                        user={{
+                          name: selectedFormUser.name,
+                          profile_id: selectedFormUser.profile_id,
+                          role: selectedFormUser.role,
+                        }}
+                        size="md"
+                        className="shrink-0 shadow-xs"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-xs sm:text-sm font-extrabold text-[var(--color-text)] truncate">
+                            {selectedFormUser.name}
+                          </h4>
+                          {selectedFormUser.username && (
+                            <span className="text-[11px] text-[var(--color-text-muted)] font-mono">
+                              @{selectedFormUser.username}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)]">
+                            {selectedFormUser.position || "พนักงาน"}
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/15">
+                            <Flame size={11} className="fill-amber-500 text-amber-500" />
+                            <span>{selectedFormUser.pointStreak} วัน</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60">
+                            <Award size={11} className="text-amber-600" />
+                            <span>{selectedFormUser.point} แต้ม</span>
+                          </span>
+                          {selectedFormUser.isOnDuty ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-800 dark:text-emerald-300">
+                              เข้ากะอยู่
+                            </span>
+                          ) : selectedFormUser.isOnLeave ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-800 dark:text-rose-300">
+                              ลางานอยู่
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
+                      className="px-3 py-1.5 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-surface)] text-xs font-bold text-[var(--color-text)] transition-colors flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                    >
+                      <Search size={13} className="text-amber-600" />
+                      <span>{isEmployeeDropdownOpen ? "ปิดค้นหา" : "เปลี่ยนคน"}</span>
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setFormLeaveType("paid")}
-                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1.5 ${
-                      isPaidLeave(formLeaveType)
-                        ? "bg-emerald-500/15 border-emerald-500 text-emerald-950 dark:text-emerald-200 ring-2 ring-emerald-500/20"
+                    onClick={() => setIsEmployeeDropdownOpen(true)}
+                    className="w-full p-4 rounded-2xl bg-[var(--color-surface-2)] border-2 border-dashed border-amber-400 dark:border-amber-600 text-center text-xs font-bold text-amber-950 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Search size={16} />
+                    <span>คลิกเพื่อค้นหาและเลือกพนักงานประจำสาขา</span>
+                  </button>
+                )}
+
+                {/* Search & Selection Dropdown List */}
+                {isEmployeeDropdownOpen && (
+                  <div className="p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-md space-y-2.5 animate-in fade-in duration-150">
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-2.5 text-[var(--color-text-muted)]" />
+                      <input
+                        type="text"
+                        value={employeeSearchQuery}
+                        onChange={(e) => setEmployeeSearchQuery(e.target.value)}
+                        placeholder="ค้นหาชื่อ นามสกุล ชื่อผู้ใช้ หรือตำแหน่ง..."
+                        className="w-full pl-9 pr-8 py-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs font-medium text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 placeholder:text-[var(--color-text-muted)]"
+                        autoFocus
+                      />
+                      {employeeSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setEmployeeSearchQuery("")}
+                          className="absolute right-2.5 top-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)] px-1">
+                      <span>รายชื่อพนักงานสาขานี้:</span>
+                      <span>พบ {filteredFormEmployees.length} คน</span>
+                    </div>
+
+                    {/* Scrollable Staff List */}
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                      {filteredFormEmployees.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-[var(--color-text-muted)]">
+                          ไม่พบพนักงานที่ตรงกับ &ldquo;{employeeSearchQuery}&rdquo;
+                        </div>
+                      ) : (
+                        filteredFormEmployees.map((emp) => {
+                          const isSelected = emp.id === formUserId;
+                          return (
+                            <button
+                              key={emp.id}
+                              type="button"
+                              onClick={() => {
+                                setFormUserId(emp.id);
+                                setIsEmployeeDropdownOpen(false);
+                                setEmployeeSearchQuery("");
+                              }}
+                              className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
+                                isSelected
+                                  ? "bg-amber-500/15 border-amber-500 ring-2 ring-amber-500/20 shadow-2xs"
+                                  : "bg-[var(--color-surface-2)] border-[var(--color-border)] hover:bg-[var(--color-surface)] hover:border-amber-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <UserAvatar
+                                  user={{
+                                    name: emp.name,
+                                    profile_id: emp.profile_id,
+                                    role: emp.role,
+                                  }}
+                                  size="sm"
+                                  className="shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-bold text-[var(--color-text)] truncate">
+                                      {emp.name}
+                                    </span>
+                                    {emp.username && (
+                                      <span className="text-[10px] text-[var(--color-text-muted)] font-mono">
+                                        @{emp.username}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-[var(--color-text-muted)] truncate">
+                                    {emp.position || "พนักงานสาขา"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10">
+                                  <Flame size={10} className="fill-amber-500 text-amber-500" />
+                                  <span>{emp.pointStreak} วัน</span>
+                                </span>
+                                {isSelected ? (
+                                  <span className="w-5 h-5 rounded-full bg-amber-500 text-amber-950 flex items-center justify-center font-bold">
+                                    <Check size={12} className="stroke-[3]" />
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+                                    เลือก
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Merged Leave Type & Streak Policy (2 Options) */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[var(--color-text)] flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-amber-500" />
+                    <span>ประเภทการลา & การพิจารณาสตรีคคะแนน <span className="text-rose-500">*</span></span>
+                  </span>
+                  {selectedFormUser && (
+                    <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      <Flame size={12} className="fill-amber-500 text-amber-500" />
+                      สตรีคเดิม: {selectedFormUser.pointStreak} วัน
+                    </span>
+                  )}
+                </label>
+                <p className="text-[11px] text-[var(--color-text-muted)]">
+                  ประเมินตามดุลยพินิจของผู้จัดการ (การลาแบบได้เงินจะรักษาสตรีคสะสม ส่วนการลาแบบไม่ได้รับเงินจะตัดสตรีคเป็น 0)
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Option 1: Paid Leave + Preserve Streak */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormLeaveType("paid");
+                      setFormPreserveStreak(true);
+                    }}
+                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 relative ${
+                      isPaidLeave(formLeaveType) && formPreserveStreak
+                        ? "bg-emerald-500/15 border-emerald-500 text-emerald-950 dark:text-emerald-200 ring-2 ring-emerald-500/30 shadow-xs"
                         : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-emerald-400"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="p-1.5 rounded-xl bg-emerald-600 text-white">
-                        <Coins size={15} />
-                      </span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                        ได้รับค่าจ้าง
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold text-[var(--color-text)] mt-0.5">
-                      ลาเเบบได้เงิน
-                    </span>
-                    <span className="text-[11px] text-[var(--color-text-muted)] line-clamp-1">
-                      ลาป่วยตามสิทธิ, ลาพักร้อน หรือลาได้รับค่าจ้าง
-                    </span>
-                  </button>
-
-                  {/* Unpaid Leave Option */}
-                  <button
-                    type="button"
-                    onClick={() => setFormLeaveType("unpaid")}
-                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col gap-1.5 ${
-                      isUnpaidLeave(formLeaveType)
-                        ? "bg-amber-500/15 border-amber-500 text-amber-950 dark:text-amber-200 ring-2 ring-amber-500/20"
-                        : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-amber-400"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="p-1.5 rounded-xl bg-amber-600 text-white">
-                        <FileText size={15} />
-                      </span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                        ไม่ได้รับค่าจ้าง
-                      </span>
-                    </div>
-                    <span className="text-xs font-bold text-[var(--color-text)] mt-0.5">
-                      ลาเเบบไม่ได้รับเงิน
-                    </span>
-                    <span className="text-[11px] text-[var(--color-text-muted)] line-clamp-1">
-                      ลากิจส่วนตัว, ขาดงาน หรือลาไม่มีค่าจ้าง (Leave without pay)
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Streak Decision Control (Manager Viewpoint) */}
-              <div className="space-y-2 p-3.5 rounded-2xl bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Flame size={15} className="text-amber-500" />
-                    <label className="text-xs font-bold text-[var(--color-text)]">
-                      การพิจารณาสตรีคคะแนน (Manager Streak Decision) <span className="text-rose-500">*</span>
-                    </label>
-                  </div>
-                  {selectedFormUser && (
-                    <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                      สตรีคปัจจุบัน: {selectedFormUser.pointStreak} วัน
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-[var(--color-text-muted)]">
-                  ประเมินตามดุลยพินิจของผู้จัดการว่าการลานี้สมเหตุสมผลตามเกณฑ์ของร้านหรือไม่
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  {/* Option 1: Preserve Streak */}
-                  <button
-                    type="button"
-                    onClick={() => setFormPreserveStreak(true)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
-                      formPreserveStreak
-                        ? "bg-emerald-500/15 border-emerald-500 text-emerald-950 dark:text-emerald-200 ring-2 ring-emerald-500/20"
-                        : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-emerald-400"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-700 dark:text-emerald-400">
-                        <ShieldCheck size={16} />
-                        <span>อนุมัติรักษาสตรีค</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
+                          <Coins size={16} />
+                        </span>
+                        <div>
+                          <span className="text-xs font-extrabold text-[var(--color-text)] block">
+                            ลาแบบได้เงิน (ได้รับค่าจ้าง)
+                          </span>
+                          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
+                            <ShieldCheck size={13} />
+                            <span>รักษาสตรีคคะแนน (สตรีคไม่ขาด)</span>
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-200">
-                        สตรีคไม่ขาด
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 shrink-0">
+                        ได้เงิน • รักษาสตรีค
                       </span>
                     </div>
-                    <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-tight">
-                      การลามีเหตุผลสมควรตามเกณฑ์ สตรีคคะแนนจะไม่ถูกตัดและสะสมต่อเนื่อง
+
+                    <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
+                      ลาป่วยตามสิทธิ, ลาพักร้อน หรือลาได้รับค่าจ้างตามเกณฑ์ — พนักงานได้รับค่าจ้าง และสตรีคสะสมต่อเนื่อง (ไม่ถูกตัด)
                     </p>
+
+                    {isPaidLeave(formLeaveType) && formPreserveStreak && (
+                      <div className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1 pt-1 border-t border-emerald-500/20">
+                        <Check size={12} className="stroke-[3]" />
+                        <span>เลือกตัวเลือกนี้แล้ว</span>
+                      </div>
+                    )}
                   </button>
 
-                  {/* Option 2: Break Streak */}
+                  {/* Option 2: Unpaid Leave + Break Streak */}
                   <button
                     type="button"
-                    onClick={() => setFormPreserveStreak(false)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
-                      !formPreserveStreak
-                        ? "bg-rose-500/15 border-rose-500 text-rose-950 dark:text-rose-200 ring-2 ring-rose-500/20"
-                        : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-rose-400"
+                    onClick={() => {
+                      setFormLeaveType("unpaid");
+                      setFormPreserveStreak(false);
+                    }}
+                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 relative ${
+                      isUnpaidLeave(formLeaveType) && !formPreserveStreak
+                        ? "bg-rose-500/15 border-rose-500 text-rose-950 dark:text-rose-200 ring-2 ring-rose-500/30 shadow-xs"
+                        : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-rose-400"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-xs text-rose-700 dark:text-rose-400">
-                        <ZapOff size={16} />
-                        <span>ตัดสตรีคเป็น 0</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-2 rounded-xl bg-rose-600 text-white shadow-xs">
+                          <FileText size={16} />
+                        </span>
+                        <div>
+                          <span className="text-xs font-extrabold text-[var(--color-text)] block">
+                            ลาแบบไม่ได้รับเงิน
+                          </span>
+                          <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1 mt-0.5">
+                            <ZapOff size={13} />
+                            <span>ตัดสตรีคเป็น 0 (สตรีคขาด)</span>
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-800 dark:text-rose-200">
-                        สตรีคขาด
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-500/30 shrink-0">
+                        ไม่ได้รับเงิน • ตัดสตรีค 0
                       </span>
                     </div>
-                    <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 leading-tight">
-                      การลาไม่ตรงตามเกณฑ์ หรือแจ้งกระทันหัน สตรีคของพนักงานจะถูกตัดเป็น 0 ทันที
+
+                    <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
+                      ลากิจส่วนตัว, ขาดงาน หรือลาไม่มีค่าจ้าง (Leave without pay) — ไม่ได้รับค่าจ้าง และสตรีคสะสมจะถูกตัดเป็น 0 ทันที
                     </p>
+
+                    {isUnpaidLeave(formLeaveType) && !formPreserveStreak && (
+                      <div className="text-[10px] font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1 pt-1 border-t border-rose-500/20">
+                        <Check size={12} className="stroke-[3]" />
+                        <span>เลือกตัวเลือกนี้แล้ว</span>
+                      </div>
+                    )}
                   </button>
                 </div>
               </div>

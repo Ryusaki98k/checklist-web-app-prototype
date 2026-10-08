@@ -820,6 +820,7 @@ export class ManagerService implements IManagerService {
           managerType: u.manager_type,
           isAdmin: u.is_admin,
           position,
+          profile_id: u.profile_id ?? null,
           branchId: activeBranchId,
           branchName: activeBranch.name,
           isOnDuty,

@@ -1292,6 +1292,7 @@ export class ChecklistService implements IChecklistService {
   async cleanupOldData(
     retentionDays: number = 14,
     options?: {
+      refrigeratorRetentionDays?: number;
       cleanShiftSessions?: boolean;
       cleanRefrigeratorTasks?: boolean;
       cleanNotifications?: boolean;
@@ -1301,6 +1302,7 @@ export class ChecklistService implements IChecklistService {
   ): Promise<{
     success: boolean;
     cutoffDate?: string;
+    refrigeratorCutoffDate?: string;
     deleted?: {
       shiftSessions: number;
       taskWorks: number;
@@ -1317,6 +1319,14 @@ export class ChecklistService implements IChecklistService {
       const m = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", month: "2-digit" }).format(cutoffDate);
       const d = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", day: "2-digit" }).format(cutoffDate);
       const cutoffDateStr = `${y}-${m}-${d}`;
+
+      // Refrigerator data retention: strictly preserved for 1 month (30 days)
+      const refRetentionDays = options?.refrigeratorRetentionDays ?? 30;
+      const refCutoffDate = new Date(Date.now() - refRetentionDays * 24 * 60 * 60 * 1000);
+      const refY = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", year: "numeric" }).format(refCutoffDate);
+      const refM = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", month: "2-digit" }).format(refCutoffDate);
+      const refD = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", day: "2-digit" }).format(refCutoffDate);
+      const refCutoffDateStr = `${refY}-${refM}-${refD}`;
 
       const doCleanSessions = options?.cleanShiftSessions !== false;
       const doCleanRefs = options?.cleanRefrigeratorTasks !== false;
@@ -1342,20 +1352,17 @@ export class ChecklistService implements IChecklistService {
         deletedTaskWorks = deletedWorks.length;
       }
 
-      // 2. Delete old refrigerator tasks (by created_at, task_date, or session_id)
+      // 2. Delete old refrigerator tasks (strictly preserve for 1 month / 30 days)
       let deletedRefsCount = 0;
       if (doCleanRefs) {
         const refConditions = [
-          lt(refrigeratorTasks.created_at, cutoffDate),
-          lte(refrigeratorTasks.task_date, cutoffDateStr),
+          lt(refrigeratorTasks.created_at, refCutoffDate),
+          lte(refrigeratorTasks.task_date, refCutoffDateStr),
         ];
-        if (oldSessionIds.length > 0) {
-          refConditions.push(inArray(refrigeratorTasks.shift_session_id, oldSessionIds));
-        }
 
         const deletedRefs = await this.db
           .delete(refrigeratorTasks)
-          .where(or(...refConditions))
+          .where(and(...refConditions))
           .returning({ id: refrigeratorTasks.id });
         deletedRefsCount = deletedRefs.length;
       }
