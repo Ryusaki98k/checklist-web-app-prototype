@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { User } from "../../types";
 import { useApp } from "../../context/AppContext";
 import { UserAvatar } from "./UserAvatar";
@@ -34,6 +35,7 @@ export function EditProfileModal({
 }: EditProfileModalProps) {
   const { currentUser, setCurrentUser, refreshUserData } = useApp();
 
+  const [mounted, setMounted] = useState(false);
   const [name, setName] = useState(currentUser?.name || "");
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
@@ -50,6 +52,10 @@ export function EditProfileModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Sync state whenever modal opens or currentUser changes
   React.useEffect(() => {
     if (isOpen && currentUser) {
@@ -62,7 +68,7 @@ export function EditProfileModal({
     }
   }, [isOpen, currentUser]);
 
-  if (!isOpen || !currentUser) return null;
+  if (!isOpen || !currentUser || !mounted) return null;
 
   const currentProfileId = currentUser.profile_id || null;
 
@@ -176,17 +182,17 @@ export function EditProfileModal({
     }
   };
 
-  return (
+  return createPortal(
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 sm:p-6 animate-fade-in font-sans"
+        className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center bg-black/60 backdrop-blur-xs p-4 sm:p-6 overflow-y-auto animate-fade-in font-sans"
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-profile-title"
         onClick={onClose}
       >
         <div
-          className="w-full max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto"
+          className="relative w-full max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto my-auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -388,6 +394,7 @@ export function EditProfileModal({
         }}
         onCropComplete={handleCropComplete}
       />
-    </>
+    </>,
+    document.body
   );
 }

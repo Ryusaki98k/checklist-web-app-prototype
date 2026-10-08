@@ -436,7 +436,7 @@ export function ChecklistPage({
 
       <div className={`w-full space-y-4 transition-all ${isStockShift ? "max-w-6xl" : "max-w-2xl"}`}>
         {/* Top App Bar */}
-        <nav aria-label="แถบข้อมูลผู้ใช้งานและเครื่องมือ" className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl px-2.5 sm:px-4 py-2 sm:py-3 shadow-xs flex items-center justify-between gap-1.5 sm:gap-4">
+        <nav aria-label="แถบข้อมูลผู้ใช้งานและเครื่องมือ" className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl px-2.5 sm:px-4 py-2 sm:py-3 shadow-xs flex items-center justify-between gap-1.5 sm:gap-4 relative z-20">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
             <UserAvatar
               user={currentUser || { name: session.userName, role: session.taskRole as any }}

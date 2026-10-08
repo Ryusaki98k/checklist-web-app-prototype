@@ -151,7 +151,7 @@ export function ShiftSelectPage({
       {showConfetti && <Confetti />}
 
       {/* Unified Top Header Bar */}
-      <header className="w-full max-w-5xl xl:max-w-6xl mx-auto mb-6 flex items-center justify-between gap-2 sm:gap-3 p-2 sm:p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xs overflow-hidden">
+      <header className="relative z-30 w-full max-w-5xl xl:max-w-6xl mx-auto mb-6 flex items-center justify-between gap-2 sm:gap-3 p-2 sm:p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xs">
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0">
           {onBack && (
             <button

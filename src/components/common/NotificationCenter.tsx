@@ -211,7 +211,7 @@ export function NotificationCenter() {
         <>
           {/* Mobile backdrop to dismiss cleanly and prevent background tap confusion */}
           <div
-            className="fixed inset-0 bg-black/30 backdrop-blur-2xs z-[55] sm:hidden"
+            className="fixed inset-0 bg-black/30 backdrop-blur-xs z-[55] sm:hidden"
             onClick={() => setIsOpen(false)}
             aria-hidden="true"
           />

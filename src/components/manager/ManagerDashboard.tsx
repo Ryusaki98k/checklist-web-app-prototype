@@ -943,7 +943,7 @@ export function ManagerDashboard({
         )}
 
         {/* ─── Hero Header & Profile Banner ─────────────────────────────────── */}
-        <header className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <header className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-20">
           <div className="flex items-start sm:items-center gap-3.5">
             <UserAvatar
               user={user}

@@ -128,7 +128,7 @@ export function PositionSelectPage({
   return (
     <main className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] flex flex-col justify-between px-3 sm:px-4 py-4 sm:py-10 pb-[max(1rem,env(safe-area-inset-bottom))] font-sans">
       {/* Unified Top Header Bar */}
-      <header className="w-full max-w-5xl xl:max-w-6xl mx-auto mb-6 flex items-center justify-between gap-2 sm:gap-3 p-2 sm:p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xs overflow-hidden">
+      <header className="relative z-30 w-full max-w-5xl xl:max-w-6xl mx-auto mb-6 flex items-center justify-between gap-2 sm:gap-3 p-2 sm:p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xs">
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">
           {onBack && (
             <button

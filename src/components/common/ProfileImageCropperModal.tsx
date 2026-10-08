@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   ZoomIn,
   ZoomOut,
@@ -25,6 +26,7 @@ export function ProfileImageCropperModal({
   onClose,
   onCropComplete,
 }: ProfileImageCropperModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -35,6 +37,10 @@ export function ProfileImageCropperModal({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Reset state when a new image is loaded
   useEffect(() => {
@@ -161,17 +167,17 @@ export function ProfileImageCropperModal({
     }
   }, [naturalSize, onCropComplete, onClose, position.x, position.y, scale]);
 
-  if (!isOpen || !imageSrc) return null;
+  if (!isOpen || !imageSrc || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6 animate-fade-in font-sans"
+      className="fixed inset-0 z-[10000] flex min-h-screen items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto animate-fade-in font-sans"
       role="dialog"
       aria-modal="true"
       aria-label="เครื่องมือตัดรูปโปรไฟล์ 1:1"
     >
       <div
-        className="w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-6 sm:p-7 space-y-6 flex flex-col max-h-[92vh] overflow-y-auto"
+        className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-6 sm:p-7 space-y-6 flex flex-col max-h-[92vh] overflow-y-auto my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -330,6 +336,7 @@ export function ProfileImageCropperModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
