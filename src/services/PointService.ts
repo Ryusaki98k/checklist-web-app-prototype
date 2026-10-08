@@ -332,7 +332,6 @@ export class PointService implements IPointService {
           pointStreak: u.point_streak || 0,
           pointStreakType: (u.point_streak_type as any) || "none",
           profile_id: u.profile_id || null,
-          profileId: u.profile_id || null,
         };
       });
 

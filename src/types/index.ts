@@ -64,7 +64,6 @@ export interface User {
   branchId?: string;
   leaveQuota?: number | null;
   profile_id?: string | null;
-  profileId?: string | null;
   point?: number;
   pointStreak?: number;
   pointStreakType?: "none" | "flawed" | "perfect";
@@ -145,7 +144,6 @@ export interface LeaderboardEntry {
   pointStreak: number;
   pointStreakType: "none" | "flawed" | "perfect";
   profile_id?: string | null;
-  profileId?: string | null;
 }
 
 export const STAFF_POSITIONS = [

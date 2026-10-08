@@ -32,7 +32,7 @@ export function EditProfileModal({
   onClose,
   onProfileUpdated,
 }: EditProfileModalProps) {
-  const { currentUser, setCurrentUser } = useApp();
+  const { currentUser, setCurrentUser, refreshUserData } = useApp();
 
   const [name, setName] = useState(currentUser?.name || "");
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
@@ -64,7 +64,7 @@ export function EditProfileModal({
 
   if (!isOpen || !currentUser) return null;
 
-  const currentProfileId = currentUser.profile_id || currentUser.profileId;
+  const currentProfileId = currentUser.profile_id || null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -131,17 +131,17 @@ export function EditProfileModal({
         formData.append("file", croppedBlob, "profile_avatar.webp");
 
         const uploadRes = await uploadProfileImageAction(formData);
-        if (!uploadRes.success || !uploadRes.profileId) {
+        if (!uploadRes.success || !uploadRes.profile_id) {
           throw new Error(uploadRes.error || "ไม่สามารถอัปโหลดรูปภาพไปยังคลาวด์ได้");
         }
-        nextProfileId = uploadRes.profileId;
+        nextProfileId = uploadRes.profile_id;
       }
 
       // 3. Update in database and delete old photo if replaced
       const updateRes = await changeUserProfileImageAction({
         userId: currentUser.id,
-        oldProfileId: currentProfileId,
-        newProfileId: nextProfileId,
+        old_profile_id: currentProfileId,
+        new_profile_id: nextProfileId,
         name: cleanName,
       });
 
@@ -149,22 +149,17 @@ export function EditProfileModal({
         throw new Error(updateRes.error || "ไม่สามารถบันทึกข้อมูลผู้ใช้ได้");
       }
 
-      // Update global context & local storage
-      const updatedUser: User = {
-        ...currentUser,
-        name: cleanName,
-        profile_id: nextProfileId,
-        profileId: nextProfileId,
-      };
-
-      setCurrentUser(updatedUser);
-      onProfileUpdated?.(updatedUser);
+      // Update global context & refetch user from database
+      const freshUser = updateRes.user;
+      setCurrentUser(freshUser);
+      await refreshUserData();
+      onProfileUpdated?.(freshUser);
 
       // Broadcast update across open tabs
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("app:profile-updated", {
-            detail: { userId: currentUser.id, user: updatedUser },
+            detail: { userId: currentUser.id, user: freshUser },
           })
         );
       }
@@ -251,7 +246,7 @@ export function EditProfileModal({
                   </div>
                 ) : (
                   <UserAvatar
-                    user={isPhotoRemoved ? { ...currentUser, profile_id: null, profileId: null } : currentUser}
+                    user={isPhotoRemoved ? { ...currentUser, profile_id: null } : currentUser}
                     name={name}
                     size="3xl"
                     className="shadow-md ring-4 ring-amber-500/15"

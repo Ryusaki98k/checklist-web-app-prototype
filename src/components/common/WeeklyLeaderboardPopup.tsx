@@ -375,7 +375,6 @@ export function WeeklyLeaderboardPopup() {
                             role: top2.role,
                             position: top2.position,
                             profile_id: top2.profile_id,
-                            profileId: top2.profileId,
                           }}
                           size="md"
                           className="mx-auto"
@@ -414,7 +413,6 @@ export function WeeklyLeaderboardPopup() {
                             role: top1.role,
                             position: top1.position,
                             profile_id: top1.profile_id,
-                            profileId: top1.profileId,
                           }}
                           size="lg"
                           className="mx-auto shadow-sm ring-2 ring-amber-400/60"
@@ -449,7 +447,6 @@ export function WeeklyLeaderboardPopup() {
                             role: top3.role,
                             position: top3.position,
                             profile_id: top3.profile_id,
-                            profileId: top3.profileId,
                           }}
                           size="md"
                           className="mx-auto"
@@ -535,7 +532,6 @@ export function WeeklyLeaderboardPopup() {
                                 role: user.role,
                                 position: user.position,
                                 profile_id: user.profile_id,
-                                profileId: user.profileId,
                               }}
                               size="xs"
                             />

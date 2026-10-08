@@ -125,7 +125,6 @@ export function LeaderboardWidget({ branchId }: { branchId?: string }) {
                     role: user.role,
                     position: user.position,
                     profile_id: user.profile_id,
-                    profileId: user.profileId,
                   }}
                   size="xs"
                 />

@@ -35,7 +35,6 @@ export async function registerAction(data: {
   branchId?: string;
   leaveQuota?: number | null;
   profile_id?: string | null;
-  profileId?: string | null;
 }): Promise<AuthResponse> {
   const services = getServices();
   return await services.auth.register(data);
@@ -96,7 +95,7 @@ export async function updateUserProfileAction(params: {
 
 export async function uploadProfileImageAction(formData: FormData): Promise<{
   success: boolean;
-  profileId?: string;
+  profile_id?: string;
   publicUrl?: string;
   error?: string;
 }> {
@@ -138,7 +137,7 @@ export async function uploadProfileImageAction(formData: FormData): Promise<{
 
     return {
       success: true,
-      profileId: filename,
+      profile_id: filename,
       publicUrl: urlData.publicUrl,
     };
   } catch (err: any) {
@@ -147,16 +146,16 @@ export async function uploadProfileImageAction(formData: FormData): Promise<{
   }
 }
 
-export async function deleteProfileImageAction(profileId: string): Promise<{
+export async function deleteProfileImageAction(profile_id: string): Promise<{
   success: boolean;
   error?: string;
 }> {
   try {
-    if (!profileId || profileId.trim() === "") {
+    if (!profile_id || profile_id.trim() === "") {
       return { success: true };
     }
 
-    const filename = profileId.includes("/") ? profileId.split("/").pop()! : profileId;
+    const filename = profile_id.includes("/") ? profile_id.split("/").pop()! : profile_id;
     const { createClient } = await import("@supabase/supabase-js");
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -180,26 +179,26 @@ export async function deleteProfileImageAction(profileId: string): Promise<{
 
 export async function changeUserProfileImageAction(params: {
   userId: string;
-  oldProfileId?: string | null;
-  newProfileId?: string | null;
+  old_profile_id?: string | null;
+  new_profile_id?: string | null;
   name?: string;
 }): Promise<AuthResponse> {
   try {
-    const { userId, oldProfileId, newProfileId, name } = params;
+    const { userId, old_profile_id, new_profile_id, name } = params;
     if (!userId) {
       return { success: false, error: "ไม่พบรหัสผู้ใช้" };
     }
 
     // If there is an old profile picture and it is different from the new one, delete old one from storage
-    if (oldProfileId && oldProfileId !== newProfileId) {
-      await deleteProfileImageAction(oldProfileId);
+    if (old_profile_id && old_profile_id !== new_profile_id) {
+      await deleteProfileImageAction(old_profile_id);
     }
 
     const services = getServices();
     return await services.auth.updateUserProfile({
       userId,
       name,
-      profile_id: newProfileId || null,
+      profile_id: new_profile_id || null,
     });
   } catch (err: any) {
     console.error("changeUserProfileImageAction error:", err);

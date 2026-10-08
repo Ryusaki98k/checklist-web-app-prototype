@@ -2,19 +2,20 @@
  * Helper utilities for User Profile Images and Supabase Storage integration
  */
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://vyswctpouebchjoppaic.supabase.co";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 
 /**
  * Returns the public image URL for a given profile_id from Supabase storage.
  * If the profile_id is already a full URL, it returns it directly.
  * Returns null if profile_id is missing or empty.
  */
-export function getProfileImageUrl(profileId?: string | null): string | null {
-  if (!profileId || profileId.trim() === "") return null;
-  const clean = profileId.trim();
+export function getProfileImageUrl(profile_id?: string | null): string | null {
+  if (!profile_id || profile_id.trim() === "") return null;
+  const clean = profile_id.trim();
   if (clean.startsWith("http://") || clean.startsWith("https://") || clean.startsWith("data:")) {
     return clean;
   }
+  if (!SUPABASE_URL) return null;
   const cleanBase = SUPABASE_URL.replace(/\/+$/, "");
   return `${cleanBase}/storage/v1/object/public/profiles/${clean}`;
 }

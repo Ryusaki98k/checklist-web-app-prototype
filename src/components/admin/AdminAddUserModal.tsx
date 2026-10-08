@@ -127,10 +127,10 @@ export function AdminAddUserModal({
         const formData = new FormData();
         formData.append("file", avatarBlob, "profile_avatar.webp");
         const uploadRes = await uploadProfileImageAction(formData);
-        if (!uploadRes.success || !uploadRes.profileId) {
+        if (!uploadRes.success || !uploadRes.profile_id) {
           throw new Error(uploadRes.error || "อัปโหลดรูปโปรไฟล์ไม่สำเร็จ");
         }
-        uploadedProfileId = uploadRes.profileId;
+        uploadedProfileId = uploadRes.profile_id;
       }
 
       const res = await registerAction({

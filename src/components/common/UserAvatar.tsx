@@ -10,7 +10,7 @@ export type AvatarSize = "xs" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl";
 interface UserAvatarProps {
   user?: Partial<User> | null;
   name?: string;
-  profileId?: string | null;
+  profile_id?: string | null;
   role?: Role | ActiveRole;
   size?: AvatarSize;
   className?: string;
@@ -33,7 +33,7 @@ const SIZE_MAP: Record<AvatarSize, { container: string; text: string; camera: nu
 export function UserAvatar({
   user,
   name,
-  profileId,
+  profile_id,
   role,
   size = "md",
   className = "",
@@ -45,7 +45,7 @@ export function UserAvatar({
   const [imageError, setImageError] = useState(false);
 
   const effectiveName = name || user?.name || user?.username || "";
-  const effectiveProfileId = profileId !== undefined ? profileId : (user?.profile_id || user?.profileId || null);
+  const effectiveProfileId = profile_id !== undefined ? profile_id : (user?.profile_id || null);
   const effectiveRole = role || user?.activeRole || user?.role || "employee";
   const imageUrl = effectiveProfileId && !imageError ? getProfileImageUrl(effectiveProfileId) : null;
 

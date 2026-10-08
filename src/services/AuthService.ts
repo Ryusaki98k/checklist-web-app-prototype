@@ -131,7 +131,6 @@ export class AuthService implements IAuthService {
         name: foundUser.name,
         username: foundUser.username || foundUser.name,
         profile_id: foundUser.profile_id || null,
-        profileId: foundUser.profile_id || null,
         managerType,
         executiveType,
         isAdmin,
@@ -166,12 +165,11 @@ export class AuthService implements IAuthService {
     branchId?: string;
     leaveQuota?: number | null;
     profile_id?: string | null;
-    profileId?: string | null;
   }): Promise<{ success: boolean; user?: User; error?: string }> {
     const cleanName = (data.name || "").trim();
     const cleanUsername = (data.username || "").trim().toLowerCase();
     const cleanPassword = data.password ? data.password.trim() : null;
-    const profileId = data.profile_id || data.profileId || null;
+    const profile_id = data.profile_id || null;
 
     if (!cleanName || !cleanUsername) {
       return { success: false, error: "กรุณากรอกชื่อ-นามสกุล และชื่อผู้ใช้ให้ครบถ้วน" };
@@ -217,7 +215,7 @@ export class AuthService implements IAuthService {
           name: cleanName,
           username: cleanUsername,
           password: cleanPassword,
-          profile_id: profileId,
+          profile_id: profile_id,
           manager_type: managerType,
           executive_type: executiveType,
           is_admin: isAdmin,
@@ -247,7 +245,6 @@ export class AuthService implements IAuthService {
         name: created.name,
         username: created.username,
         profile_id: created.profile_id || null,
-        profileId: created.profile_id || null,
         managerType,
         executiveType,
         isAdmin,
@@ -314,7 +311,6 @@ export class AuthService implements IAuthService {
         name: foundUser.name,
         username: foundUser.username || foundUser.name,
         profile_id: foundUser.profile_id || null,
-        profileId: foundUser.profile_id || null,
         managerType,
         executiveType,
         isAdmin,
@@ -363,7 +359,6 @@ export class AuthService implements IAuthService {
           name: u.name,
           username: u.username || u.name,
           profile_id: u.profile_id || null,
-          profileId: u.profile_id || null,
           password: u.password || undefined,
           managerType,
           executiveType,
