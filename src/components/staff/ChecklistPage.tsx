@@ -26,6 +26,9 @@ import { LateReasonModal } from "../common/LateReasonModal";
 import { getOrCreateShiftSessionAction, validateShiftCompletionAction } from "../../actions/checklist";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 import { DbSyncNotification } from "../common/DbSyncNotification";
+import { useApp } from "../../context/AppContext";
+import { UserAvatar } from "../common/UserAvatar";
+import { EditProfileModal } from "../common/EditProfileModal";
 
 function getCategoryColor(category?: string) {
   if (!category) {
@@ -78,6 +81,8 @@ export function ChecklistPage({
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [incompleteReason, setIncompleteReason] = useState("");
   const [dbPendingTasks, setDbPendingTasks] = useState<Array<{ id: string; name: string }>>([]);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const { currentUser } = useApp();
   const [isValidatingDb, setIsValidatingDb] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const isPageBusy = isValidatingDb || isEnding;
@@ -433,9 +438,13 @@ export function ChecklistPage({
         {/* Top App Bar */}
         <nav aria-label="แถบข้อมูลผู้ใช้งานและเครื่องมือ" className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl px-2.5 sm:px-4 py-2 sm:py-3 shadow-xs flex items-center justify-between gap-1.5 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[var(--color-amber-glow)] border border-amber-300 text-amber-950 dark:text-amber-300 flex items-center justify-center shrink-0">
-              <Store size={18} strokeWidth={2.2} />
-            </div>
+            <UserAvatar
+              user={currentUser || { name: session.userName, role: session.taskRole as any }}
+              size="sm"
+              editable={true}
+              onEdit={() => setIsEditProfileOpen(true)}
+              title={`${session.userName} • คลิกเพื่อแก้ไขโปรไฟล์`}
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs sm:text-sm font-extrabold text-[var(--color-text)] truncate max-w-[120px] sm:max-w-none">
@@ -447,9 +456,14 @@ export function ChecklistPage({
                   </span>
                 )}
               </div>
-              <h1 className="text-xs sm:text-sm font-bold text-[var(--color-text)] truncate leading-tight">
+              <button
+                type="button"
+                onClick={() => setIsEditProfileOpen(true)}
+                className="text-xs sm:text-sm font-bold text-[var(--color-text)] hover:text-amber-700 dark:hover:text-amber-400 truncate leading-tight cursor-pointer text-left block"
+                title="คลิกเพื่อแก้ไขโปรไฟล์"
+              >
                 {session.userName}
-              </h1>
+              </button>
             </div>
           </div>
 
@@ -1101,6 +1115,12 @@ export function ChecklistPage({
       <DbSyncNotification
         notification={dbSyncNotification}
         onClose={clearDbSyncNotification}
+      />
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
       />
     </div>
   );

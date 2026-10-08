@@ -42,6 +42,7 @@ export const users = checklistSchema.table.withRLS("users", {
 
     last_login: timestamp("last_login", { withTimezone: true }),
     leave_quota: integer("leave_quota"),
+    profile_id: text("profile_id"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => [
     index("idx_users_branch_id").on(table.branch_id),

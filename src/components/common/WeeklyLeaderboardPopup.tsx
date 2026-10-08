@@ -20,6 +20,7 @@ import confetti from "canvas-confetti";
 import { LeaderboardEntry } from "../../types";
 import { getLeaderboardAction } from "../../actions/points";
 import { useApp } from "../../context/AppContext";
+import { UserAvatar } from "./UserAvatar";
 
 interface WeekInfo {
   weekKey: string;
@@ -368,9 +369,17 @@ export function WeeklyLeaderboardPopup() {
                         <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center mx-auto -mt-5 border-2 border-white dark:border-slate-800 shadow-xs">
                           2
                         </div>
-                        <div className="w-10 h-10 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-extrabold text-sm flex items-center justify-center mx-auto shadow-2xs">
-                          {top2.name.charAt(0)}
-                        </div>
+                        <UserAvatar
+                          user={{
+                            name: top2.name,
+                            role: top2.role,
+                            position: top2.position,
+                            profile_id: top2.profile_id,
+                            profileId: top2.profileId,
+                          }}
+                          size="md"
+                          className="mx-auto"
+                        />
                         <p className="text-xs font-bold text-[var(--color-text)] truncate max-w-full" title={top2.name}>
                           {top2.name}
                         </p>
@@ -399,9 +408,17 @@ export function WeeklyLeaderboardPopup() {
                         <div className="w-7 h-7 rounded-full bg-amber-400 text-amber-950 font-black text-xs flex items-center justify-center mx-auto -mt-5 border-2 border-white dark:border-amber-900 shadow-xs">
                           1
                         </div>
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-300 to-amber-500 text-amber-950 font-extrabold text-base flex items-center justify-center mx-auto shadow-sm ring-2 ring-amber-400/50">
-                          {top1.name.charAt(0)}
-                        </div>
+                        <UserAvatar
+                          user={{
+                            name: top1.name,
+                            role: top1.role,
+                            position: top1.position,
+                            profile_id: top1.profile_id,
+                            profileId: top1.profileId,
+                          }}
+                          size="lg"
+                          className="mx-auto shadow-sm ring-2 ring-amber-400/60"
+                        />
                         <p className="text-xs font-extrabold text-[var(--color-text)] truncate max-w-full" title={top1.name}>
                           {top1.name}
                         </p>
@@ -426,9 +443,17 @@ export function WeeklyLeaderboardPopup() {
                         <div className="w-6 h-6 rounded-full bg-amber-700 text-amber-100 font-black text-xs flex items-center justify-center mx-auto -mt-5 border-2 border-white dark:border-orange-900 shadow-xs">
                           3
                         </div>
-                        <div className="w-10 h-10 rounded-full bg-amber-700/80 text-amber-100 font-extrabold text-sm flex items-center justify-center mx-auto shadow-2xs">
-                          {top3.name.charAt(0)}
-                        </div>
+                        <UserAvatar
+                          user={{
+                            name: top3.name,
+                            role: top3.role,
+                            position: top3.position,
+                            profile_id: top3.profile_id,
+                            profileId: top3.profileId,
+                          }}
+                          size="md"
+                          className="mx-auto"
+                        />
                         <p className="text-xs font-bold text-[var(--color-text)] truncate max-w-full" title={top3.name}>
                           {top3.name}
                         </p>
@@ -504,6 +529,16 @@ export function WeeklyLeaderboardPopup() {
                             <span className="w-5 text-center font-mono font-bold text-[var(--color-text-muted)] text-[11px]">
                               #{rank}
                             </span>
+                            <UserAvatar
+                              user={{
+                                name: user.name,
+                                role: user.role,
+                                position: user.position,
+                                profile_id: user.profile_id,
+                                profileId: user.profileId,
+                              }}
+                              size="xs"
+                            />
                             <div className="min-w-0">
                               <p className="font-semibold text-[var(--color-text)] truncate flex items-center gap-1.5">
                                 <span>{user.name}</span>

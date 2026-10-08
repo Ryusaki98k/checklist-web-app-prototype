@@ -9,6 +9,8 @@ import { NotificationCenter } from "../common/NotificationCenter";
 import { PointStreakBadge } from "../common/PointStreakBadge";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { RoleSwitcher } from "../common/RoleSwitcher";
+import { UserAvatar } from "../common/UserAvatar";
+import { EditProfileModal } from "../common/EditProfileModal";
 import { LogOut, Store } from "lucide-react";
 
 export function ShiftSelectPage({
@@ -33,6 +35,7 @@ export function ShiftSelectPage({
   const [chosenShift, setChosenShift] = useState<ShiftType | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [isLoadingStatuses, setIsLoadingStatuses] = useState(true);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isStartingShift, setIsStartingShift] = useState(false);
 
   const loadStatuses = useCallback(() => {
@@ -176,9 +179,14 @@ export function ShiftSelectPage({
           {/* User Profile Block */}
           <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2.5 border-l border-[var(--color-border)] shrink-0">
             <div className="text-right hidden xl:block">
-              <p className="text-xs font-extrabold text-[var(--color-text)] leading-tight truncate max-w-[120px]">
+              <button
+                type="button"
+                onClick={() => setIsEditProfileOpen(true)}
+                className="text-xs font-extrabold text-[var(--color-text)] hover:text-amber-700 dark:hover:text-amber-400 leading-tight truncate max-w-[120px] cursor-pointer text-right block"
+                title="คลิกเพื่อแก้ไขโปรไฟล์"
+              >
                 {user.name}
-              </p>
+              </button>
               <div className="flex items-center justify-end gap-1 mt-0.5">
                 {user.branchName && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-2)] px-1.5 py-0.5 rounded-full border border-[var(--color-border)] leading-none shrink-0">
@@ -193,12 +201,13 @@ export function ShiftSelectPage({
                 )}
               </div>
             </div>
-            <div
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[var(--color-brown)] text-amber-100 font-extrabold flex items-center justify-center text-xs shadow-xs shrink-0 ring-1 ring-[var(--color-border)]"
-              title={`${user.name}${user.branchName ? ` • ${user.branchName}` : ""}${user.position ? ` • ${user.position}` : ""}`}
-            >
-              {user.name.slice(0, 2)}
-            </div>
+            <UserAvatar
+              user={user}
+              size="sm"
+              editable={true}
+              onEdit={() => setIsEditProfileOpen(true)}
+              title={`${user.name}${user.branchName ? ` • ${user.branchName}` : ""}${user.position ? ` • ${user.position}` : ""} • คลิกเพื่อแก้ไขโปรไฟล์`}
+            />
           </div>
 
           <button
@@ -526,6 +535,12 @@ export function ShiftSelectPage({
       <footer className="text-center text-xs sm:text-sm text-[var(--color-text-muted)] font-medium py-3 relative z-10">
         {user.branchName || "Eater Egg Fresh Mart"} • Checklist System
       </footer>
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
     </main>
   );
 }

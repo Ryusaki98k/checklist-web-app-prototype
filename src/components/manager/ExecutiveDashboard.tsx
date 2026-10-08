@@ -31,7 +31,9 @@ import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
 import { invalidateBranchCache } from "../../utils/cache";
 import { LeaderboardWidget } from "./LeaderboardWidget";
 import { ErrorBoundary } from "../common/ErrorBoundary";
-import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ShieldAlert, Eye } from "lucide-react";
+import { UserAvatar } from "../common/UserAvatar";
+import { EditProfileModal } from "../common/EditProfileModal";
+import { ClipboardCheck, ShieldCheck, Building2, Award, Snowflake, History, CheckCircle2, AlertCircle, LogOut, HeartPulse, Users, ShieldAlert, Eye, UserPen } from "lucide-react";
 import Link from "next/link";
 
 export type ExecutiveRole = "manager" | "committee" | "general_manager";
@@ -75,6 +77,7 @@ export function ExecutiveDashboard({
   const [historyShiftFilter, setHistoryShiftFilter] = useState<"all" | ShiftType>("all");
   const [historyBranches, setHistoryBranches] = useState<Array<{ id: string; name: string }>>([]);
   const [historyManagers, setHistoryManagers] = useState<Array<{ id: string; name: string; branchId?: string; branchName?: string }>>([]);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
   const yesterdayIso = useMemo(() => {
@@ -621,22 +624,40 @@ export function ExecutiveDashboard({
 
         {/* ─── Executive Welcome Banner ───────────────────────────────────────── */}
         <header className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative overflow-hidden">
-          <div className="space-y-1.5 z-10">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-xl sm:text-2xl font-bold text-[var(--color-text)] tracking-tight">
-                สวัสดี, {user.name}
-              </span>
-              <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold flex items-center gap-1.5 ${roleConfig.badge}`}>
-                <roleConfig.Icon size={13} strokeWidth={2.5} />
-                <span>{roleConfig.title}</span>
-              </span>
+          <div className="flex items-start sm:items-center gap-4 z-10">
+            <UserAvatar
+              user={user}
+              size="xl"
+              editable={true}
+              onEdit={() => setIsEditProfileOpen(true)}
+              className="shadow-md shrink-0"
+            />
+            <div className="space-y-1.5 min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-xl sm:text-2xl font-bold text-[var(--color-text)] tracking-tight">
+                  สวัสดี, {user.name}
+                </span>
+                <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold flex items-center gap-1.5 ${roleConfig.badge}`}>
+                  <roleConfig.Icon size={13} strokeWidth={2.5} />
+                  <span>{roleConfig.title}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsEditProfileOpen(true)}
+                  className="px-2.5 py-0.5 rounded-full bg-[var(--color-surface-2)] hover:bg-[var(--color-border-subtle)] border border-[var(--color-border)] text-[11px] font-bold text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                  title="แก้ไขโปรไฟล์และรูปภาพประจำตัว"
+                >
+                  <UserPen size={12} className="text-amber-600 dark:text-amber-400" />
+                  <span>แก้ไขโปรไฟล์</span>
+                </button>
+              </div>
+              <p className="text-xs text-[var(--color-text-muted)] max-w-2xl leading-relaxed">
+                {roleConfig.description}
+              </p>
+              <p className="text-xs text-[var(--color-text-muted)] font-mono pt-0.5">
+                ภารกิจหลักวันนี้: <span className="font-semibold text-[var(--color-text)]">{roleConfig.primaryDuty}</span>
+              </p>
             </div>
-            <p className="text-xs text-[var(--color-text-muted)] max-w-2xl leading-relaxed">
-              {roleConfig.description}
-            </p>
-            <p className="text-xs text-[var(--color-text-muted)] font-mono pt-0.5">
-              ภารกิจหลักวันนี้: <span className="font-semibold text-[var(--color-text)]">{roleConfig.primaryDuty}</span>
-            </p>
           </div>
 
           {/* Quick Access to Leaves, Staff Status, and Branches */}
@@ -1573,7 +1594,11 @@ export function ExecutiveDashboard({
         </div>
       </footer>
 
-
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
     </div>
   );
 }

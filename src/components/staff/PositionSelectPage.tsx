@@ -8,6 +8,8 @@ import { RoleSwitcher } from "../common/RoleSwitcher";
 import { BrandLogo } from "../common/BrandLogo";
 import { PointStreakBadge } from "../common/PointStreakBadge";
 import { NotificationCenter } from "../common/NotificationCenter";
+import { UserAvatar } from "../common/UserAvatar";
+import { EditProfileModal } from "../common/EditProfileModal";
 import { 
   CreditCard, 
   Package, 
@@ -50,6 +52,7 @@ export function PositionSelectPage({
   const [leaveError, setLeaveError] = useState<string | null>(null);
   const [leaveSuccess, setLeaveSuccess] = useState<string | null>(null);
   const [autoApproved, setAutoApproved] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [leaveDate, setLeaveDate] = useState<string>("");
 
   // Today in YYYY-MM-DD (Asia/Bangkok)
@@ -151,9 +154,14 @@ export function PositionSelectPage({
           {/* User Profile Block */}
           <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2.5 border-l border-[var(--color-border)] shrink-0">
             <div className="text-right hidden xl:block">
-              <p className="text-xs font-extrabold text-[var(--color-text)] leading-tight truncate max-w-[120px]">
+              <button
+                type="button"
+                onClick={() => setIsEditProfileOpen(true)}
+                className="text-xs font-extrabold text-[var(--color-text)] hover:text-amber-700 dark:hover:text-amber-400 leading-tight truncate max-w-[120px] cursor-pointer text-right block"
+                title="คลิกเพื่อแก้ไขโปรไฟล์"
+              >
                 {user.name}
-              </p>
+              </button>
               <div className="flex items-center justify-end gap-1 mt-0.5">
                 {user.branchName && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-2)] px-1.5 py-0.5 rounded-full border border-[var(--color-border)] leading-none shrink-0">
@@ -166,12 +174,13 @@ export function PositionSelectPage({
                 </span>
               </div>
             </div>
-            <div
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[var(--color-brown)] text-amber-100 font-extrabold flex items-center justify-center text-xs shadow-xs shrink-0 ring-1 ring-[var(--color-border)]"
-              title={`${user.name}${user.branchName ? ` • ${user.branchName}` : ""} • เลือกตำแหน่ง`}
-            >
-              {user.name.slice(0, 2)}
-            </div>
+            <UserAvatar
+              user={user}
+              size="sm"
+              editable={true}
+              onEdit={() => setIsEditProfileOpen(true)}
+              title={`${user.name}${user.branchName ? ` • ${user.branchName}` : ""} • คลิกเพื่อแก้ไขโปรไฟล์`}
+            />
           </div>
 
           <button
@@ -528,6 +537,12 @@ export function PositionSelectPage({
       <footer className="text-center text-xs sm:text-sm text-[var(--color-text-muted)] font-medium py-3">
         {user.branchName || "Eater Egg Fresh Mart"} • Checklist System
       </footer>
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
     </main>
   );
 }

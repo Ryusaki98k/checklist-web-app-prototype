@@ -130,6 +130,8 @@ export class AuthService implements IAuthService {
         id: foundUser.id,
         name: foundUser.name,
         username: foundUser.username || foundUser.name,
+        profile_id: foundUser.profile_id || null,
+        profileId: foundUser.profile_id || null,
         managerType,
         executiveType,
         isAdmin,
@@ -163,10 +165,13 @@ export class AuthService implements IAuthService {
     position?: string;
     branchId?: string;
     leaveQuota?: number | null;
+    profile_id?: string | null;
+    profileId?: string | null;
   }): Promise<{ success: boolean; user?: User; error?: string }> {
     const cleanName = (data.name || "").trim();
     const cleanUsername = (data.username || "").trim().toLowerCase();
     const cleanPassword = data.password ? data.password.trim() : null;
+    const profileId = data.profile_id || data.profileId || null;
 
     if (!cleanName || !cleanUsername) {
       return { success: false, error: "กรุณากรอกชื่อ-นามสกุล และชื่อผู้ใช้ให้ครบถ้วน" };
@@ -212,6 +217,7 @@ export class AuthService implements IAuthService {
           name: cleanName,
           username: cleanUsername,
           password: cleanPassword,
+          profile_id: profileId,
           manager_type: managerType,
           executive_type: executiveType,
           is_admin: isAdmin,
@@ -240,6 +246,8 @@ export class AuthService implements IAuthService {
         id: created.id,
         name: created.name,
         username: created.username,
+        profile_id: created.profile_id || null,
+        profileId: created.profile_id || null,
         managerType,
         executiveType,
         isAdmin,
@@ -305,6 +313,8 @@ export class AuthService implements IAuthService {
         id: foundUser.id,
         name: foundUser.name,
         username: foundUser.username || foundUser.name,
+        profile_id: foundUser.profile_id || null,
+        profileId: foundUser.profile_id || null,
         managerType,
         executiveType,
         isAdmin,
@@ -352,6 +362,8 @@ export class AuthService implements IAuthService {
           id: u.id,
           name: u.name,
           username: u.username || u.name,
+          profile_id: u.profile_id || null,
+          profileId: u.profile_id || null,
           password: u.password || undefined,
           managerType,
           executiveType,
@@ -505,6 +517,38 @@ export class AuthService implements IAuthService {
     } catch (err: any) {
       console.error("AuthService.updateUserPermissions error:", err);
       return { success: false, error: "ไม่สามารถปรับปรุงสิทธิ์ของผู้ใช้ในฐานข้อมูลได้" };
+    }
+  }
+
+  async updateUserProfile(params: {
+    userId: string;
+    name?: string;
+    profile_id?: string | null;
+  }): Promise<{ success: boolean; user?: User; error?: string }> {
+    try {
+      if (!params.userId) return { success: false, error: "ไม่พบรหัสผู้ใช้" };
+
+      const updateData: any = {};
+      if (params.name !== undefined && params.name.trim() !== "") {
+        updateData.name = params.name.trim();
+      }
+      if (params.profile_id !== undefined) {
+        updateData.profile_id = params.profile_id;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return { success: false, error: "ไม่มีข้อมูลที่ต้องเปลี่ยนแปลง" };
+      }
+
+      await this.db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, params.userId));
+
+      return this.getUserById(params.userId);
+    } catch (err: any) {
+      console.error("AuthService.updateUserProfile error:", err);
+      return { success: false, error: "ไม่สามารถบันทึกข้อมูลโปรไฟล์ได้" };
     }
   }
 }

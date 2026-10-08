@@ -27,6 +27,8 @@ import { SubordinateHistoryAuditView } from "./history/SubordinateHistoryAuditVi
 import { ErrorBoundary } from "../common/ErrorBoundary";
 import { LateReasonModal } from "../common/LateReasonModal";
 import { DbSyncNotification } from "../common/DbSyncNotification";
+import { UserAvatar } from "../common/UserAvatar";
+import { EditProfileModal } from "../common/EditProfileModal";
 import {
   ClipboardCheck,
   ShieldCheck,
@@ -47,6 +49,7 @@ import {
   Layers,
   Snowflake,
   Calendar,
+  UserPen,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -95,6 +98,7 @@ export function ManagerDashboard({
   // Notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   // Navbar refresh controls
   const [isNavbarRefreshing, setIsNavbarRefreshing] = useState(false);
@@ -939,9 +943,13 @@ export function ManagerDashboard({
         {/* ─── Hero Header & Profile Banner ─────────────────────────────────── */}
         <header className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-amber-950 flex items-center justify-center font-bold text-xl shadow-md shrink-0">
-              {isAssistant ? "A" : "M"}
-            </div>
+            <UserAvatar
+              user={user}
+              size="lg"
+              editable={true}
+              onEdit={() => setIsEditProfileOpen(true)}
+              className="shadow-md shrink-0"
+            />
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-base sm:text-xl font-extrabold text-[var(--color-text)] tracking-tight">
@@ -953,6 +961,15 @@ export function ManagerDashboard({
                 <span className="text-xs font-semibold text-[var(--color-text-muted)] bg-[var(--color-surface-2)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
                   {user.branchName || "สาขาหลัก"}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setIsEditProfileOpen(true)}
+                  className="px-2.5 py-0.5 rounded-full bg-[var(--color-surface-2)] hover:bg-[var(--color-border-subtle)] border border-[var(--color-border)] text-[11px] font-bold text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                  title="แก้ไขโปรไฟล์และรูปภาพประจำตัว"
+                >
+                  <UserPen size={12} className="text-amber-600 dark:text-amber-400" />
+                  <span>แก้ไขโปรไฟล์</span>
+                </button>
               </div>
               <p className="text-xs text-[var(--color-text-muted)] mt-1 flex items-center gap-1.5 flex-wrap">
                 <span>{isAssistant ? "บันทึกเช็คลิสต์ตรวจงานประจำกะ ตรวจชุดงานปิดร้าน และรับรองงานพนักงาน" : "ควบคุมมาตรฐานร้าน ตรวจสอบชุดงานปิดร้าน 4 ข้อ และอนุมัติรับรองกะ"}</span>
@@ -1818,6 +1835,12 @@ export function ManagerDashboard({
       <DbSyncNotification
         notification={dbSyncNotification}
         onClose={clearDbSyncNotification}
+      />
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
       />
     </div>
   );

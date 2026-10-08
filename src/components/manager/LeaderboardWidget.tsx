@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Trophy, Flame, Award, Users } from "lucide-react";
 import { LeaderboardEntry } from "../../types";
 import { getLeaderboardAction } from "../../actions/points";
+import { UserAvatar } from "../common/UserAvatar";
 
 export function LeaderboardWidget({ branchId }: { branchId?: string }) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -114,10 +115,20 @@ export function LeaderboardWidget({ branchId }: { branchId?: string }) {
               key={user.userId}
               className="py-2.5 flex items-center justify-between gap-3 hover:bg-[var(--color-surface-2)]/40 px-2 rounded-xl transition-colors"
             >
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-6 flex items-center justify-center shrink-0">
                   {getRankBadge(idx)}
                 </div>
+                <UserAvatar
+                  user={{
+                    name: user.name,
+                    role: user.role,
+                    position: user.position,
+                    profile_id: user.profile_id,
+                    profileId: user.profileId,
+                  }}
+                  size="xs"
+                />
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-[var(--color-text)] truncate">{user.name}</p>
                   <p className="text-xs text-[var(--color-text-subtle)] truncate">

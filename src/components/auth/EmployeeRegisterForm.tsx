@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { User } from "../../types";
 import { getUsers, saveUsers } from "../../data/storage";
-import { registerAction } from "../../actions/auth";
+import { registerAction, uploadProfileImageAction } from "../../actions/auth";
 import { DashboardBranch } from "../../actions/branch";
 import { fetchBranchesWithCache } from "../../utils/cache";
 import { useApp } from "../../context/AppContext";
 import { useRouter } from "next/navigation";
-import { UserPlus, Building2, AtSign, Lock, CheckCircle2, AlertCircle } from "lucide-react";
+import { ProfileImageCropperModal } from "../common/ProfileImageCropperModal";
+import { UserAvatar } from "../common/UserAvatar";
+import { UserPlus, Building2, AtSign, Lock, CheckCircle2, AlertCircle, Camera, Trash2 } from "lucide-react";
 
 interface EmployeeRegisterFormProps {
   onSuccess?: (user: User) => void;
@@ -31,6 +33,14 @@ export function EmployeeRegisterForm({
     confirmPassword: "",
     branchId: "",
   });
+
+  // Profile image upload & crop state
+  const [avatarBlob, setAvatarBlob] = useState<Blob | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -44,6 +54,40 @@ export function EmployeeRegisterForm({
       })
       .catch(console.error);
   }, []);
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("กรุณาเลือกไฟล์รูปภาพ (PNG, JPG, หรือ WebP)");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError("ขนาดรูปภาพต้องไม่เกิน 10MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setRawImageSrc(reader.result as string);
+      setIsCropperOpen(true);
+      setError("");
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleCropComplete = (blob: Blob, previewUrl: string) => {
+    setAvatarBlob(blob);
+    setAvatarPreviewUrl(previewUrl);
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarBlob(null);
+    setAvatarPreviewUrl(null);
+  };
 
   async function handleRegister(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -65,12 +109,28 @@ export function EmployeeRegisterForm({
     setSuccessMsg("");
 
     try {
+      let uploadedProfileId: string | null = null;
+
+      // 1. If user selected and cropped an avatar, upload it to Supabase Storage first
+      if (avatarBlob) {
+        const formData = new FormData();
+        formData.append("file", avatarBlob, "profile_avatar.webp");
+        const uploadRes = await uploadProfileImageAction(formData);
+
+        if (!uploadRes.success || !uploadRes.profileId) {
+          throw new Error(uploadRes.error || "อัปโหลดรูปโปรไฟล์ไม่สำเร็จ");
+        }
+        uploadedProfileId = uploadRes.profileId;
+      }
+
+      // 2. Register user with profile_id linked
       const res = await registerAction({
         name: form.name.trim(),
         username: form.username.trim().toLowerCase(),
         password: form.password,
         role: "employee",
         branchId: form.branchId || undefined,
+        profile_id: uploadedProfileId,
       });
 
       if (!res.success || !res.user) {
@@ -123,6 +183,70 @@ export function EmployeeRegisterForm({
           </div>
         </div>
       )}
+
+      {/* ─── Profile Picture Upload Section (Top of Registration) ─── */}
+      <div className="p-4 sm:p-5 bg-[var(--color-surface-2)]/80 border border-[var(--color-border)] rounded-2xl flex flex-col items-center justify-center space-y-3 transition-all shadow-2xs">
+        <div className="relative group">
+          {avatarPreviewUrl ? (
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shadow-md ring-4 ring-amber-500/30 border-2 border-amber-500">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={avatarPreviewUrl}
+                alt="รูปโปรไฟล์ที่เลือก"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[var(--color-surface)] border-2 border-dashed border-[var(--color-border)] flex flex-col items-center justify-center text-[var(--color-text-muted)] group-hover:border-amber-400 group-hover:text-amber-600 transition-colors shadow-2xs">
+              <Camera size={26} strokeWidth={1.8} />
+              <span className="text-[10px] font-bold mt-1">1:1 รูปถ่าย</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute -bottom-1 -right-1 p-2 rounded-full bg-amber-500 hover:bg-amber-600 text-amber-950 shadow-md border-2 border-[var(--color-surface)] transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+            title="อัปโหลดและตัดรูปโปรไฟล์"
+            aria-label="อัปโหลดและตัดรูปโปรไฟล์"
+          >
+            <Camera size={14} strokeWidth={2.4} />
+          </button>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={handleFileSelected}
+          className="hidden"
+        />
+
+        <div className="flex items-center gap-2 flex-wrap justify-center">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3.5 py-1.5 rounded-xl bg-[var(--color-surface)] hover:bg-[var(--color-border-subtle)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-text)] transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+          >
+            <Camera size={13} className="text-amber-600 dark:text-amber-400" />
+            <span>{avatarPreviewUrl ? "เปลี่ยนรูปใหม่" : "อัปโหลดรูปโปรไฟล์ (1:1)"}</span>
+          </button>
+
+          {avatarPreviewUrl && (
+            <button
+              type="button"
+              onClick={handleRemoveAvatar}
+              className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-xs font-bold text-rose-700 dark:text-rose-300 transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Trash2 size={13} />
+              <span>ลบรูป</span>
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] sm:text-[11px] text-[var(--color-text-muted)] text-center">
+          สามารถครอปรูปเป็นสี่เหลี่ยมจัตุรัส 1:1 ได้ทันที (ไม่บังคับ)
+        </p>
+      </div>
 
       <div>
         <label htmlFor="reg-name" className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
@@ -244,6 +368,17 @@ export function EmployeeRegisterForm({
         <UserPlus size={16} />
         <span>{loading ? "กำลังบันทึกข้อมูล..." : "ลงทะเบียนและเริ่มงานพนักงานสาขา"}</span>
       </button>
+
+      {/* 1:1 Image Cropper Modal */}
+      <ProfileImageCropperModal
+        isOpen={isCropperOpen}
+        imageSrc={rawImageSrc}
+        onClose={() => {
+          setIsCropperOpen(false);
+          setRawImageSrc(null);
+        }}
+        onCropComplete={handleCropComplete}
+      />
     </form>
   );
 }

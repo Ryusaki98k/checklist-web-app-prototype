@@ -13,9 +13,15 @@ export interface IAuthService {
     position?: string;
     branchId?: string;
     leaveQuota?: number | null;
+    profile_id?: string | null;
   }): Promise<{ success: boolean; user?: User; error?: string }>;
   getUserById(id: string): Promise<{ success: boolean; user?: User; error?: string }>;
   getAllUsers(): Promise<{ success: boolean; users?: User[]; error?: string }>;
+  updateUserProfile(params: {
+    userId: string;
+    name?: string;
+    profile_id?: string | null;
+  }): Promise<{ success: boolean; user?: User; error?: string }>;
   syncOAuthUser(userData: {
     id: string;
     username?: string;

@@ -4,7 +4,9 @@ import { BrandLogo } from "../common/BrandLogo";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { RoleSwitcher } from "../common/RoleSwitcher";
 import { NavbarRefreshControl } from "../common/NavbarRefreshControl";
-import { LogOut, RefreshCw, Snowflake, ShieldCheck, Settings2 } from "lucide-react";
+import { UserAvatar } from "../common/UserAvatar";
+import { EditProfileModal } from "../common/EditProfileModal";
+import { LogOut, RefreshCw, Snowflake, ShieldCheck, Settings2, UserPen } from "lucide-react";
 
 import { createBranchAction, assignStaffToBranchAction, assignTasksToBranchAction, DashboardBranch as Branch } from "../../actions/branch";
 import { fetchBranchesWithCache, invalidateBranchCache } from "../../utils/cache";
@@ -138,6 +140,7 @@ export function AdminDashboardView({
   const [newTaskStart, setNewTaskStart] = useState("");
   const [newTaskEnd, setNewTaskEnd] = useState("");
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   // Filters
   const [branchSearch, setBranchSearch] = useState("");
@@ -452,12 +455,28 @@ export function AdminDashboardView({
           />
           <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-[var(--color-border)]">
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-[var(--color-text)]">{user.name}</p>
+              <div className="flex items-center gap-1.5 justify-end">
+                <p className="text-xs font-bold text-[var(--color-text)]">{user.name}</p>
+                <button
+                  type="button"
+                  onClick={() => setIsEditProfileOpen(true)}
+                  className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-amber-700 hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
+                  title="แก้ไขโปรไฟล์"
+                  aria-label="แก้ไขโปรไฟล์"
+                >
+                  <UserPen size={12} />
+                </button>
+              </div>
               <p className="text-xs text-[var(--color-text-muted)] font-semibold">{user.position || "ผู้ดูแลระบบส่วนกลาง"}</p>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-[var(--color-brown)] text-amber-300 dark:bg-amber-400 dark:text-amber-950 flex items-center justify-center font-extrabold text-xs shadow-xs">
-              AD
-            </div>
+            <UserAvatar
+              user={user}
+              size="sm"
+              editable={true}
+              onEdit={() => setIsEditProfileOpen(true)}
+              className="cursor-pointer shadow-xs"
+              title="คลิกเพื่อแก้ไขโปรไฟล์"
+            />
           </div>
 
           <RoleSwitcher />
@@ -862,10 +881,8 @@ export function AdminDashboardView({
                   <tbody className="divide-y divide-[var(--color-border)]/70">
                     {filteredUsers.map((u) => (
                       <tr key={u.id} className="hover:bg-[var(--color-background)] transition-colors">
-                        <td className="py-3.5 px-4 font-bold text-[var(--color-text)] flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] flex items-center justify-center text-[10px] text-[var(--color-text-muted)]">
-                            {u.name.charAt(0)}
-                          </div>
+                        <td className="py-3.5 px-4 font-bold text-[var(--color-text)] flex items-center gap-2.5">
+                          <UserAvatar user={u} size="xs" />
                           <span>{u.name}</span>
                         </td>
                         <td className="py-3.5 px-3 font-mono text-[var(--color-text-muted)]">{u.username || u.name}</td>
@@ -1508,6 +1525,12 @@ export function AdminDashboardView({
       <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)] py-3 text-center text-xs text-[var(--color-text-muted)]">
         Eater Egg Fresh Mart • Central Enterprise Administration Portal v2.0
       </footer>
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
     </div>
   );
 }
