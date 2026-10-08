@@ -23,6 +23,7 @@
 
 | เวอร์ชัน | วันที่อัปเดต | ไฮไลท์สำหรับสาขาและผู้บริหาร | ไฮไลท์ทางเทคนิคสำคัญ (Very Technical) |
 | :---: | :---: | :--- | :--- |
+| **v1.8.0** | 8 ต.ค. 2026 | ยืนยันตัวตนด้วย Username/Password 100%, แยกสิทธิ์ Executive/Manager ชัดเจน, ระบบ Loading และล็อกปุ่มระดับสากล, จำกัดอุณหภูมิตู้แช่ (-100°C ถึง 100°C) พร้อมส่งออก CSV/Excel, Cron รีเซ็ตแต้มรายเดือน, และแก้ไข UI Header ล้นจอ | Username-only Auth, Normalization Junction Tables (`branch_tasks`, `notification_reads`), Global Loading & Button Disabler (`LoadingContext`), Keepalive Beacon (`/api/checklist/batch-sync`), Monthly Score Reset Cron (`/api/cron/reset-scores`), Refrigerator Range Clamping, Responsive Header Breakpoints |
 | **v1.7.0** | 30 ก.ย. 2026 | ระบบบันทึกการลาพนักงาน (ลาป่วย/ลากิจ/อื่นๆ), ดุลยพินิจรักษาสตรีคหรือตัดสตรีค, ลีดเดอร์บอร์ดพนักงานแยกสาขา/ทุกสาขา | Employee Leave Management (`employee_leaves` & `leave_type` enum), Manager Streak Decision & Restoration, Attendance Alert Cron Exclusion, Employee Leaderboard Tab (`PointStreakBadge`), Next.js Proxy Architecture (`proxy.ts`) |
 | **v1.6.1** | 27 ก.ย. 2026 | ล้างแคชข้ามวันอัตโนมัติเมื่อคงการล็อกอินไว้, ดึงงานและกะใหม่ของวันนี้จากฐานข้อมูลเสมอ | Real-time Date-Rollover Detection, `isTodayThai` Validator, Bangkok Timezone Boundary Correction, Auto-Close Dangling Shifts |
 | **v1.6.0** | 27 ก.ย. 2026 | แจ้งเตือนพนักงานค้างกะ/ไม่มาทำงานอัตโนมัติ, ระบบอนุมัติแบบอนุโลมรักษาสตรีค (Streak Flawed Exception) | Vercel Cron `/api/cron/shift-alerts`, PointService Exception Logic, SessionDetailModal Choice Prompt |
@@ -31,6 +32,53 @@
 | **v1.3.0** | 23 ก.ย. 2026 | แดชบอร์ดตรวจสอบสาขา, ตรวจวัดอุณหภูมิตู้แช่, ปิดกะอัตโนมัติรอบดึก | Vercel Cron Serverless Handlers (UTC+7 aligned), Lateness Detection Algorithm |
 | **v1.2.0** | 21–22 ก.ย. 2026 | ระบบสะสมแต้ม, ลีดเดอร์บอร์ด, แจ้งเตือนกระดิ่งเด้งสดทันที | Refactor สู่ Service Layer & Dependency Injection Container, Supabase SSR Auth |
 | **v1.1.0** | 17–18 ก.ย. 2026 | โทนสีร้านอาหารสดใหม่ สบายตา รองรับโหมดมืด (Dark Mode) | Row-Level Security (RLS), ลบการส่ง `userId` จากฝั่งหน้าบ้าน, ตาราง `refrigerators` |
+
+---
+
+## [v1.8.0] — 8 ตุลาคม 2026
+
+### 🏪 สำหรับผู้ใช้งานและผู้บริหาร (Business & User Value)
+
+- **🔑 ยกระดับความปลอดภัยด้วยการล็อกอินผ่าน Username & Password สมบูรณ์แบบ (100% Username-based Auth)**:
+  - ยกเลิกการใช้งานอีเมลทั้งหมดในทุกบทบาท พนักงานและผู้บริหารใช้เพียง Username และรหัสผ่านที่กำหนดจากสาขาในการเข้าสู่ระบบ สะดวก รวดเร็ว และสอดคล้องกับอุปกรณ์ส่วนกลางของสาขา
+  - แก้ไขปัญหาบัญชีหลุดกลับไปยัง Placeholder เมื่อกดออกจากระบบ มั่นใจในความปลอดภัยเมื่อสลับผู้ใช้งาน
+- **🛡️ จัดระเบียบการแบ่งแยกสิทธิ์ตามบทบาทอย่างเคร่งครัด (Strict Role Separation & Governance)**:
+  - **ผู้บริหารและกรรมการ (Executive / Committee)**: กำหนดให้เป็นบทบาทการตรวจสอบและการกำกับดูแลโดยเฉพาะ (Audit & Governance Only) โดยนำปุ่มทำเช็คลิสต์และปุ่มอนุมัติกะออกทั้งหมด เพื่อรักษาความเป็นกลางในการตรวจสอบ พร้อมจัดทำหน้าเจาะลึกข้อมูลสรุปผลการดำเนินงานรายสาขาใหม่ (`/executive/branches`)
+  - **ผู้จัดการร้าน (Store Manager)**: ทำหน้าที่ตรวจสอบและอนุมัติกะงาน พร้อมรับผิดชอบเฉพาะงานตรวจปิดร้านรอบดึก (`night` closing SOP) ไม่ต้องทำงานซ้ำซ้อนกับรายการเช็คลิสต์ประจำวันของผู้ช่วยผู้จัดการ
+  - **ผู้ช่วยผู้จัดการร้าน (Assistant Manager)**: จำกัดการเข้าถึงเฉพาะส่วนปฏิบัติงานสาขา ไม่อนุญาตให้สลับหรือเปิดดูหน้าแดชบอร์ดฝ่ายบริหาร
+  - **ผู้ดูแลระบบ (Central Admin)**: เปิดใช้งานปุ่ม "เพิ่มผู้ใช้ใหม่ (Add User)" อย่างสมบูรณ์แบบ พร้อมแก้ไขระบบปรับเปลี่ยนบทบาทผู้ใช้ และเพิ่มระบบจัดการตู้แช่ระดับสาขา
+- **❄️ ป้องกันข้อผิดพลาดตู้แช่ และระบบส่งออกข้อมูล (Cold Chain Safety & Data Export)**:
+  - **จำกัดค่าอุณหภูมิที่ -100°C ถึง 100°C**: ป้องกันข้อผิดพลาดจากการพิมพ์ตัวเลขผิดเพี้ยน หรือปัญหา Integer Overflow ในระบบ
+  - **ปุ่มดาวน์โหลดรายงาน CSV / Excel**: ผู้จัดการสามารถส่งออกบันทึกการตรวจวัดอุณหภูมิตู้แช่ของแต่ละสาขาตามวันที่ระบุ เพื่อนำไปแนบรายงานหรือตรวจสอบคุณภาพได้อย่างง่ายดาย
+- **⚡ ระบบหน้าจอโหลดกลาง และการป้องกันการกดปุ่มซ้ำ (Global Loading & Button Locks)**:
+  - เพิ่มหน้าจอแสดงสถานะการโหลดกลางของระบบ (`GlobalLoadingOverlay`, `LoadingContext`) ทุกครั้งที่มีการสลับบทบาทหรือเปลี่ยนหน้าเว็บ ทำให้ผู้ใช้งานทราบสถานะอย่างชัดเจน
+  - ระบบ **Global Button Disabler**: ปิดการคลิกปุ่มทุกปุ่มบนหน้าจอชั่วคราวโดยอัตโนมัติขณะที่การส่งข้อมูลยังไม่เสร็จสิ้น ป้องกันปัญหาการกดปุ่มซ้ำ (Double Submission) หรือข้อผิดพลาดทางเครือข่าย
+  - ปรับปรุงปุ่มอนุมัติกะของผู้จัดการให้เชื่อมโยงกับฐานข้อมูลแบบ Interval Polling ทำให้ปุ่มอัปเดตสถานะแบบเรียลไทม์โดยไม่มีปัญหาปุ่มคืนค่าก่อนเวลา
+- **🏆 รอบคะแนนรายเดือน และลีดเดอร์บอร์ดต้นสัปดาห์ (Monthly Reset Cron & Weekly Kickoff)**:
+  - **ระบบอัตโนมัติรีเซ็ตคะแนนทุกสิ้นเดือน (`/api/cron/reset-scores`)**: สรุปและรีเซ็ตคะแนนรอบเดือนใหม่ทุกวันที่ 1 เวลา 00:00 น. เพื่อเริ่มการแข่งขันรอบใหม่
+  - **Weekly Kickoff Leaderboard**: แสดงหน้าต่างสรุปอันดับผลงานของสัปดาห์ที่ผ่านมาทันทีที่พนักงานเข้าสู่ระบบครั้งแรกของสัปดาห์
+  - อัปเกรดเหรียญเกียรติยศ (Tier Medals) และการดึงคะแนนกับสตรีคสดทันทีหลังการอนุมัติกะ
+- **🎨 แก้ไขปัญหาแถบนำทางส่วนบนล้นขอบจอ (Top Navigation Bar Overflow Fix)**:
+  - ปรับปรุงหน้าเลือกรอบกะ (`ShiftSelectPage`) และหน้าเลือกตำแหน่ง (`PositionSelectPage`) ให้รองรับหน้าจอทุกขนาดอย่างสวยงาม
+  - ยุบปุ่ม "ออกจากระบบ" เป็นไอคอนขนาดกะทัดรัด 36px พร้อม Tooltip แสดงชื่อปุ่ม และขยายกล่อง Header สู่ `xl:max-w-6xl` พร้อม `overflow-hidden` หมดปัญหาไอเทมล้นทะลุขอบขวา
+
+### ⚙️ ไฮไลท์ทางเทคนิคสำคัญ (Engineering & Architecture)
+
+- **Database Normalization & Junction Tables**:
+  - แทนที่คอลัมน์ Array เดิม (`branches.tasks`, `notifications.read_by`) ด้วยตารางเชื่อมโยง (Junction Tables) ได้แก่ `branch_tasks` และ `notification_reads` เพื่อขจัดปัญหา Concurrent Race Conditions
+  - นำคอลัมน์ `password_hash` และ `email` ออกจากตาราง `users` ใน Schema Drizzle
+  - เพิ่มการรองรับกะกลางคืน (`night` shift) ในสคีมา และเชื่อมโยงงานตรวจปิดร้านของผู้จัดการเข้ากับการคิวรีฐานข้อมูลโดยตรง
+  - สร้างชุดทดสอบอัตโนมัติ `tools/validate_all_sql.ts` (148/148 ผ่านการทดสอบทั้งหมด) ตรวจสอบความถูกต้องของ SQL และ Schema
+- **Resilient Sync & Keepalive Architecture**:
+  - สร้าง Endpoint พิเศษ `/api/checklist/batch-sync` เพื่อรองรับการ Flush Buffer ผ่าน `fetch(..., { keepalive: true })` หรือ Navigator Beacon ป้องกันข้อมูลสูญหายเมื่อปิดแท็บหรือเปลี่ยนหน้า
+  - ปรับปรุงการอนุมัติกะใน `ManagerService` ให้รองรับการอัปเดตแบบอะตอมิก พร้อมกลไกแจ้งเตือนและรีเฟรชแต้มแบบ Real-time
+- **UI State Management & Page Transition Watcher**:
+  - สร้าง `src/context/LoadingContext.tsx`, `src/components/common/GlobalLoadingOverlay.tsx` และ `PageTransitionWatcher.tsx` ดักจับการเปลี่ยนหน้าของ Next.js 16 App Router
+  - สร้าง `GlobalButtonDisabler.tsx` ใช้ Global Mutation Observer ในการ Disabler ป้องกันการกดเบิ้ล
+- **Vercel Cron Architecture (4 Endpoints)**:
+  - เพิ่ม Cron Job ที่ 4: `/api/cron/reset-scores` ตั้งเวลาตาม Cron Expression `0 0 1 * *` สำหรับการประมวลผลคะแนนรายเดือน
+- **Responsive Header Layout**:
+  - ปรับแต่ง `ShiftSelectPage.tsx`, `PositionSelectPage.tsx`, `PointStreakBadge.tsx`, `RoleSwitcher.tsx` และ `BrandLogo.tsx` ให้มี Breakpoints ที่ตอบสนองต่อหน้าจออุปกรณ์ขนาดเล็กและแท็บเล็ตได้อย่างสมบูรณ์
 
 ---
 

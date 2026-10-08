@@ -176,7 +176,7 @@ export function PointStreakBadge() {
       <button
         type="button"
         onClick={handleOpenModal}
-        className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-xl bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] border border-[var(--color-border)] shadow-xs hover:shadow-sm active:scale-95 transition-all duration-150 cursor-pointer group focus-visible:outline-none focus:ring-2 focus:ring-amber-400 shrink-0 min-h-[36px]"
+        className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-xl bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] border border-[var(--color-border)] shadow-xs hover:shadow-sm active:scale-95 transition-all duration-150 cursor-pointer group focus-visible:outline-none focus:ring-2 focus:ring-amber-400 shrink-0 min-h-[36px]"
         title="คลิกเพื่อดูสถิติแต้ม สตรีค และตารางอันดับ (Leaderboard)"
       >
         {/* Streak Flame */}
@@ -190,11 +190,11 @@ export function PointStreakBadge() {
         {/* Total Points */}
         <div className="flex items-center gap-1 text-xs font-extrabold text-amber-900 dark:text-amber-300">
           <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-700 dark:text-amber-400" />
-          <span>{points} <span className="text-xs font-semibold text-[var(--color-text-muted)] hidden sm:inline">แต้ม</span></span>
+          <span>{points} <span className="text-xs font-semibold text-[var(--color-text-muted)] hidden md:inline">แต้ม</span></span>
         </div>
 
         {/* Tier badge icon */}
-        <span className="text-xs ml-0.5 hidden sm:inline">{tier.icon}</span>
+        <span className="text-xs ml-0.5 hidden xl:inline">{tier.icon}</span>
       </button>
 
       {/* Point History, Streak & Leaderboard Modal rendered via Portal */}

@@ -85,11 +85,11 @@ export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: Ro
   if (!hasMultipleRoles) {
     return (
       <div
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold ${currentTheme.bg} ${currentTheme.color} border ${currentTheme.border} ${className}`}
+        className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl text-xs font-semibold ${currentTheme.bg} ${currentTheme.color} border ${currentTheme.border} ${className}`}
         title={`บทบาทปัจจุบัน: ${getRoleDisplayTitle(activeRole)}`}
       >
         {renderRoleIcon(activeRole, 14)}
-        <span className={showIconOnlyOnMobile ? "hidden sm:inline" : ""}>
+        <span className={showIconOnlyOnMobile ? "hidden md:inline" : ""}>
           {getRoleShortTitle(activeRole)}
         </span>
       </div>
@@ -113,17 +113,17 @@ export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: Ro
         aria-haspopup="true"
         aria-expanded={isOpen}
         title={pendingRole ? `กำลังสลับเป็น ${getRoleDisplayTitle(pendingRole)}...` : "สลับบทบาทการทำงาน (Multi-role account)"}
-        className={`group inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs border ${currentTheme.bg} ${currentTheme.color} ${currentTheme.border} hover:shadow-xs active:scale-98 disabled:opacity-80 disabled:cursor-wait cursor-pointer`}
+        className={`group inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs border ${currentTheme.bg} ${currentTheme.color} ${currentTheme.border} hover:shadow-xs active:scale-98 disabled:opacity-80 disabled:cursor-wait cursor-pointer`}
       >
         {pendingRole ? (
           <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent shrink-0" />
         ) : (
           renderRoleIcon(activeRole, 15)
         )}
-        <span className={showIconOnlyOnMobile ? "hidden sm:inline" : ""}>
+        <span className={showIconOnlyOnMobile ? "hidden md:inline" : ""}>
           {pendingRole ? `กำลังสลับเป็น ${getRoleShortTitle(pendingRole)}...` : getRoleShortTitle(activeRole)}
         </span>
-        <span className="hidden sm:inline-flex text-[10px] uppercase tracking-wider font-extrabold px-1.5 py-0.2 rounded-full bg-white/60 dark:bg-black/30 border border-current opacity-80">
+        <span className="hidden lg:inline-flex text-[10px] uppercase tracking-wider font-extrabold px-1.5 py-0.2 rounded-full bg-white/60 dark:bg-black/30 border border-current opacity-80">
           {availableRoles.length} สิทธิ์
         </span>
         <ChevronDown

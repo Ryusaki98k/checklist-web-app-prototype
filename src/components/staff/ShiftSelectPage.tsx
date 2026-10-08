@@ -148,8 +148,8 @@ export function ShiftSelectPage({
       {showConfetti && <Confetti />}
 
       {/* Unified Top Header Bar */}
-      <header className="w-full max-w-5xl mx-auto mb-6 flex items-center justify-between gap-2 sm:gap-4 p-2.5 sm:p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xs">
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">
+      <header className="w-full max-w-5xl xl:max-w-6xl mx-auto mb-6 flex items-center justify-between gap-2 sm:gap-3 p-2 sm:p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xs overflow-hidden">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0">
           {onBack && (
             <button
               type="button"
@@ -167,16 +167,16 @@ export function ShiftSelectPage({
           <BrandLogo size={32} showText={true} hideTextOnMobile={true} isDark={false} />
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 min-w-0">
           <PointStreakBadge />
           <NotificationCenter />
           <RoleSwitcher />
           <ThemeToggle />
 
           {/* User Profile Block */}
-          <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-[var(--color-border)]">
-            <div className="text-right hidden lg:block">
-              <p className="text-xs sm:text-sm font-extrabold text-[var(--color-text)] leading-tight truncate max-w-[150px]">
+          <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2.5 border-l border-[var(--color-border)] shrink-0">
+            <div className="text-right hidden xl:block">
+              <p className="text-xs font-extrabold text-[var(--color-text)] leading-tight truncate max-w-[120px]">
                 {user.name}
               </p>
               <div className="flex items-center justify-end gap-1 mt-0.5">
@@ -187,13 +187,16 @@ export function ShiftSelectPage({
                   </span>
                 )}
                 {user.position && (
-                  <span className="text-[10px] font-bold text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 leading-none shrink-0 truncate max-w-[110px]">
+                  <span className="text-[10px] font-bold text-amber-900 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 leading-none shrink-0 truncate max-w-[100px]">
                     {user.position}
                   </span>
                 )}
               </div>
             </div>
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[var(--color-brown)] text-amber-100 font-extrabold flex items-center justify-center text-xs shadow-xs shrink-0 ring-1 ring-[var(--color-border)]" title={user.name}>
+            <div
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[var(--color-brown)] text-amber-100 font-extrabold flex items-center justify-center text-xs shadow-xs shrink-0 ring-1 ring-[var(--color-border)]"
+              title={`${user.name}${user.branchName ? ` • ${user.branchName}` : ""}${user.position ? ` • ${user.position}` : ""}`}
+            >
               {user.name.slice(0, 2)}
             </div>
           </div>
@@ -204,10 +207,10 @@ export function ShiftSelectPage({
             onClick={onLogout}
             title="ออกจากระบบ"
             aria-label="ออกจากระบบ"
-            className="text-xs sm:text-sm text-[var(--color-text)] hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all p-2 sm:px-2.5 sm:py-2 rounded-xl border border-[var(--color-border)] font-bold cursor-pointer min-h-[36px] min-w-[36px] inline-flex items-center justify-center gap-1.5 shrink-0"
+            className="text-xs text-[var(--color-text)] hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 dark:hover:bg-rose-950/40 dark:hover:border-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all p-2 rounded-xl border border-[var(--color-border)] font-bold cursor-pointer min-h-[36px] min-w-[36px] inline-flex items-center justify-center gap-1.5 shrink-0"
           >
-            <LogOut size={15} />
-            <span className="hidden xl:inline">ออกจากระบบ</span>
+            <LogOut size={16} />
+            <span className="hidden 2xl:inline">ออกจากระบบ</span>
           </button>
         </div>
       </header>

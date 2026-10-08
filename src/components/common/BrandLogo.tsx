@@ -31,7 +31,7 @@ export function BrandLogo({
             >
               Eater Egg
             </span>
-            <span className="text-xs font-black tracking-wider uppercase px-2 py-0.5 rounded-full bg-amber-500 text-amber-950 border border-amber-600 shadow-2xs">
+            <span className="hidden md:inline-flex text-xs font-black tracking-wider uppercase px-2 py-0.5 rounded-full bg-amber-500 text-amber-950 border border-amber-600 shadow-2xs">
               Fresh Mart
             </span>
           </div>
