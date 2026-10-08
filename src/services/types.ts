@@ -551,6 +551,16 @@ export interface IRefrigeratorService {
     shiftSessionId?: string;
     shift?: ShiftType;
   }): Promise<{ success: boolean; data?: RefrigeratorTaskItem; error?: string }>;
+  batchUpdateRefrigeratorTasks(items: Array<{
+    taskId: string;
+    userId: string;
+    completed: boolean;
+    temperature?: number;
+    isOkay?: boolean;
+    comment?: string;
+    shiftSessionId?: string;
+    shift?: ShiftType;
+  }>): Promise<{ success: boolean; data?: RefrigeratorTaskItem[]; error?: string }>;
   processDailyRefrigeratorTasks(params?: {
     targetDate?: string;
     yesterdayDate?: string;

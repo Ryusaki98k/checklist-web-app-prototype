@@ -791,6 +791,7 @@ export function ChecklistPage({
             <div className={`space-y-4 ${mobileTab === "tasks" ? "hidden lg:block" : "block"}`}>
               <BranchRefrigeratorChecklist
                 userId={session.userId}
+                userName={session.userName}
                 branchName={session.branchName}
                 shiftSessionId={session.id}
                 shift={session.shift}

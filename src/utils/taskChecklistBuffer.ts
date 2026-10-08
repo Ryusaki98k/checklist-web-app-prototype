@@ -312,6 +312,8 @@ export class TaskChecklistBufferController {
   private isFlushing = false;
   private activeFlushPromise: Promise<boolean> | null = null;
   private debounceMs: number;
+  private maxWaitMs: number;
+  private firstEnqueueTime: number | null = null;
   private graceLockMs: number;
 
   // Track if changes were flushed to DB and awaiting verification from the next DB cache check
@@ -335,6 +337,7 @@ export class TaskChecklistBufferController {
 
   constructor(options?: {
     debounceMs?: number;
+    maxWaitMs?: number;
     graceLockMs?: number;
     onBatchSuccess?: (
       results: Array<{
@@ -351,7 +354,8 @@ export class TaskChecklistBufferController {
       message: string;
     }) => void;
   }) {
-    this.debounceMs = options?.debounceMs ?? 400;
+    this.debounceMs = options?.debounceMs ?? 250;
+    this.maxWaitMs = options?.maxWaitMs ?? 750;
     this.graceLockMs = options?.graceLockMs ?? 6000;
     this.onBatchSuccess = options?.onBatchSuccess;
     this.onBatchError = options?.onBatchError;
@@ -426,13 +430,21 @@ export class TaskChecklistBufferController {
     // Mirror to persistent storage so it survives unloads, reloads, and tab closures
     addToPersistedQueue(item);
 
+    if (!this.firstEnqueueTime) {
+      this.firstEnqueueTime = now;
+    }
+
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
 
+    const elapsed = now - this.firstEnqueueTime;
+    const remainingToMax = Math.max(0, this.maxWaitMs - elapsed);
+    const delay = Math.min(this.debounceMs, remainingToMax);
+
     this.debounceTimer = setTimeout(() => {
       void this.flush();
-    }, this.debounceMs);
+    }, delay);
   }
 
   /**
@@ -443,6 +455,7 @@ export class TaskChecklistBufferController {
     const items = Array.from(this.pendingBuffer.values());
     sendTogglesViaBeacon(items);
     this.pendingBuffer.clear();
+    this.firstEnqueueTime = null;
     removeFromPersistedQueue(items);
   }
 
@@ -456,6 +469,7 @@ export class TaskChecklistBufferController {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    this.firstEnqueueTime = null;
 
     if (this.isFlushing && this.activeFlushPromise) {
       await this.activeFlushPromise;
@@ -549,6 +563,21 @@ export class TaskChecklistBufferController {
       } finally {
         this.isFlushing = false;
         this.activeFlushPromise = null;
+
+        // Pipeline: if more items arrived while this flush was in flight,
+        // trigger the next flush immediately without idle delay!
+        if (this.pendingBuffer.size > 0) {
+          if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+          }
+          this.firstEnqueueTime = null;
+          setTimeout(() => {
+            if (this.pendingBuffer.size > 0 && !this.isFlushing) {
+              void this.flush();
+            }
+          }, 25);
+        }
       }
     };
 
@@ -638,12 +667,14 @@ export function useTaskChecklistBuffer(options: {
     message: string;
   }) => void;
   debounceMs?: number;
+  maxWaitMs?: number;
   graceLockMs?: number;
 }) {
   const [controller] = useState(
     () =>
       new TaskChecklistBufferController({
-        debounceMs: options.debounceMs ?? 400,
+        debounceMs: options.debounceMs ?? 250,
+        maxWaitMs: options.maxWaitMs ?? 750,
         graceLockMs: options.graceLockMs ?? 6000,
       })
   );

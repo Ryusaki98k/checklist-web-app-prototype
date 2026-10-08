@@ -116,6 +116,24 @@ export async function updateRefrigeratorTaskAction(params: {
   });
 }
 
+export async function batchUpdateRefrigeratorTasksAction(items: Array<{
+  taskId: string;
+  userId: string;
+  completed: boolean;
+  temperature?: number;
+  isOkay?: boolean;
+  comment?: string;
+  shiftSessionId?: string;
+  shift?: ShiftType;
+}>) {
+  const services = getServices();
+  const sanitizedItems = items.map((item) => ({
+    ...item,
+    temperature: item.temperature !== undefined ? clampTemperature(item.temperature) : undefined,
+  }));
+  return await services.refrigerator.batchUpdateRefrigeratorTasks(sanitizedItems);
+}
+
 export async function ensureDailyRefrigeratorTasksAction(branchId: string, dateStr?: string) {
   const services = getServices();
   return await services.refrigerator.ensureDailyRefrigeratorTasks(branchId, dateStr);

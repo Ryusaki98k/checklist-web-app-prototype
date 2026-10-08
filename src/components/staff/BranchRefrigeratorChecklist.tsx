@@ -1,19 +1,25 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Snowflake, CheckCircle2, Clock, UserCheck, AlertTriangle, RefreshCw, Check, Edit2, RotateCcw, FileSpreadsheet, Download } from "lucide-react";
-import { RefrigeratorTaskItem, getBranchRefrigeratorTasksAction, updateRefrigeratorTaskAction } from "../../actions/refrigerator";
+import {
+  RefrigeratorTaskItem,
+  getBranchRefrigeratorTasksAction,
+  batchUpdateRefrigeratorTasksAction,
+} from "../../actions/refrigerator";
 import { fmtTime } from "../../data/storage";
 import { ShiftType } from "../../types";
 import { exportRefrigeratorDataAsCSV, exportRefrigeratorDataAsExcel } from "../../utils/exportRefrigeratorData";
 
 export function BranchRefrigeratorChecklist({
   userId,
+  userName,
   branchName,
   shiftSessionId,
   shift,
 }: {
   userId: string;
+  userName?: string;
   branchName?: string;
   shiftSessionId?: string;
   shift?: ShiftType;
@@ -23,18 +29,44 @@ export function BranchRefrigeratorChecklist({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Background in-flight sync tracking
+  const [syncingTaskIds, setSyncingTaskIds] = useState<Set<string>>(new Set());
+  const savingTaskIdsRef = useRef<Set<string>>(new Set());
+
+  // Toast feedback state
+  const [toastMsg, setToastMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = useCallback((type: "success" | "error", text: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastMsg({ type, text });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMsg(null);
+    }, 4000);
+  }, []);
+
   // Check Dialog State
   const [activeTask, setActiveTask] = useState<RefrigeratorTaskItem | null>(null);
   const [tempValue, setTempValue] = useState<number>(4);
   const [isOkayValue, setIsOkayValue] = useState<boolean>(true);
   const [commentValue, setCommentValue] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const loadTasks = useCallback(async (isSilent = false) => {
     try {
       const res = await getBranchRefrigeratorTasksAction({ userId });
       if (res.success && res.data) {
-        setTasks(res.data);
+        setTasks((prev) => {
+          const inFlight = savingTaskIdsRef.current;
+          if (inFlight.size === 0) return res.data!;
+          // Merge safely: preserve optimistic state for any task currently in flight
+          const prevMap = new Map(prev.map((t) => [t.taskId, t]));
+          return res.data!.map((serverItem) => {
+            if (inFlight.has(serverItem.taskId)) {
+              return prevMap.get(serverItem.taskId) || serverItem;
+            }
+            return serverItem;
+          });
+        });
         setError(null);
       } else if (!isSilent) {
         setError(res.error || "ไม่สามารถโหลดข้อมูลตู้แช่ได้");
@@ -61,67 +93,266 @@ export function BranchRefrigeratorChecklist({
       alert("ตู้แช่นี้ถูกตั้งค่าปิดการตรวจสอบไว้ในระบบ จึงไม่สามารถบันทึกผลได้");
       return;
     }
+    if (syncingTaskIds.has(task.taskId)) {
+      showToast("error", `ตู้แช่ "${task.name}" กำลังบันทึกข้อมูลกับระบบ กรุณารอสักครู่`);
+      return;
+    }
     setActiveTask(task);
     setTempValue(task.temperature ?? task.maxTemperature ?? 4);
     setIsOkayValue(task.isOkay ?? true);
     setCommentValue(task.comment || "");
   }
 
-  async function handleSaveCheck() {
-    if (!activeTask) return;
-    setIsSubmitting(true);
-    try {
-      const res = await updateRefrigeratorTaskAction({
-        taskId: activeTask.taskId,
-        userId,
-        completed: true,
-        temperature: Math.min(100, Math.max(-100, tempValue)),
-        isOkay: isOkayValue,
-        comment: commentValue.trim() || undefined,
-        shiftSessionId,
-        shift,
-      });
-
-      if (res.success && res.data) {
-        setTasks((prev) =>
-          prev.map((t) => (t.taskId === activeTask.taskId ? res.data! : t))
-        );
-        setActiveTask(null);
-      } else {
-        alert(res.error || "บันทึกไม่สำเร็จ");
-      }
-    } catch (err: unknown) {
-      alert((err as Error)?.message || "เกิดข้อผิดพลาด");
-    } finally {
-      setIsSubmitting(false);
-    }
+  // --- Stacking Buffer Queue for Refrigerator Checks ---
+  interface PendingRefrigeratorCheck {
+    taskId: string;
+    userId: string;
+    completed: boolean;
+    temperature?: number;
+    isOkay?: boolean;
+    comment?: string;
+    shiftSessionId?: string;
+    shift?: ShiftType;
+    snapshot: RefrigeratorTaskItem;
+    timestamp: number;
   }
 
-  async function handleResetCheck(task: RefrigeratorTaskItem) {
-    if (!confirm(`ต้องการยกเลิกสถานะการตรวจของ "${task.name}" หรือไม่?`)) return;
-    setIsSubmitting(true);
-    try {
-      const res = await updateRefrigeratorTaskAction({
-        taskId: task.taskId,
-        userId,
-        completed: false,
-      });
+  const pendingChecksRef = useRef<Map<string, PendingRefrigeratorCheck>>(new Map());
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstQueueTimeRef = useRef<number | null>(null);
+  const isFlushingRef = useRef<boolean>(false);
+  const activeFlushPromiseRef = useRef<Promise<void> | null>(null);
 
-      if (res.success && res.data) {
-        setTasks((prev) =>
-          prev.map((t) => (t.taskId === task.taskId ? res.data! : t))
-        );
-        if (activeTask?.taskId === task.taskId) {
-          setActiveTask(null);
-        }
-      } else {
-        alert(res.error || "ยกเลิกไม่สำเร็จ");
-      }
-    } catch (err: unknown) {
-      alert((err as Error)?.message || "เกิดข้อผิดพลาด");
-    } finally {
-      setIsSubmitting(false);
+  const flushRefrigeratorStackRef = useRef<() => Promise<void>>(async () => {});
+
+  const flushRefrigeratorStack = async () => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
     }
+    firstQueueTimeRef.current = null;
+
+    if (isFlushingRef.current && activeFlushPromiseRef.current) {
+      await activeFlushPromiseRef.current;
+      if (pendingChecksRef.current.size === 0) return;
+    }
+
+    if (pendingChecksRef.current.size === 0) return;
+
+    const itemsToFlush = Array.from(pendingChecksRef.current.values());
+    isFlushingRef.current = true;
+
+    const performFlush = async () => {
+      try {
+        const payload = itemsToFlush.map((item) => ({
+          taskId: item.taskId,
+          userId: item.userId,
+          completed: item.completed,
+          temperature: item.temperature,
+          isOkay: item.isOkay,
+          comment: item.comment,
+          shiftSessionId: item.shiftSessionId,
+          shift: item.shift,
+        }));
+
+        const res = await batchUpdateRefrigeratorTasksAction(payload);
+
+        if (res.success && res.data) {
+          const returnedMap = new Map(res.data.map((d) => [d.taskId, d]));
+          setTasks((prev) =>
+            prev.map((t) => {
+              const fresh = returnedMap.get(t.taskId);
+              return fresh || t;
+            })
+          );
+
+          for (const flushed of itemsToFlush) {
+            const cur = pendingChecksRef.current.get(flushed.taskId);
+            if (cur && cur.timestamp <= flushed.timestamp) {
+              pendingChecksRef.current.delete(flushed.taskId);
+            }
+          }
+        } else {
+          // Rollback on failure
+          setTasks((prev) =>
+            prev.map((t) => {
+              const item = itemsToFlush.find((i) => i.taskId === t.taskId);
+              return item ? item.snapshot : t;
+            })
+          );
+          for (const flushed of itemsToFlush) {
+            pendingChecksRef.current.delete(flushed.taskId);
+          }
+          showToast("error", `บันทึกรายการตู้แช่ไม่สำเร็จ: ${res.error || "เกิดข้อผิดพลาด"}`);
+        }
+      } catch (err: unknown) {
+        // Rollback on network exception
+        setTasks((prev) =>
+          prev.map((t) => {
+            const item = itemsToFlush.find((i) => i.taskId === t.taskId);
+            return item ? item.snapshot : t;
+          })
+        );
+        for (const flushed of itemsToFlush) {
+          pendingChecksRef.current.delete(flushed.taskId);
+        }
+        showToast("error", `การเชื่อมต่อขัดข้อง: ${(err as Error)?.message || "กรุณาลองใหม่"}`);
+      } finally {
+        for (const flushed of itemsToFlush) {
+          savingTaskIdsRef.current.delete(flushed.taskId);
+        }
+        setSyncingTaskIds((prev) => {
+          const next = new Set(prev);
+          for (const flushed of itemsToFlush) {
+            next.delete(flushed.taskId);
+          }
+          return next;
+        });
+
+        isFlushingRef.current = false;
+        activeFlushPromiseRef.current = null;
+
+        // Pipeline: if more items arrived while flush was in flight, flush immediately
+        if (pendingChecksRef.current.size > 0) {
+          if (flushTimerRef.current) {
+            clearTimeout(flushTimerRef.current);
+            flushTimerRef.current = null;
+          }
+          firstQueueTimeRef.current = null;
+          setTimeout(() => {
+            if (pendingChecksRef.current.size > 0 && !isFlushingRef.current) {
+              void flushRefrigeratorStackRef.current();
+            }
+          }, 25);
+        }
+      }
+    };
+
+    activeFlushPromiseRef.current = performFlush();
+    await activeFlushPromiseRef.current;
+  };
+
+  useEffect(() => {
+    flushRefrigeratorStackRef.current = flushRefrigeratorStack;
+  });
+
+  const queueRefrigeratorCheck = (checkData: Omit<PendingRefrigeratorCheck, "timestamp">) => {
+    const now = Date.now();
+    const item: PendingRefrigeratorCheck = {
+      ...checkData,
+      timestamp: now,
+    };
+
+    pendingChecksRef.current.set(item.taskId, item);
+    savingTaskIdsRef.current.add(item.taskId);
+    setSyncingTaskIds((prev) => new Set(prev).add(item.taskId));
+
+    if (!firstQueueTimeRef.current) {
+      firstQueueTimeRef.current = now;
+    }
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+    }
+    const elapsed = now - firstQueueTimeRef.current;
+    const delay = Math.max(0, Math.min(250, 750 - elapsed));
+    flushTimerRef.current = setTimeout(() => {
+      void flushRefrigeratorStackRef.current();
+    }, delay);
+  };
+
+  useEffect(() => {
+    const handleUnload = () => {
+      if (pendingChecksRef.current.size > 0) {
+        void flushRefrigeratorStackRef.current();
+      }
+    };
+    window.addEventListener("pagehide", handleUnload);
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      window.removeEventListener("pagehide", handleUnload);
+      window.removeEventListener("beforeunload", handleUnload);
+      if (pendingChecksRef.current.size > 0) {
+        void flushRefrigeratorStackRef.current();
+      }
+    };
+  }, []);
+
+  function handleSaveCheck() {
+    if (!activeTask) return;
+
+    const taskSnapshot = activeTask;
+    const taskId = taskSnapshot.taskId;
+    const clampedTemp = Math.min(100, Math.max(-100, tempValue));
+    const isOkay = isOkayValue;
+    const comment = commentValue.trim();
+
+    // 1. Immediately close modal for lightning-fast user interaction (0ms)
+    setActiveTask(null);
+
+    // 2. Immediately update UI state optimistically
+    const optimisticTask: RefrigeratorTaskItem = {
+      ...taskSnapshot,
+      completed: true,
+      completedAt: new Date().toISOString(),
+      completedByUserId: userId,
+      completedByUserName: userName || "คุณ",
+      temperature: clampedTemp,
+      isOkay,
+      comment: comment || null,
+    };
+
+    setTasks((prev) =>
+      prev.map((t) => (t.taskId === taskId ? optimisticTask : t))
+    );
+
+    // 3. Queue into debounced stacking buffer to collect compatible requests
+    queueRefrigeratorCheck({
+      taskId,
+      userId,
+      completed: true,
+      temperature: clampedTemp,
+      isOkay,
+      comment: comment || undefined,
+      shiftSessionId,
+      shift,
+      snapshot: taskSnapshot,
+    });
+  }
+
+  function handleResetCheck(task: RefrigeratorTaskItem) {
+    if (!confirm(`ต้องการยกเลิกสถานะการตรวจของ "${task.name}" หรือไม่?`)) return;
+
+    const taskSnapshot = task;
+    const taskId = task.taskId;
+
+    // Immediately close modal if open
+    if (activeTask?.taskId === taskId) {
+      setActiveTask(null);
+    }
+
+    // Optimistically reset
+    const optimisticResetTask: RefrigeratorTaskItem = {
+      ...taskSnapshot,
+      completed: false,
+      completedAt: null,
+      completedByUserId: null,
+      completedByUserName: null,
+      temperature: null,
+      isOkay: true,
+      comment: null,
+    };
+
+    setTasks((prev) =>
+      prev.map((t) => (t.taskId === taskId ? optimisticResetTask : t))
+    );
+
+    // Queue into debounced stacking buffer
+    queueRefrigeratorCheck({
+      taskId,
+      userId,
+      completed: false,
+      snapshot: taskSnapshot,
+    });
   }
 
   const total = tasks.length;
@@ -237,6 +468,7 @@ export function BranchRefrigeratorChecklist({
         <div className="space-y-2.5" role="group" aria-label="รายการเช็คลิสต์ตู้แช่">
           {tasks.map((task) => {
             const isDone = task.completed;
+            const isSyncing = syncingTaskIds.has(task.taskId);
             const isTempHigh = task.temperature !== null && task.temperature !== undefined && task.temperature > task.maxTemperature;
             const isTempLow = task.temperature !== null && task.temperature !== undefined && task.minTemperature !== undefined && task.temperature < task.minTemperature;
             const isTempWarning = isTempHigh || isTempLow;
@@ -291,6 +523,13 @@ export function BranchRefrigeratorChecklist({
                               ตรวจแล้ว
                             </span>
 
+                            {isSyncing && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 rounded-md border border-sky-300 dark:border-sky-800 animate-pulse">
+                                <RefreshCw size={10} className="animate-spin text-sky-600 dark:text-sky-400" />
+                                <span>กำลังบันทึก...</span>
+                              </span>
+                            )}
+
                             {task.completedByUserName && (
                               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text)] bg-[var(--color-surface)] px-1.5 py-0.5 rounded-md border border-[var(--color-border)]">
                                 <UserCheck size={11} className="text-sky-600" />
@@ -322,8 +561,8 @@ export function BranchRefrigeratorChecklist({
                             <span
                               className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${
                                 task.isOkay
-                                  ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300"
-                                  : "bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300"
+                                    ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300"
+                                    : "bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300"
                               }`}
                             >
                               {task.isOkay ? "✓ สภาพปกติ" : "⚠ ผิดปกติ"}
@@ -349,8 +588,9 @@ export function BranchRefrigeratorChecklist({
                     ) : isDone ? (
                       <button
                         type="button"
+                        disabled={isSyncing}
                         onClick={() => handleOpenCheck(task)}
-                        className="px-2.5 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                        className="px-2.5 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
                         title="แก้ไขผลตรวจ"
                       >
                         <Edit2 size={12} />
@@ -359,11 +599,21 @@ export function BranchRefrigeratorChecklist({
                     ) : (
                       <button
                         type="button"
+                        disabled={isSyncing}
                         onClick={() => handleOpenCheck(task)}
-                        className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                        className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs transition-all cursor-pointer shadow-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <Check size={14} strokeWidth={2.5} />
-                        <span>บันทึกตรวจ</span>
+                        {isSyncing ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin" />
+                            <span>กำลังบันทึก...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check size={14} strokeWidth={2.5} />
+                            <span>บันทึกตรวจ</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>
@@ -500,7 +750,6 @@ export function BranchRefrigeratorChecklist({
               {activeTask.completed ? (
                 <button
                   type="button"
-                  disabled={isSubmitting}
                   onClick={() => handleResetCheck(activeTask)}
                   className="px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                 >
@@ -514,7 +763,6 @@ export function BranchRefrigeratorChecklist({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={isSubmitting}
                   onClick={() => setActiveTask(null)}
                   className="px-3.5 py-2 rounded-xl border border-[var(--color-border)] text-xs font-bold hover:bg-[var(--color-surface-2)] cursor-pointer transition-colors"
                 >
@@ -522,15 +770,42 @@ export function BranchRefrigeratorChecklist({
                 </button>
                 <button
                   type="button"
-                  disabled={isSubmitting}
                   onClick={handleSaveCheck}
-                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-extrabold cursor-pointer transition-colors shadow-xs"
+                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white text-xs font-extrabold cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
                 >
-                  {isSubmitting ? "กำลังบันทึก..." : "ยืนยันผลตรวจ"}
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>ยืนยันผลตรวจ</span>
                 </button>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Background Toast Feedback */}
+      {toastMsg && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-2.5 text-xs font-bold transition-all animate-in fade-in slide-in-from-bottom-3 duration-200 ${
+            toastMsg.type === "error"
+              ? "bg-rose-50 dark:bg-rose-950 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200"
+              : "bg-emerald-50 dark:bg-emerald-950 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
+          }`}
+        >
+          {toastMsg.type === "error" ? (
+            <AlertTriangle size={16} className="text-rose-600 dark:text-rose-400 shrink-0" />
+          ) : (
+            <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+          )}
+          <span>{toastMsg.text}</span>
+          <button
+            type="button"
+            onClick={() => setToastMsg(null)}
+            className="ml-2 text-current opacity-70 hover:opacity-100 cursor-pointer text-sm"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

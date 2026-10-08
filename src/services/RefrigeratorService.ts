@@ -751,6 +751,137 @@ export class RefrigeratorService implements IRefrigeratorService {
     }
   }
 
+  async batchUpdateRefrigeratorTasks(items: Array<{
+    taskId: string;
+    userId: string;
+    completed: boolean;
+    temperature?: number;
+    isOkay?: boolean;
+    comment?: string;
+    shiftSessionId?: string;
+    shift?: ShiftType;
+  }>): Promise<{ success: boolean; data?: RefrigeratorTaskItem[]; error?: string }> {
+    if (!items || items.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    try {
+      const taskIds = Array.from(new Set(items.map((i) => i.taskId).filter(Boolean)));
+      if (taskIds.length === 0) {
+        return { success: true, data: [] };
+      }
+
+      // 1. Fetch all matching tasks in a single query
+      const existingTasks = await this.db
+        .select()
+        .from(refrigeratorTasks)
+        .where(inArray(refrigeratorTasks.id, taskIds));
+
+      const existingMap = new Map<string, any>(existingTasks.map((t: any) => [t.id, t]));
+
+      // 2. Fetch all matching refrigerators in a single query
+      const refIds: string[] = Array.from(
+        new Set(existingTasks.map((t: any) => t.refrigerator_id).filter((id: any): id is string => Boolean(id)))
+      );
+      const refs = refIds.length > 0
+        ? await this.db.select().from(refrigerators).where(inArray(refrigerators.id, refIds))
+        : [];
+      const refMap = new Map<string, any>(refs.map((r: any) => [r.id, r]));
+
+      const affectedBranchIds = new Set<string>();
+      const userIds = new Set<string>();
+
+      // 3. Concurrently update all tasks in parallel
+      const updatePromises = items.map(async (item) => {
+        const existingTask = existingMap.get(item.taskId);
+        if (!existingTask) return null;
+
+        const ref = refMap.get(existingTask.refrigerator_id);
+        if (ref?.disable_check) {
+          // Refrigerator check disabled
+          return null;
+        }
+
+        if (existingTask.branch_id) {
+          affectedBranchIds.add(existingTask.branch_id);
+        }
+        if (item.completed && item.userId) {
+          userIds.add(item.userId);
+        }
+
+        const completedAt = item.completed ? new Date() : null;
+        const clampedTemp = item.completed && item.temperature !== undefined && !isNaN(item.temperature)
+          ? clampTemperature(item.temperature)
+          : null;
+
+        const [updatedTask] = await this.db
+          .update(refrigeratorTasks)
+          .set({
+            completed_by: item.completed ? item.userId : null,
+            completed_at: completedAt,
+            temperature: clampedTemp,
+            is_okay: item.completed && item.isOkay !== undefined ? item.isOkay : true,
+            comment: item.completed && item.comment !== undefined ? item.comment : null,
+            shift_session_id: item.completed && item.shiftSessionId ? item.shiftSessionId : null,
+            shift: item.completed && item.shift ? (item.shift === "both" ? "morning_afternoon" : item.shift) : null,
+          })
+          .where(eq(refrigeratorTasks.id, item.taskId))
+          .returning();
+
+        return updatedTask;
+      });
+
+      const updatedRows = (await Promise.all(updatePromises)).filter(Boolean);
+
+      // 4. Update branch last_update in a single query
+      if (affectedBranchIds.size > 0) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(inArray(branches.id, Array.from(affectedBranchIds)));
+      }
+
+      // 5. Fetch user names in batch
+      let userMap = new Map<string, string>();
+      const userIdsList = Array.from(userIds);
+      if (userIdsList.length > 0) {
+        const userRows = await this.db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(inArray(users.id, userIdsList));
+        userMap = new Map(userRows.map((u: any) => [u.id, u.name]));
+      }
+
+      // 6. Assemble result items
+      const resultItems: RefrigeratorTaskItem[] = updatedRows.map((t: any) => {
+        const ref = refMap.get(t.refrigerator_id);
+        const userName = t.completed_by ? userMap.get(t.completed_by) || null : null;
+
+        return {
+          taskId: t.id,
+          refrigeratorId: t.refrigerator_id,
+          name: ref?.name || "ตู้แช่",
+          minTemperature: ref?.min_temperature ?? 0,
+          maxTemperature: ref?.max_temperature ?? 4,
+          targetTemperature: ref?.max_temperature ?? 4,
+          taskDate: t.task_date,
+          completed: Boolean(t.completed_at),
+          completedAt: t.completed_at ? new Date(t.completed_at).toISOString() : null,
+          completedByUserId: t.completed_by,
+          completedByUserName: userName,
+          temperature: t.temperature,
+          isOkay: t.is_okay ?? true,
+          comment: t.comment,
+        };
+      });
+
+      return { success: true, data: resultItems };
+    } catch (err: any) {
+      console.error("RefrigeratorService.batchUpdateRefrigeratorTasks error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการบันทึกผลการตรวจตู้แช่แบบกลุ่ม" };
+    }
+  }
+
   async processDailyRefrigeratorTasks(params?: {
     targetDate?: string;
     yesterdayDate?: string;

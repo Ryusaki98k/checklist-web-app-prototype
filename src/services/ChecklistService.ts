@@ -485,24 +485,146 @@ export class ChecklistService implements IChecklistService {
     }
 
     try {
-      const results: Array<{
-        taskId?: string;
-        taskWorkId?: string;
-        completed: boolean;
-        completedAt?: string | null;
-      }> = [];
+      // 1. Coalesce/deduplicate items in the batch: latest entry per taskId or taskWorkId wins
+      const coalescedMap = new Map<string, (typeof items)[0]>();
+      for (const item of items) {
+        const key = item.taskId || item.taskWorkId || `${item.shiftSessionId}_${item.taskId}`;
+        coalescedMap.set(key, item);
+      }
+      const uniqueItems = Array.from(coalescedMap.values());
+
+      // 2. Pre-fetch existing taskWorks in a single query
+      const explicitWorkIds = uniqueItems
+        .map((i) => i.taskWorkId)
+        .filter((id): id is string => Boolean(id && isValidUuid(id)));
+
+      const existingWorksById =
+        explicitWorkIds.length > 0
+          ? await this.db
+              .select({ id: taskWork.id, shift_session: taskWork.shift_session, task: taskWork.task })
+              .from(taskWork)
+              .where(inArray(taskWork.id, explicitWorkIds))
+          : [];
+      const workByIdMap = new Map<string, { id: string; shift_session: string; task: string }>(
+        existingWorksById.map((w: any) => [w.id, w])
+      );
+
+      // Pre-fetch existing taskWorks by (shift_session, task) in a single query
+      const sessionIdsForQuery = Array.from(
+        new Set(uniqueItems.map((i) => i.shiftSessionId).filter((id): id is string => Boolean(id && isValidUuid(id))))
+      );
+      const taskIdsForQuery = Array.from(
+        new Set(uniqueItems.map((i) => i.taskId).filter((id): id is string => Boolean(id && isValidUuid(id))))
+      );
+
+      let existingWorksBySessionAndTask: any[] = [];
+      if (sessionIdsForQuery.length > 0 && taskIdsForQuery.length > 0) {
+        existingWorksBySessionAndTask = await this.db
+          .select({ id: taskWork.id, shift_session: taskWork.shift_session, task: taskWork.task })
+          .from(taskWork)
+          .where(and(inArray(taskWork.shift_session, sessionIdsForQuery), inArray(taskWork.task, taskIdsForQuery)));
+      }
+      const workBySessionAndTaskMap = new Map<string, { id: string; shift_session: string; task: string }>(
+        existingWorksBySessionAndTask.map((w: any) => [`${w.shift_session}_${w.task}`, w])
+      );
+
+      // Pre-fetch all sessions involved in a single query
+      const allSessionIdsSet = new Set<string>(sessionIdsForQuery);
+      for (const w of existingWorksById) {
+        if (w.shift_session && isValidUuid(w.shift_session)) {
+          allSessionIdsSet.add(w.shift_session);
+        }
+      }
+      const allSessionIds = Array.from(allSessionIdsSet);
+      const sessionRows =
+        allSessionIds.length > 0
+          ? await this.db
+              .select({ id: shiftSession.id, branch: shiftSession.branch, user: shiftSession.user, shift: shiftSession.shift })
+              .from(shiftSession)
+              .where(inArray(shiftSession.id, allSessionIds))
+          : [];
+      const sessionMap = new Map<string, any>(sessionRows.map((s: any) => [s.id, s]));
+
+      // Pre-fetch all tasks involved in a single query
+      const allTaskIdsSet = new Set<string>(taskIdsForQuery);
+      for (const w of existingWorksById) {
+        if (w.task && isValidUuid(w.task)) {
+          allTaskIdsSet.add(w.task);
+        }
+      }
+      const allTaskIds = Array.from(allTaskIdsSet);
+      const taskRows =
+        allTaskIds.length > 0
+          ? await this.db
+              .select({ id: tasks.id, name: tasks.name, for_managers: tasks.for_managers, shift: tasks.shift })
+              .from(tasks)
+              .where(inArray(tasks.id, allTaskIds))
+          : [];
+      const taskMap = new Map<string, any>(taskRows.map((t: any) => [t.id, t]));
 
       const affectedBranches = new Set<string>();
       const completedSessionsToCheck = new Set<{ sessionId: string; branchId: string; userId: string; shift: string }>();
+      const branchTodaySessionsCache = new Map<string, string[]>();
 
-      for (const item of items) {
+      const syncSharedSpecialTask = async (
+        sess: any,
+        tId: string,
+        completedAt: Date | null,
+        completed: boolean,
+        comment?: string
+      ) => {
+        try {
+          let branchSessIds = branchTodaySessionsCache.get(sess.branch);
+          if (!branchSessIds) {
+            const { startOfDay, endOfDay } = getThaiStartAndEndOfDay();
+            const branchTodaySessions = await this.db
+              .select({ id: shiftSession.id })
+              .from(shiftSession)
+              .where(
+                and(
+                  eq(shiftSession.branch, sess.branch),
+                  gte(shiftSession.start, startOfDay),
+                  lte(shiftSession.start, endOfDay)
+                )
+              );
+            branchSessIds = branchTodaySessions.map((s: any) => s.id) as string[];
+            branchTodaySessionsCache.set(sess.branch, branchSessIds);
+          }
+          const validBranchSessIds: string[] = branchSessIds || [];
+          if (validBranchSessIds.length > 0) {
+            const { dateStr } = getThaiStartAndEndOfDay();
+            await this.db
+              .update(taskWork)
+              .set({
+                timestamp: completedAt,
+                comment: completed ? (comment ?? null) : null,
+                completed_by: completed ? sess.user : null,
+                branch_id: sess.branch,
+                task_date: dateStr,
+              })
+              .where(and(inArray(taskWork.shift_session, validBranchSessIds), eq(taskWork.task, tId)));
+          }
+        } catch (sharedErr) {
+          console.error("Failed to sync shared special tasks in batch:", sharedErr);
+        }
+      };
+
+      // 3. Process all item updates/inserts concurrently via Promise.all
+      const itemPromises = uniqueItems.map(async (item) => {
         const { taskWorkId, shiftSessionId, taskId, completed, comment } = item;
         const completedAt = completed ? new Date() : null;
 
         let targetShiftSessionId = shiftSessionId;
         let resolvedTaskWorkId = taskWorkId;
+        let resolvedTaskId = taskId;
 
         if (taskWorkId && isValidUuid(taskWorkId)) {
+          const existingRow = workByIdMap.get(taskWorkId);
+          if (existingRow) {
+            if (!targetShiftSessionId) targetShiftSessionId = existingRow.shift_session;
+            if (!resolvedTaskId) resolvedTaskId = existingRow.task;
+          }
+
           const updatedRows = await this.db
             .update(taskWork)
             .set({
@@ -513,17 +635,11 @@ export class ChecklistService implements IChecklistService {
             .returning({ id: taskWork.id, shift_session: taskWork.shift_session });
 
           if (updatedRows && updatedRows.length > 0) {
-            if (!targetShiftSessionId) {
-              targetShiftSessionId = updatedRows[0].shift_session;
-            }
             resolvedTaskWorkId = updatedRows[0].id;
+            if (!targetShiftSessionId) targetShiftSessionId = updatedRows[0].shift_session;
           } else if (shiftSessionId && taskId && isValidUuid(shiftSessionId) && isValidUuid(taskId)) {
-            const [existing] = await this.db
-              .select({ id: taskWork.id })
-              .from(taskWork)
-              .where(and(eq(taskWork.shift_session, shiftSessionId), eq(taskWork.task, taskId)))
-              .limit(1);
-
+            const key = `${shiftSessionId}_${taskId}`;
+            const existing = workBySessionAndTaskMap.get(key);
             if (existing) {
               await this.db
                 .update(taskWork)
@@ -547,12 +663,8 @@ export class ChecklistService implements IChecklistService {
             }
           }
         } else if (shiftSessionId && taskId && isValidUuid(shiftSessionId) && isValidUuid(taskId)) {
-          const [existing] = await this.db
-            .select({ id: taskWork.id })
-            .from(taskWork)
-            .where(and(eq(taskWork.shift_session, shiftSessionId), eq(taskWork.task, taskId)))
-            .limit(1);
-
+          const key = `${shiftSessionId}_${taskId}`;
+          const existing = workBySessionAndTaskMap.get(key);
           if (existing) {
             await this.db
               .update(taskWork)
@@ -577,12 +689,7 @@ export class ChecklistService implements IChecklistService {
         }
 
         if (targetShiftSessionId && isValidUuid(targetShiftSessionId)) {
-          const [sess] = await this.db
-            .select({ branch: shiftSession.branch, user: shiftSession.user, shift: shiftSession.shift })
-            .from(shiftSession)
-            .where(eq(shiftSession.id, targetShiftSessionId))
-            .limit(1);
-
+          const sess = sessionMap.get(targetShiftSessionId);
           if (sess && sess.branch) {
             affectedBranches.add(sess.branch);
             if (completed) {
@@ -594,94 +701,67 @@ export class ChecklistService implements IChecklistService {
               });
             }
 
-            let resolvedTaskId = taskId;
-            if (!resolvedTaskId && resolvedTaskWorkId && isValidUuid(resolvedTaskWorkId)) {
-              const [w] = await this.db
-                .select({ task: taskWork.task })
-                .from(taskWork)
-                .where(eq(taskWork.id, resolvedTaskWorkId))
-                .limit(1);
-              if (w) resolvedTaskId = w.task;
+            if (!resolvedTaskId && resolvedTaskWorkId && workByIdMap.has(resolvedTaskWorkId)) {
+              resolvedTaskId = workByIdMap.get(resolvedTaskWorkId)?.task;
             }
 
             if (resolvedTaskId && isValidUuid(resolvedTaskId)) {
-              const [tRow] = await this.db
-                .select({ name: tasks.name, for_managers: tasks.for_managers, shift: tasks.shift })
-                .from(tasks)
-                .where(eq(tasks.id, resolvedTaskId))
-                .limit(1);
-
+              const tRow = taskMap.get(resolvedTaskId);
               if (tRow && (tRow.for_managers || tRow.shift === "night")) {
-                const { dateStr, startOfDay, endOfDay } = getThaiStartAndEndOfDay();
-                try {
-                  const branchTodaySessions = await this.db
-                    .select({ id: shiftSession.id })
-                    .from(shiftSession)
-                    .where(
-                      and(
-                        eq(shiftSession.branch, sess.branch),
-                        gte(shiftSession.start, startOfDay),
-                        lte(shiftSession.start, endOfDay)
-                      )
-                    );
-                  const branchSessIds = branchTodaySessions.map((s: any) => s.id);
-                  if (branchSessIds.length > 0) {
-                    await this.db
-                      .update(taskWork)
-                      .set({
-                        timestamp: completedAt,
-                        comment: completed ? (comment ?? null) : null,
-                        completed_by: completed ? sess.user : null,
-                        branch_id: sess.branch,
-                        task_date: dateStr,
-                      })
-                      .where(
-                        and(
-                          inArray(taskWork.shift_session, branchSessIds),
-                          eq(taskWork.task, resolvedTaskId)
-                        )
-                      );
-                  }
-                } catch (sharedErr) {
-                  console.error("Failed to sync shared special tasks in batch:", sharedErr);
-                }
+                await syncSharedSpecialTask(sess, resolvedTaskId, completedAt, completed, comment);
               }
             }
           }
         }
 
-        results.push({
+        return {
           taskId,
           taskWorkId: resolvedTaskWorkId,
           completed,
           completedAt: completedAt ? completedAt.toISOString() : null,
-        });
-      }
+        };
+      });
 
-      // Update branches last_update
-      for (const branchId of affectedBranches) {
+      const results = await Promise.all(itemPromises);
+
+      // 4. Update affected branches in a single query
+      if (affectedBranches.size > 0) {
         await this.db
           .update(branches)
           .set({ last_update: new Date() })
-          .where(eq(branches.id, branchId));
+          .where(inArray(branches.id, Array.from(affectedBranches)));
       }
 
-      // Check if any affected session is now completely done to trigger notifications
+      // 5. Evaluate completed sessions in batch for notifications
       if (this.notificationService && completedSessionsToCheck.size > 0) {
-        for (const sessionInfo of completedSessionsToCheck) {
-          const works = await this.db
-            .select()
-            .from(taskWork)
-            .where(eq(taskWork.shift_session, sessionInfo.sessionId));
+        const sessionsToCheckList = Array.from(completedSessionsToCheck);
+        const checkSessionIds = sessionsToCheckList.map((s) => s.sessionId);
 
-          const allDone = works.length > 0 && works.every((w: any) => w.timestamp !== null);
+        const allWorks = await this.db
+          .select({ shift_session: taskWork.shift_session, timestamp: taskWork.timestamp })
+          .from(taskWork)
+          .where(inArray(taskWork.shift_session, checkSessionIds));
+
+        const worksBySession = new Map<string, any[]>();
+        for (const w of allWorks) {
+          if (!worksBySession.has(w.shift_session)) {
+            worksBySession.set(w.shift_session, []);
+          }
+          worksBySession.get(w.shift_session)!.push(w);
+        }
+
+        const userIdsToCheck = Array.from(new Set(sessionsToCheckList.map((s) => s.userId)));
+        const userRows =
+          userIdsToCheck.length > 0
+            ? await this.db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIdsToCheck))
+            : [];
+        const userMap = new Map<string, string>(userRows.map((u: any) => [u.id, u.name]));
+
+        for (const sessionInfo of sessionsToCheckList) {
+          const sessWorks = worksBySession.get(sessionInfo.sessionId) || [];
+          const allDone = sessWorks.length > 0 && sessWorks.every((w: any) => w.timestamp !== null);
           if (allDone) {
-            const [userObj] = await this.db
-              .select({ name: users.name })
-              .from(users)
-              .where(eq(users.id, sessionInfo.userId))
-              .limit(1);
-
+            const userName = userMap.get(sessionInfo.userId) || "พนักงาน";
             const shiftName =
               sessionInfo.shift === "morning"
                 ? "กะเช้า"
@@ -693,7 +773,7 @@ export class ChecklistService implements IChecklistService {
               branchId: sessionInfo.branchId,
               recipientRole: "manager",
               title: `📋 ส่งงานสำเร็จ: ${shiftName}`,
-              message: `${userObj?.name || "พนักงาน"} ได้เช็ครายการงานครบทุกข้อแล้ว กรุณาตรวจสอบและอนุมัติ`,
+              message: `${userName} ได้เช็ครายการงานครบทุกข้อแล้ว กรุณาตรวจสอบและอนุมัติ`,
               type: "shift_submitted",
               shiftSessionId: sessionInfo.sessionId,
             });
