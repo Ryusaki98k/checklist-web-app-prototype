@@ -11,6 +11,7 @@ export interface ManagerShiftSummary {
   userName: string;
   userPosition?: string;
   userRole?: string;
+  userProfileId?: string | null;
   branchId?: string;
   taskRole?: "cashier" | "stock" | "manager_assistant";
   shift: ShiftType;
@@ -149,10 +150,11 @@ export class ManagerService implements IManagerService {
           ? dbUsers.find((u: any) => u.id === sess.incomplete_reviewed_by)
           : null;
 
+        const userRole = user ? computePrimaryRole(user.manager_type, user.executive_type, user.is_admin) : undefined;
         let resolvedPosition = mapTaskRoleToTitle(sess.task_role);
-        if (user?.role === "manager") {
+        if (userRole === "manager") {
           resolvedPosition = "ผู้จัดการร้าน";
-        } else if (user?.role === "manager_assistant") {
+        } else if (userRole === "manager_assistant") {
           resolvedPosition = "ผู้ช่วยผู้จัดการร้าน";
         }
 
@@ -198,7 +200,8 @@ export class ManagerService implements IManagerService {
           userId: sess.user,
           userName: user ? user.name : "พนักงานสาขา",
           userPosition: resolvedPosition,
-          userRole: user?.role,
+          userRole,
+          userProfileId: user?.profile_id || null,
           branchId: sess.branch || user?.branch_id,
           taskRole: sess.task_role,
           shift: mapDbShiftToUi(sess.shift),
@@ -277,6 +280,10 @@ export class ManagerService implements IManagerService {
         .select({
           id: users.id,
           name: users.name,
+          manager_type: users.manager_type,
+          executive_type: users.executive_type,
+          is_admin: users.is_admin,
+          profile_id: users.profile_id,
           branchId: users.branch_id,
         })
         .from(users);
@@ -307,10 +314,11 @@ export class ManagerService implements IManagerService {
           ? dbUsers.find((u: any) => u.id === sess.incomplete_reviewed_by)
           : null;
 
+        const userRole = user ? computePrimaryRole(user.manager_type, user.executive_type, user.is_admin) : undefined;
         let resolvedPosition = mapTaskRoleToTitle(sess.task_role);
-        if (user?.role === "manager") {
+        if (userRole === "manager") {
           resolvedPosition = "ผู้จัดการร้าน";
-        } else if (user?.role === "manager_assistant") {
+        } else if (userRole === "manager_assistant") {
           resolvedPosition = "ผู้ช่วยผู้จัดการร้าน";
         }
 
@@ -360,7 +368,8 @@ export class ManagerService implements IManagerService {
           userId: sess.user,
           userName: user ? user.name : "พนักงานสาขา",
           userPosition: resolvedPosition,
-          userRole: user?.role,
+          userRole,
+          userProfileId: user?.profile_id || null,
           branchId: sess.branch || user?.branchId,
           taskRole: sess.task_role,
           shift: mapDbShiftToUi(sess.shift),
@@ -393,12 +402,13 @@ export class ManagerService implements IManagerService {
       });
 
       const managerList = dbUsers
-        .filter((u: any) => u.role === "manager")
+        .filter((u: any) => computePrimaryRole(u.manager_type, u.executive_type, u.is_admin) === "manager")
         .map((m: any) => {
           const b = allBranches.find((br: any) => br.id === m.branchId);
           return {
             id: m.id,
             name: m.name,
+            profile_id: m.profile_id || null,
             branchId: m.branchId || undefined,
             branchName: b?.name,
           };
@@ -1123,6 +1133,13 @@ export class ManagerService implements IManagerService {
       const [recorder] = await this.db.select().from(users).where(eq(users.id, recordedBy)).limit(1);
       const [branch] = await this.db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
 
+      if (recorder?.role === "general_manager" || recorder?.role === "committee") {
+        return {
+          success: false,
+          error: "สิทธิ์กรรมการและผู้บริหารไม่อนุญาตให้จัดการการลาของพนักงาน (สงวนสิทธิ์เฉพาะผู้จัดการสาขาและผู้ช่วยผู้จัดการสาขา)",
+        };
+      }
+
       const previousStreak = targetUser.point_streak ?? 0;
       const dbLeaveType = toDbLeaveType(leaveType);
 
@@ -1307,6 +1324,16 @@ export class ManagerService implements IManagerService {
         return { success: false, error: "ไม่พบรหัสรายการลา" };
       }
 
+      if (params.cancelledBy) {
+        const [canceller] = await this.db.select().from(users).where(eq(users.id, params.cancelledBy)).limit(1);
+        if (canceller?.role === "general_manager" || canceller?.role === "committee") {
+          return {
+            success: false,
+            error: "สิทธิ์กรรมการและผู้บริหารไม่อนุญาตให้จัดการหรือยกเลิกการลาของพนักงาน (สงวนสิทธิ์เฉพาะผู้จัดการสาขาและผู้ช่วยผู้จัดการสาขา)",
+          };
+        }
+      }
+
       // Fetch the leave record first to check if streak was broken and needs restoration
       const [leaveRecord] = await this.db
         .select()
@@ -1487,13 +1514,22 @@ export class ManagerService implements IManagerService {
       const [branch] = await this.db.select().from(branches).where(eq(branches.id, branchId)).limit(1);
 
       // Determine if manager requested -> auto confirm and exempt from employee limitations
+      const isExecutiveOrCommittee =
+        requester?.role === "general_manager" || requester?.role === "committee";
+
+      if (isExecutiveOrCommittee && userId !== requestedBy) {
+        return {
+          success: false,
+          error: "สิทธิ์กรรมการและผู้บริหารไม่อนุญาตให้จัดการการลาของพนักงาน (สงวนสิทธิ์เฉพาะผู้จัดการสาขาและผู้ช่วยผู้จัดการสาขา)",
+        };
+      }
+
       const isManagerOrAdmin =
-        params.isManagerRole ||
-        requester?.role === "manager" ||
-        requester?.role === "manager_assistant" ||
-        requester?.role === "general_manager" ||
-        requester?.role === "committee" ||
-        requester?.role === "admin";
+        !isExecutiveOrCommittee &&
+        (params.isManagerRole ||
+          requester?.role === "manager" ||
+          requester?.role === "manager_assistant" ||
+          requester?.role === "admin");
 
       const isEmployeeSelf = !isManagerOrAdmin;
 
@@ -1660,6 +1696,12 @@ export class ManagerService implements IManagerService {
       if (!existingLeave) return { success: false, error: "ไม่พบรายการขอลางาน" };
 
       const [approver] = await this.db.select().from(users).where(eq(users.id, approvedBy)).limit(1);
+      if (approver?.role === "general_manager" || approver?.role === "committee") {
+        return {
+          success: false,
+          error: "สิทธิ์กรรมการและผู้บริหารไม่อนุญาตให้อนุมัติการลาของพนักงาน (สงวนสิทธิ์เฉพาะผู้จัดการสาขาและผู้ช่วยผู้จัดการสาขา)",
+        };
+      }
       const [targetUser] = await this.db.select().from(users).where(eq(users.id, existingLeave.user_id)).limit(1);
 
       // Enforcement: only 1 request can be granted for each day for the employee
@@ -1762,6 +1804,12 @@ export class ManagerService implements IManagerService {
       if (!existingLeave) return { success: false, error: "ไม่พบรายการขอลางาน" };
 
       const [rejecter] = await this.db.select().from(users).where(eq(users.id, rejectedBy)).limit(1);
+      if (rejecter?.role === "general_manager" || rejecter?.role === "committee") {
+        return {
+          success: false,
+          error: "สิทธิ์กรรมการและผู้บริหารไม่อนุญาตให้ปฏิเสธการลาของพนักงาน (สงวนสิทธิ์เฉพาะผู้จัดการสาขาและผู้ช่วยผู้จัดการสาขา)",
+        };
+      }
 
       await this.db
         .update(employeeLeaves)

@@ -57,6 +57,25 @@ export function UserAvatar({
     setFallbackImageError(false);
   }, [effectiveProfileId, avatarUrl]);
 
+  // Listen for real-time profile updates across tabs and components
+  React.useEffect(() => {
+    const handleProfileUpdated = (e: any) => {
+      const updatedUserId = e.detail?.userId;
+      const updatedUser = e.detail?.user;
+      if (
+        (user?.id && user.id === updatedUserId) ||
+        (effectiveName && updatedUser?.name === effectiveName)
+      ) {
+        setCustomImageError(false);
+        setFallbackImageError(false);
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("app:profile-updated", handleProfileUpdated);
+      return () => window.removeEventListener("app:profile-updated", handleProfileUpdated);
+    }
+  }, [user?.id, effectiveName]);
+
   // Determine active profile image url:
   // 1. Explicit avatarUrl or uploaded Supabase image
   // 2. Default placeholder /user.png (face silhouette)

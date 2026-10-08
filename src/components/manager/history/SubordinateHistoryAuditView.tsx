@@ -44,6 +44,7 @@ interface SubordinateSummary {
   userName: string;
   userPosition: string;
   userRole?: string;
+  userProfileId?: string | null;
   totalShifts: number;
   completedShifts: number;
   totalTasksDone: number;
@@ -158,6 +159,7 @@ export function SubordinateHistoryAuditView({
         userName: latest.userName,
         userPosition: latest.userPosition || "พนักงานประจำสาขา",
         userRole: latest.userRole,
+        userProfileId: latest.userProfileId,
         totalShifts: sorted.length,
         completedShifts,
         totalTasksDone,
@@ -665,7 +667,7 @@ export function SubordinateHistoryAuditView({
       </div>
 
       {/* ─── 4. Main Content: Dossier View vs Timeline View ─── */}
-      {isLoading ? (
+      {isLoading && personSummaries.length === 0 ? (
         <div className="py-20 text-center text-[var(--color-text-muted)] text-xs flex flex-col items-center justify-center gap-3">
           <div className="w-7 h-7 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
           <span className="font-medium">กำลังรวบรวมข้อมูลประวัติทีมงาน...</span>
@@ -704,6 +706,7 @@ export function SubordinateHistoryAuditView({
                     <div className="flex items-center gap-3 min-w-0">
                       <UserAvatar
                         name={person.userName}
+                        profile_id={person.userProfileId}
                         role={person.userRole as any}
                         size="md"
                         className="shrink-0 shadow-xs"
@@ -896,9 +899,17 @@ export function SubordinateHistoryAuditView({
                   onClick={() => onSelectSession(sess)}
                   className="w-full text-left p-3.5 sm:p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)]/60 hover:border-amber-400 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs"
                 >
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-[var(--color-text)]">{sess.userName}</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <UserAvatar
+                      name={sess.userName}
+                      profile_id={sess.userProfileId}
+                      role={sess.userRole as any}
+                      size="sm"
+                      className="shrink-0 shadow-xs"
+                    />
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-[var(--color-text)]">{sess.userName}</span>
                       {getPositionBadge(sess.userPosition, sess.userRole)}
                       {getShiftBadge(sess.shift)}
                       <span className="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-2)] border border-[var(--color-border)] font-semibold text-[var(--color-text)]">
@@ -926,8 +937,9 @@ export function SubordinateHistoryAuditView({
                       {fmtDate(sess.startedAt)} • เริ่ม {fmtTime(sess.startedAt)} น. {sess.completedAt ? `→ เสร็จ ${fmtTime(sess.completedAt)} น.` : ""}
                     </p>
                   </div>
+                </div>
 
-                  <span className="text-xs text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1 shrink-0">
+                <span className="text-xs text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1 shrink-0">
                     <span>เปิดตรวจ</span>
                     <ChevronRight size={14} />
                   </span>

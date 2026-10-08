@@ -24,7 +24,7 @@ export async function getHistoryShiftSessionsAction(
   success: boolean;
   sessions?: ManagerShiftSummary[];
   branches?: Array<{ id: string; name: string }>;
-  managers?: Array<{ id: string; name: string; branchId?: string; branchName?: string }>;
+  managers?: Array<{ id: string; name: string; branchId?: string; branchName?: string; profile_id?: string | null }>;
   error?: string;
 }> {
   const services = getServices();

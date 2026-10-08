@@ -22,15 +22,26 @@ function BranchStaffUnifiedHubContent({
   const tabFromUrl = searchParams.get("tab") as "presence" | "leaves" | null;
   const urlUserId = searchParams.get("userId") || undefined;
 
-  const [internalTab, setInternalTab] = useState<"presence" | "leaves">(initialTab);
+  const isExecutiveOrCommittee =
+    !currentUser.isAdmin &&
+    (currentUser.role === "committee" ||
+      currentUser.role === "general_manager" ||
+      currentUser.executiveType === "committee" ||
+      currentUser.executiveType === "executive");
+
+  const [internalTab, setInternalTab] = useState<"presence" | "leaves">(
+    isExecutiveOrCommittee ? "presence" : initialTab
+  );
   const [internalUserId, setInternalUserId] = useState<string | undefined>(undefined);
 
   // Derive active tab and user: priority to URL query param, then fallback to internal state
-  const activeTab: "presence" | "leaves" =
+  const rawTab: "presence" | "leaves" =
     tabFromUrl === "presence" || tabFromUrl === "leaves" ? tabFromUrl : internalTab;
+  const activeTab: "presence" | "leaves" = isExecutiveOrCommittee ? "presence" : rawTab;
   const selectedUserIdForLeave = urlUserId || internalUserId;
 
   const handleTabChange = (newTab: "presence" | "leaves") => {
+    if (isExecutiveOrCommittee && newTab === "leaves") return;
     setInternalTab(newTab);
     setInternalUserId(undefined);
     const params = new URLSearchParams(window.location.search);
@@ -43,6 +54,7 @@ function BranchStaffUnifiedHubContent({
   };
 
   const handleSwitchToLeaves = (userId?: string) => {
+    if (isExecutiveOrCommittee) return;
     setInternalTab("leaves");
     setInternalUserId(userId);
     const params = new URLSearchParams(window.location.search);
@@ -60,8 +72,8 @@ function BranchStaffUnifiedHubContent({
         <BranchStaffPresenceView
           currentUser={currentUser}
           currentTab="presence"
-          onTabChange={handleTabChange}
-          onSwitchToLeaves={handleSwitchToLeaves}
+          onTabChange={isExecutiveOrCommittee ? undefined : handleTabChange}
+          onSwitchToLeaves={isExecutiveOrCommittee ? undefined : handleSwitchToLeaves}
         />
       ) : (
         <BranchLeaveManagementView

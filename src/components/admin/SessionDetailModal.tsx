@@ -3,6 +3,7 @@ import { ShiftSession } from "../../types";
 import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, Divider, getShiftBadge } from "../common/Badge";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
+import { UserAvatar } from "../common/UserAvatar";
 import { AlertCircle, AlertTriangle, ShieldCheck, CheckCircle2, ShieldAlert } from "lucide-react";
 import { reviewIncompleteShiftAction } from "../../actions/manager";
 
@@ -113,15 +114,23 @@ export function SessionDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 id="session-detail-title" className="text-base font-bold text-[var(--color-text)]">
-                {currentSession.userName}
-              </h2>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {currentSession.userPosition && <Badge color="muted">{currentSession.userPosition}</Badge>}
-                {getShiftBadge(currentSession.shift)}
-                <span className="text-xs font-mono text-[var(--color-text-muted)]">{fmtDate(currentSession.startedAt)}</span>
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <UserAvatar
+                name={currentSession.userName}
+                profile_id={currentSession.userProfileId}
+                role={currentSession.userRole as any}
+                size="md"
+                className="shrink-0 shadow-xs"
+              />
+              <div className="min-w-0">
+                <h2 id="session-detail-title" className="text-base font-bold text-[var(--color-text)] truncate">
+                  {currentSession.userName}
+                </h2>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {currentSession.userPosition && <Badge color="muted">{currentSession.userPosition}</Badge>}
+                  {getShiftBadge(currentSession.shift)}
+                  <span className="text-xs font-mono text-[var(--color-text-muted)]">{fmtDate(currentSession.startedAt)}</span>
                 {isApproved ? (
                   <span className="text-xs font-bold text-emerald-900 bg-emerald-100 dark:bg-emerald-950/80 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800 px-2.5 py-0.5 rounded-full">
                     ✓ รับรองผลเรียบร้อยแล้ว
@@ -132,6 +141,7 @@ export function SessionDetailModal({
                   </span>
                 )}
               </div>
+            </div>
             </div>
             <button
               type="button"

@@ -91,6 +91,7 @@ export interface ShiftSession {
   userName: string;
   userPosition?: string;
   userRole?: string;
+  userProfileId?: string | null;
   branchId?: string;
   taskRole?: "cashier" | "stock" | "manager_assistant";
   shift: ShiftType;

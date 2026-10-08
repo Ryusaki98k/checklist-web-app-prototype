@@ -24,9 +24,21 @@ export default function ManagerLeavesPage() {
       router.replace("/awaiting-assignment");
       return;
     }
-    // Disallow regular employees; allow manager, manager_assistant, general_manager, committee, admin
+    // Disallow regular employees
     if (currentUser.role === "employee") {
       router.replace("/checklist");
+      return;
+    }
+    // Disallow executive and committee from managing leaves (they can view staff-status instead)
+    const isExecutiveOrCommittee =
+      !currentUser.isAdmin &&
+      (currentUser.role === "general_manager" ||
+        currentUser.role === "committee" ||
+        currentUser.executiveType === "executive" ||
+        currentUser.executiveType === "committee");
+    if (isExecutiveOrCommittee) {
+      router.replace("/manager/staff-status");
+      return;
     }
   }, [currentUser, isReady, router]);
 

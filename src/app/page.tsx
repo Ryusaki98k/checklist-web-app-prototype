@@ -31,20 +31,21 @@ export default function PortalPage() {
         <PortalDocsSection guideData={guideData} />
       </div>
 
-      <footer className="mt-8 text-center text-xs text-[var(--color-text-muted)] font-medium flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-        <span>Eater Egg Fresh Mart • Operations, SOP & Audit Portal</span>
-        <span className="hidden sm:inline">•</span>
-        <span>
-          User avatar icons modified from{" "}
+      <footer className="mt-12 pb-8 text-center text-xs text-[var(--color-text-muted)] space-y-1.5 max-w-xl mx-auto px-4">
+        <p className="font-semibold text-[var(--color-text)]">
+          Eater Egg Fresh Mart • Operations, SOP & Audit Portal
+        </p>
+        <p className="text-[11px] text-[var(--color-text-muted)] opacity-80 leading-relaxed">
+          Default user profile avatar silhouette is modified and downloaded from{" "}
           <a
             href="https://www.flaticon.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            className="underline hover:text-amber-600 dark:hover:text-amber-400 font-medium transition-colors"
           >
             www.flaticon.com
           </a>
-        </span>
+        </p>
       </footer>
     </main>
   );

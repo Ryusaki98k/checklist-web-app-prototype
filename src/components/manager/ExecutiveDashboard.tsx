@@ -76,7 +76,7 @@ export function ExecutiveDashboard({
   const [historySearch, setHistorySearch] = useState("");
   const [historyShiftFilter, setHistoryShiftFilter] = useState<"all" | ShiftType>("all");
   const [historyBranches, setHistoryBranches] = useState<Array<{ id: string; name: string }>>([]);
-  const [historyManagers, setHistoryManagers] = useState<Array<{ id: string; name: string; branchId?: string; branchName?: string }>>([]);
+  const [historyManagers, setHistoryManagers] = useState<Array<{ id: string; name: string; branchId?: string; branchName?: string; profile_id?: string | null }>>([]);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
@@ -124,6 +124,8 @@ export function ExecutiveDashboard({
           userId: s.userId,
           userName: s.userName,
           userPosition: s.userPosition,
+          userRole: s.userRole,
+          userProfileId: s.userProfileId,
           taskRole: s.taskRole,
           shift: s.shift,
           startedAt: s.startedAt,
@@ -244,10 +246,10 @@ export function ExecutiveDashboard({
   }, [loadDbSessions]);
 
   // Load history metadata
-  const loadHistorySessions = useCallback(async () => {
+  const loadHistorySessions = useCallback(async (isSilent = false) => {
     if (isAssistant) return;
     try {
-      setIsLoadingHistory(true);
+      if (!isSilent) setIsLoadingHistory(true);
       const res = await getHistoryShiftSessionsAction(14);
       if (res.success && res.sessions) {
         const mappedSessions: ShiftSession[] = res.sessions.map((s) => ({
@@ -256,6 +258,7 @@ export function ExecutiveDashboard({
           userName: s.userName,
           userPosition: s.userPosition,
           userRole: s.userRole,
+          userProfileId: s.userProfileId,
           branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
@@ -299,7 +302,7 @@ export function ExecutiveDashboard({
     } catch (err) {
       console.error("Failed to fetch history sessions:", err);
     } finally {
-      setIsLoadingHistory(false);
+      if (!isSilent) setIsLoadingHistory(false);
     }
   }, [isAssistant]);
 
@@ -311,14 +314,14 @@ export function ExecutiveDashboard({
     }
   }, [activeTab, loadHistorySessions, historySessions.length]);
 
-  const fetchSpecificHistoryDate = async (dateStr: string) => {
+  const fetchSpecificHistoryDate = async (dateStr: string, isSilent = false) => {
     if (!dateStr) {
       setSpecificDaySessions(null);
       return;
     }
 
     try {
-      setIsLoadingHistory(true);
+      if (!isSilent) setIsLoadingHistory(true);
       const res = await getHistoryShiftSessionsAction(14, dateStr);
       if (res.success && res.sessions) {
         const mappedSessions: ShiftSession[] = res.sessions.map((s) => ({
@@ -327,6 +330,7 @@ export function ExecutiveDashboard({
           userName: s.userName,
           userPosition: s.userPosition,
           userRole: s.userRole,
+          userProfileId: s.userProfileId,
           branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
@@ -370,7 +374,7 @@ export function ExecutiveDashboard({
     } catch (err) {
       console.error("Failed to fetch specific date history:", err);
     } finally {
-      setIsLoadingHistory(false);
+      if (!isSilent) setIsLoadingHistory(false);
     }
   };
 
@@ -557,25 +561,8 @@ export function ExecutiveDashboard({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-
-            <Link
-              href="/manager/branches"
-              className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface)] hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
-              title="รายงานภาพรวมทุกสาขาและการปฏิบัติงาน"
-            >
-              <Building2 size={16} className="text-amber-600 shrink-0" />
-              <span className="hidden sm:inline">ภาพรวมทุกสาขา</span>
-            </Link>
-
-            <Link
-              href="/manager/leaves"
-              className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface)] hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
-              title="ระบบจัดการการลาและสถานะพนักงาน"
-            >
-              <HeartPulse size={16} className="text-rose-500 shrink-0" />
-              <span className="hidden sm:inline">การลา & สถานะพนักงาน</span>
-            </Link>
-
+            <ThemeToggle />
+            <NotificationCenter />
             <NavbarRefreshControl
               onRefresh={handleNavbarRefresh}
               onRefreshFromDb={handleNavbarRefreshFromDb}
@@ -584,9 +571,6 @@ export function ExecutiveDashboard({
               lastRefreshedAt={navbarLastRefreshedAt}
               lastRefreshType={navbarLastRefreshType}
             />
-            <RoleSwitcher />
-            <NotificationCenter />
-            <ThemeToggle />
 
             {/* Logout Button: Responsive compact on mobile, labeled on tablet/desktop */}
             <button
@@ -660,29 +644,23 @@ export function ExecutiveDashboard({
             </div>
           </div>
 
-          {/* Quick Access to Leaves, Staff Status, and Branches */}
+          {/* Quick Access to Leaves, Staff Status, Branches, and Role Switcher */}
           <div className="flex items-center gap-2 z-10 shrink-0 flex-wrap sm:flex-nowrap">
             <Link
               href="/manager/branches"
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 text-amber-950 border border-amber-500 transition-all flex items-center gap-1.5 shadow-2xs"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 text-amber-950 border border-amber-500 transition-all flex items-center gap-1.5 shadow-2xs min-h-[38px]"
             >
               <Building2 size={15} className="shrink-0" />
               <span>ภาพรวมทุกสาขา</span>
             </Link>
             <Link
-              href="/manager/leaves"
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[var(--color-surface-2)] hover:bg-rose-50 dark:hover:bg-rose-950/40 text-[var(--color-text)] hover:text-rose-700 dark:hover:text-rose-300 border border-[var(--color-border)] hover:border-rose-300 transition-all flex items-center gap-1.5 shadow-2xs"
-            >
-              <HeartPulse size={15} className="text-rose-500 shrink-0" />
-              <span>จัดการการลา</span>
-            </Link>
-            <Link
               href="/manager/staff-status"
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[var(--color-surface-2)] hover:bg-amber-50 dark:hover:bg-amber-950/40 text-[var(--color-text)] hover:text-amber-800 dark:hover:text-amber-200 border border-[var(--color-border)] hover:border-amber-300 transition-all flex items-center gap-1.5 shadow-2xs"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[var(--color-surface-2)] hover:bg-amber-50 dark:hover:bg-amber-950/40 text-[var(--color-text)] hover:text-amber-800 dark:hover:text-amber-200 border border-[var(--color-border)] hover:border-amber-300 transition-all flex items-center gap-1.5 shadow-2xs min-h-[38px]"
             >
               <Users size={15} className="text-amber-600 shrink-0" />
               <span>สถานะพนักงาน</span>
             </Link>
+            <RoleSwitcher />
           </div>
         </header>
 
@@ -857,7 +835,7 @@ export function ExecutiveDashboard({
                     </span>
                   </h4>
                   <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                    ตรวจสอบสถานะการเข้ากะของพนักงานประจำวัน บันทึกและอนุมัติการลาป่วย/ลากิจ พร้อมระบบคุ้มครองสตรีค
+                    ตรวจสอบสถานะการเข้ากะและการปฏิบัติงานของพนักงานประจำวันในแต่ละสาขา
                   </p>
                 </div>
               </div>
@@ -865,17 +843,10 @@ export function ExecutiveDashboard({
               <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
                 <Link
                   href="/manager/staff-status"
-                  className="w-full sm:w-auto px-3.5 py-2 rounded-xl text-xs font-bold bg-[var(--color-surface-2)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 shadow-2xs"
-                >
-                  <Users size={14} className="text-amber-600" />
-                  <span>สถานะกะพนักงาน</span>
-                </Link>
-                <Link
-                  href="/manager/leaves"
                   className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-amber-950 transition-all flex items-center justify-center gap-1.5 shadow-xs"
                 >
-                  <HeartPulse size={14} className="text-rose-600" />
-                  <span>ระบบจัดการการลา →</span>
+                  <Users size={14} className="text-amber-950" />
+                  <span>ตรวจสอบสถานะพนักงาน →</span>
                 </Link>
               </div>
             </div>
@@ -1571,24 +1542,10 @@ export function ExecutiveDashboard({
 
       {/* ─── Footer with Reset Option (Same style as staff pages) ─────────────── */}
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--color-text-muted)] border-t border-[var(--color-border)] mt-12">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-[var(--color-text)]">Eater Egg Fresh Mart</span>
-            <span>•</span>
-            <span>Operations & Audit Management Portal</span>
-          </div>
-          <span className="hidden sm:inline">•</span>
-          <span>
-            User avatar icons modified from{" "}
-            <a
-              href="https://www.flaticon.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-            >
-              www.flaticon.com
-            </a>
-          </span>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-[var(--color-text)]">Eater Egg Fresh Mart</span>
+          <span>•</span>
+          <span>Operations & Audit Management Portal</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -1612,6 +1569,10 @@ export function ExecutiveDashboard({
       <EditProfileModal
         isOpen={isEditProfileOpen}
         onClose={() => setIsEditProfileOpen(false)}
+        onProfileUpdated={() => {
+          void loadDbSessions(true);
+          void loadHistorySessions(true);
+        }}
       />
     </div>
   );

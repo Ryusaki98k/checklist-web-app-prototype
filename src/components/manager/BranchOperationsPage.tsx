@@ -227,6 +227,9 @@ export function BranchOperationsPage({
               <span className="hidden sm:inline">การลาพนักงาน</span>
             </Link>
 
+            <ThemeToggle />
+            <NotificationCenter />
+
             <button
               type="button"
               onClick={() => loadReport(true)}
@@ -237,9 +240,6 @@ export function BranchOperationsPage({
               <RefreshCw size={14} className={isRefreshing ? "animate-spin text-amber-600" : ""} />
               <span className="hidden md:inline">รีเฟรช</span>
             </button>
-
-            <NotificationCenter />
-            <ThemeToggle />
 
             <button
               type="button"
@@ -939,20 +939,8 @@ export function BranchOperationsPage({
       </main>
 
       {/* Footer */}
-      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-        <span>Eater Egg Fresh Mart • Branch Operations Overview</span>
-        <span className="hidden sm:inline">•</span>
-        <span>
-          User avatar icons modified from{" "}
-          <a
-            href="https://www.flaticon.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-          >
-            www.flaticon.com
-          </a>
-        </span>
+      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)]">
+        Eater Egg Fresh Mart • Branch Operations Overview
       </footer>
     </div>
   );

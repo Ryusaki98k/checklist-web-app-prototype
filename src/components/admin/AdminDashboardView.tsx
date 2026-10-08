@@ -445,14 +445,6 @@ export function AdminDashboardView({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <NavbarRefreshControl
-            onRefresh={handleAdminNavbarRefresh}
-            onRefreshFromDb={handleAdminNavbarRefreshFromDb}
-            isLoading={isAdminRefreshing}
-            isDbLoading={isAdminDbRefreshing}
-            lastRefreshedAt={adminLastRefreshedAt}
-            lastRefreshType={adminLastRefreshType}
-          />
           <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-[var(--color-border)]">
             <div className="text-right hidden sm:block">
               <div className="flex items-center gap-1.5 justify-end">
@@ -481,6 +473,14 @@ export function AdminDashboardView({
 
           <RoleSwitcher />
           <ThemeToggle />
+          <NavbarRefreshControl
+            onRefresh={handleAdminNavbarRefresh}
+            onRefreshFromDb={handleAdminNavbarRefreshFromDb}
+            isLoading={isAdminRefreshing}
+            isDbLoading={isAdminDbRefreshing}
+            lastRefreshedAt={adminLastRefreshedAt}
+            lastRefreshType={adminLastRefreshType}
+          />
           <button
             type="button"
             onClick={onLogout}
@@ -1522,20 +1522,8 @@ export function AdminDashboardView({
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)] py-3 text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-        <span>Eater Egg Fresh Mart • Central Enterprise Administration Portal v2.0</span>
-        <span className="hidden sm:inline">•</span>
-        <span>
-          User avatar icons modified from{" "}
-          <a
-            href="https://www.flaticon.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-          >
-            www.flaticon.com
-          </a>
-        </span>
+      <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)] py-3 text-center text-xs text-[var(--color-text-muted)]">
+        Eater Egg Fresh Mart • Central Enterprise Administration Portal v2.0
       </footer>
 
       {/* Edit Profile Modal */}

@@ -35,12 +35,13 @@ export interface ManagerAuditHistoryViewProps {
   yesterdayIso: string;
   isLoading: boolean;
   branches?: Array<{ id: string; name: string }>;
-  managers?: Array<{ id: string; name: string; branchId?: string; branchName?: string }>;
+  managers?: Array<{ id: string; name: string; branchId?: string; branchName?: string; profile_id?: string | null }>;
 }
 
 interface ManagerSummary {
   managerId: string;
   managerName: string;
+  profile_id?: string | null;
   branchId?: string;
   branchName: string;
   managerShiftsCount: number;
@@ -93,7 +94,7 @@ export function ManagerAuditHistoryView({
   const managerSummaries = useMemo<ManagerSummary[]>(() => {
     // Collect all candidate managers
     // We check: initialManagers prop, sessions where userRole === 'manager', or userPosition === 'ผู้จัดการร้าน'
-    const candidateManagersMap = new Map<string, { id: string; name: string; branchId?: string; branchName?: string }>();
+    const candidateManagersMap = new Map<string, { id: string; name: string; branchId?: string; branchName?: string; profile_id?: string | null }>();
 
     (initialManagers || []).forEach((m) => {
       candidateManagersMap.set(m.id, m);
@@ -110,6 +111,7 @@ export function ManagerAuditHistoryView({
             name: s.userName,
             branchId: s.branchId,
             branchName: s.branchName,
+            profile_id: s.userProfileId,
           });
         }
       }
@@ -208,6 +210,7 @@ export function ManagerAuditHistoryView({
       summaries.push({
         managerId,
         managerName: mgr.name,
+        profile_id: mgr.profile_id,
         branchId,
         branchName,
         managerShiftsCount: managerSessions.length,
@@ -662,7 +665,7 @@ export function ManagerAuditHistoryView({
       </div>
 
       {/* ─── 4. Main Content: Store Managers Dossier vs Timeline Feed ─── */}
-      {isLoading ? (
+      {isLoading && managerSummaries.length === 0 ? (
         <div className="py-20 text-center text-[var(--color-text-muted)] text-xs flex flex-col items-center justify-center gap-3">
           <div className="w-7 h-7 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
           <span className="font-medium">กำลังรวบรวมข้อมูลผู้จัดการร้านและสถิติสาขา...</span>
@@ -697,6 +700,7 @@ export function ManagerAuditHistoryView({
                     <div className="flex items-center gap-3.5 min-w-0">
                       <UserAvatar
                         name={m.managerName}
+                        profile_id={m.profile_id}
                         role="manager"
                         size="md"
                         className="shrink-0 shadow-xs"

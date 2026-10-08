@@ -120,6 +120,15 @@ export function BranchLeaveManagementView({
   const [cancelTargetLeave, setCancelTargetLeave] = useState<EmployeeLeave | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  const isExecutiveOrCommittee =
+    !currentUser.isAdmin &&
+    (currentUser.role === "committee" ||
+      currentUser.role === "general_manager" ||
+      currentUser.executiveType === "committee" ||
+      currentUser.executiveType === "executive");
+
+  const canManageLeaves = !isExecutiveOrCommittee;
+
   // Load data for selected branch
   const loadData = useCallback(async (branchId?: string, isManual = false) => {
     try {
@@ -516,14 +525,16 @@ export function BranchLeaveManagementView({
             <ThemeToggle />
 
             {/* Primary Action Button */}
-            <button
-              type="button"
-              onClick={() => handleOpenAddModal()}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-amber-950 text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <Plus size={15} strokeWidth={2.5} />
-              <span>บันทึกการลา</span>
-            </button>
+            {canManageLeaves && (
+              <button
+                type="button"
+                onClick={() => handleOpenAddModal()}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-amber-950 text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus size={15} strokeWidth={2.5} />
+                <span>บันทึกการลา</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -716,32 +727,38 @@ export function BranchLeaveManagementView({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRejectModalLeave(pl);
-                        setRejectReason("");
-                      }}
-                      disabled={isApproving === pl.id}
-                      className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all cursor-pointer"
-                    >
-                      ปฏิเสธคำขอ
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleApprove(pl.id, approvalLeaveTypes[pl.id] || "paid", !isUnpaidLeave(approvalLeaveTypes[pl.id]))}
-                      disabled={isApproving === pl.id}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      {isApproving === pl.id ? (
-                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <Check size={14} />
-                      )}
-                      <span>อนุมัติ ({isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "ไม่ได้รับเงิน • ตัดสตรีค 0" : "ได้เงิน • รักษาสตรีค"})</span>
-                    </button>
-                  </div>
+                  {canManageLeaves ? (
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRejectModalLeave(pl);
+                          setRejectReason("");
+                        }}
+                        disabled={isApproving === pl.id}
+                        className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-all cursor-pointer"
+                      >
+                        ปฏิเสธคำขอ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApprove(pl.id, approvalLeaveTypes[pl.id] || "paid", !isUnpaidLeave(approvalLeaveTypes[pl.id]))}
+                        disabled={isApproving === pl.id}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        {isApproving === pl.id ? (
+                          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <Check size={14} />
+                        )}
+                        <span>อนุมัติ ({isUnpaidLeave(approvalLeaveTypes[pl.id]) ? "ไม่ได้รับเงิน • ตัดสตรีค 0" : "ได้เงิน • รักษาสตรีค"})</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="pt-2 border-t border-[var(--color-border)] flex items-center justify-end text-xs text-amber-600 dark:text-amber-400 font-semibold">
+                      <span>รอการพิจารณาจากผู้จัดการสาขา</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -875,14 +892,16 @@ export function BranchLeaveManagementView({
                   ล้างตัวกรอง
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => handleOpenAddModal()}
-                className="px-3 py-1.5 rounded-xl bg-amber-500 text-amber-950 font-bold text-xs hover:bg-amber-400 transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus size={14} />
-                <span>บันทึกการลา</span>
-              </button>
+              {canManageLeaves && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddModal()}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 text-amber-950 font-bold text-xs hover:bg-amber-400 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus size={14} />
+                  <span>บันทึกการลา</span>
+                </button>
+              )}
             </div>
           </div>
         ) : (
@@ -1058,14 +1077,16 @@ export function BranchLeaveManagementView({
                       </span>
 
                       {/* Cancel Leave Button */}
-                      <button
-                        type="button"
-                        onClick={() => setCancelTargetLeave(leave)}
-                        className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
-                        title="ยกเลิกรายการลานี้"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {canManageLeaves && (
+                        <button
+                          type="button"
+                          onClick={() => setCancelTargetLeave(leave)}
+                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                          title="ยกเลิกรายการลานี้"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1078,7 +1099,7 @@ export function BranchLeaveManagementView({
       {/* ─── MODAL: RECORD LEAVE FORM ───────────────────────────────────────── */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-6 space-y-5 animate-scale-up max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-3xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 animate-scale-up max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-4">
               <div className="flex items-center gap-2.5">
@@ -1105,21 +1126,21 @@ export function BranchLeaveManagementView({
 
             {/* Streak & Score Dynamic Notice */}
             {formPreserveStreak ? (
-              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
-                <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3 text-xs sm:text-sm text-emerald-800 dark:text-emerald-300">
+                <ShieldCheck size={20} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
                   <p className="font-bold">ลาแบบได้เงิน (ได้รับค่าจ้าง) & รักษาสตรีคสะสมต่อเนื่อง</p>
-                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed">
                     การบันทึกการลานี้จะไม่หักคะแนน และไม่ตัดสตรีค (Streak) ของพนักงาน และระบบจะไม่แจ้งเตือนการขาดงาน
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-300">
-                <ZapOff size={18} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-3 text-xs sm:text-sm text-rose-800 dark:text-rose-300">
+                <ZapOff size={20} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
                   <p className="font-bold">ลาแบบไม่ได้รับเงิน & ตัดสตรีคเป็น 0 (สตรีคขาด)</p>
-                  <p className="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">
+                  <p className="text-xs text-rose-700 dark:text-rose-400 leading-relaxed">
                     การลานี้ถือเป็นลาไม่มีค่าจ้าง สตรีคสะสมของพนักงานจะถูกรีเซ็ตเป็น 0 ทันที
                   </p>
                 </div>
@@ -1341,7 +1362,7 @@ export function BranchLeaveManagementView({
                   ประเมินตามดุลยพินิจของผู้จัดการ (การลาแบบได้เงินจะรักษาสตรีคสะสม ส่วนการลาแบบไม่ได้รับเงินจะตัดสตรีคเป็น 0)
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                   {/* Option 1: Paid Leave + Preserve Streak */}
                   <button
                     type="button"
@@ -1349,42 +1370,56 @@ export function BranchLeaveManagementView({
                       setFormLeaveType("paid");
                       setFormPreserveStreak(true);
                     }}
-                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 relative ${
+                    className={`p-4 sm:p-5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3.5 relative ${
                       isPaidLeave(formLeaveType) && formPreserveStreak
-                        ? "bg-emerald-500/15 border-emerald-500 text-emerald-950 dark:text-emerald-200 ring-2 ring-emerald-500/30 shadow-xs"
-                        : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-emerald-400"
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-950 dark:text-emerald-200 ring-2 ring-emerald-500/30 shadow-xs"
+                        : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-emerald-400 hover:bg-[var(--color-surface)]"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
-                          <Coins size={16} />
-                        </span>
-                        <div>
-                          <span className="text-xs font-extrabold text-[var(--color-text)] block">
+                    <div className="space-y-2.5">
+                      {/* Top Row: Icon + Title on left, Badge on right */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-8 h-8 rounded-xl bg-emerald-600 text-white shadow-xs flex items-center justify-center shrink-0">
+                            <Coins size={16} />
+                          </span>
+                          <span className="text-xs sm:text-sm font-extrabold text-[var(--color-text)]">
                             ลาแบบได้เงิน (ได้รับค่าจ้าง)
                           </span>
-                          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
-                            <ShieldCheck size={13} />
-                            <span>รักษาสตรีคคะแนน (สตรีคไม่ขาด)</span>
-                          </span>
                         </div>
+                        <span className="text-[10px] sm:text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 shrink-0 whitespace-nowrap">
+                          ได้เงิน • รักษาสตรีค
+                        </span>
                       </div>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30 shrink-0">
-                        ได้เงิน • รักษาสตรีค
-                      </span>
+
+                      {/* Streak policy badge/pill line */}
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                        <ShieldCheck size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>รักษาสตรีคคะแนนต่อเนื่อง (สตรีคไม่ขาด)</span>
+                      </div>
+
+                      {/* Clear explanation paragraph */}
+                      <p className="text-[11px] sm:text-xs text-[var(--color-text-muted)] leading-relaxed">
+                        ลาป่วยตามสิทธิ, ลาพักร้อน หรือลาได้รับค่าจ้างตามเกณฑ์ — พนักงานได้รับค่าจ้าง และสตรีคสะสมต่อเนื่อง (ไม่ถูกตัด)
+                      </p>
                     </div>
 
-                    <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-                      ลาป่วยตามสิทธิ, ลาพักร้อน หรือลาได้รับค่าจ้างตามเกณฑ์ — พนักงานได้รับค่าจ้าง และสตรีคสะสมต่อเนื่อง (ไม่ถูกตัด)
-                    </p>
-
-                    {isPaidLeave(formLeaveType) && formPreserveStreak && (
-                      <div className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1 pt-1 border-t border-emerald-500/20">
-                        <Check size={12} className="stroke-[3]" />
-                        <span>เลือกตัวเลือกนี้แล้ว</span>
-                      </div>
-                    )}
+                    {/* Selected Status / Radio Indicator */}
+                    <div className="pt-2.5 border-t border-[var(--color-border)]/60 flex items-center justify-between">
+                      {isPaidLeave(formLeaveType) && formPreserveStreak ? (
+                        <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
+                            <Check size={10} className="stroke-[3]" />
+                          </span>
+                          <span>เลือกตัวเลือกนี้แล้ว</span>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full border border-[var(--color-border)]" />
+                          <span>คลิกเพื่อเลือกตัวเลือกนี้</span>
+                        </div>
+                      )}
+                    </div>
                   </button>
 
                   {/* Option 2: Unpaid Leave + Break Streak */}
@@ -1394,51 +1429,66 @@ export function BranchLeaveManagementView({
                       setFormLeaveType("unpaid");
                       setFormPreserveStreak(false);
                     }}
-                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 relative ${
+                    className={`p-4 sm:p-5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3.5 relative ${
                       isUnpaidLeave(formLeaveType) && !formPreserveStreak
-                        ? "bg-rose-500/15 border-rose-500 text-rose-950 dark:text-rose-200 ring-2 ring-rose-500/30 shadow-xs"
-                        : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-rose-400"
+                        ? "bg-rose-500/10 border-rose-500 text-rose-950 dark:text-rose-200 ring-2 ring-rose-500/30 shadow-xs"
+                        : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-rose-400 hover:bg-[var(--color-surface)]"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="p-2 rounded-xl bg-rose-600 text-white shadow-xs">
-                          <FileText size={16} />
-                        </span>
-                        <div>
-                          <span className="text-xs font-extrabold text-[var(--color-text)] block">
+                    <div className="space-y-2.5">
+                      {/* Top Row: Icon + Title on left, Badge on right */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-8 h-8 rounded-xl bg-rose-600 text-white shadow-xs flex items-center justify-center shrink-0">
+                            <FileText size={16} />
+                          </span>
+                          <span className="text-xs sm:text-sm font-extrabold text-[var(--color-text)]">
                             ลาแบบไม่ได้รับเงิน
                           </span>
-                          <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1 mt-0.5">
-                            <ZapOff size={13} />
-                            <span>ตัดสตรีคเป็น 0 (สตรีคขาด)</span>
-                          </span>
                         </div>
+                        <span className="text-[10px] sm:text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-500/30 shrink-0 whitespace-nowrap">
+                          ไม่ได้รับเงิน • ตัดสตรีค 0
+                        </span>
                       </div>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-500/30 shrink-0">
-                        ไม่ได้รับเงิน • ตัดสตรีค 0
-                      </span>
+
+                      {/* Streak policy badge/pill line */}
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400">
+                        <ZapOff size={14} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                        <span>ตัดสตรีคเป็น 0 (สตรีคขาด)</span>
+                      </div>
+
+                      {/* Clear explanation paragraph */}
+                      <p className="text-[11px] sm:text-xs text-[var(--color-text-muted)] leading-relaxed">
+                        ลากิจส่วนตัว, ขาดงาน หรือลาไม่มีค่าจ้าง (Leave without pay) — ไม่ได้รับค่าจ้าง และสตรีคสะสมจะถูกตัดเป็น 0 ทันที
+                      </p>
                     </div>
 
-                    <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-                      ลากิจส่วนตัว, ขาดงาน หรือลาไม่มีค่าจ้าง (Leave without pay) — ไม่ได้รับค่าจ้าง และสตรีคสะสมจะถูกตัดเป็น 0 ทันที
-                    </p>
-
-                    {isUnpaidLeave(formLeaveType) && !formPreserveStreak && (
-                      <div className="text-[10px] font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1 pt-1 border-t border-rose-500/20">
-                        <Check size={12} className="stroke-[3]" />
-                        <span>เลือกตัวเลือกนี้แล้ว</span>
-                      </div>
-                    )}
+                    {/* Selected Status / Radio Indicator */}
+                    <div className="pt-2.5 border-t border-[var(--color-border)]/60 flex items-center justify-between">
+                      {isUnpaidLeave(formLeaveType) && !formPreserveStreak ? (
+                        <div className="text-[11px] font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center">
+                            <Check size={10} className="stroke-[3]" />
+                          </span>
+                          <span>เลือกตัวเลือกนี้แล้ว</span>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] font-medium text-[var(--color-text-muted)] flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full border border-[var(--color-border)]" />
+                          <span>คลิกเพื่อเลือกตัวเลือกนี้</span>
+                        </div>
+                      )}
+                    </div>
                   </button>
                 </div>
               </div>
 
               {/* Date Range: Start & End Date */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[var(--color-text)]">
-                    ตั้งแต่วันที่ <span className="text-rose-500">*</span>
+                  <label className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1.5">
+                    <Calendar size={13} className="text-amber-600 dark:text-amber-400" />
+                    <span>ตั้งแต่วันที่ <span className="text-rose-500">*</span></span>
                   </label>
                   <input
                     type="date"
@@ -1450,13 +1500,14 @@ export function BranchLeaveManagementView({
                         setFormEndDate(e.target.value);
                       }
                     }}
-                    className="w-full px-3 py-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500"
+                    className="w-full px-3.5 py-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[var(--color-text)]">
-                    ถึงวันที่ <span className="text-rose-500">*</span>
+                  <label className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1.5">
+                    <Calendar size={13} className="text-amber-600 dark:text-amber-400" />
+                    <span>ถึงวันที่ <span className="text-rose-500">*</span></span>
                   </label>
                   <input
                     type="date"
@@ -1464,14 +1515,14 @@ export function BranchLeaveManagementView({
                     min={formStartDate}
                     value={formEndDate}
                     onChange={(e) => setFormEndDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500"
+                    className="w-full px-3.5 py-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl text-xs sm:text-sm font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500"
                   />
                 </div>
               </div>
 
               {/* Manager Discretion Notice */}
-              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-2">
-                <span className="text-amber-600 font-bold shrink-0">ℹ️</span>
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-950 dark:text-amber-200 flex items-start gap-2.5 leading-relaxed">
+                <span className="text-amber-600 font-bold shrink-0 text-sm">ℹ️</span>
                 <span><strong>สิทธิการออกใบลาของผู้จัดการ:</strong> ผู้จัดการร้านสามารถออกบันทึกการลาให้พนักงานได้โดยไม่มีข้อจำกัด (สามารถระบุวันลาได้หลายวันต่อเนื่อง และออกใบลาเพิ่มเติมได้ตามดุลยพินิจ)</span>
               </div>
 
@@ -1488,23 +1539,23 @@ export function BranchLeaveManagementView({
                   value={formReason}
                   onChange={(e) => setFormReason(e.target.value)}
                   placeholder="ระบุเหตุผล เช่น มีไข้สูง อาเจียน ไปพบแพทย์ที่โรงพยาบาล, มีธุระติดต่อราชการจำเป็นเร่งด่วน ฯลฯ"
-                  className="w-full p-3 bg-[var(--color-surface-2)] border rounded-xl text-xs sm:text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-2 leading-relaxed resize-none border-[var(--color-border)] focus:outline-amber-500"
+                  className="w-full p-3.5 bg-[var(--color-surface-2)] border rounded-xl text-xs sm:text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] focus:outline-2 leading-relaxed resize-none border-[var(--color-border)] focus:outline-amber-500"
                 />
               </div>
 
               {/* Form Action Buttons */}
-              <div className="pt-2 flex items-center justify-end gap-3">
+              <div className="pt-3 border-t border-[var(--color-border)] flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-amber-950 text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-amber-950 text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>
@@ -1628,20 +1679,8 @@ export function BranchLeaveManagementView({
 
 
       {/* Footer */}
-      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-        <span>Eater Egg Fresh Mart • Branch Leave & Streak Policy Portal</span>
-        <span className="hidden sm:inline">•</span>
-        <span>
-          User avatar icons modified from{" "}
-          <a
-            href="https://www.flaticon.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-          >
-            www.flaticon.com
-          </a>
-        </span>
+      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)]">
+        Eater Egg Fresh Mart • Branch Leave & Streak Policy Portal
       </footer>
     </div>
   );

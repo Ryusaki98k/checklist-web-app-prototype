@@ -261,6 +261,8 @@ export function ManagerDashboard({
           userId: s.userId,
           userName: s.userName,
           userPosition: s.userPosition,
+          userRole: s.userRole,
+          userProfileId: s.userProfileId,
           taskRole: s.taskRole,
           shift: s.shift,
           startedAt: s.startedAt,
@@ -343,9 +345,9 @@ export function ManagerDashboard({
   }, [setIsLoadingDb, setSessions, setApprovals, setHasAssistantLoggedInToday, setApprovingSessionIds, setSelectedSession]);
 
   // Load history sessions
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (isSilent = false) => {
     try {
-      setIsLoadingHistory(true);
+      if (!isSilent) setIsLoadingHistory(true);
       const res = await getHistoryShiftSessionsAction(14);
       if (res.success && res.sessions) {
         const mapped: ShiftSession[] = res.sessions.map((s) => ({
@@ -354,6 +356,7 @@ export function ManagerDashboard({
           userName: s.userName,
           userPosition: s.userPosition,
           userRole: s.userRole,
+          userProfileId: s.userProfileId,
           branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
@@ -417,18 +420,18 @@ export function ManagerDashboard({
     } catch (err) {
       console.error("Failed to load history sessions:", err);
     } finally {
-      setIsLoadingHistory(false);
+      if (!isSilent) setIsLoadingHistory(false);
     }
   }, [setIsLoadingHistory, setHistorySessions, setApprovals, setApprovingSessionIds, setSelectedSession]);
 
   // Fetch specific history date (for Manager Audit)
-  const fetchSpecificHistoryDate = useCallback(async (dateStr: string) => {
+  const fetchSpecificHistoryDate = useCallback(async (dateStr: string, isSilent = false) => {
     if (!dateStr) {
       setSpecificDaySessions(null);
       return;
     }
     try {
-      setIsLoadingHistory(true);
+      if (!isSilent) setIsLoadingHistory(true);
       const res = await getHistoryShiftSessionsAction(14, dateStr);
       if (res.success && res.sessions) {
         const mapped: ShiftSession[] = res.sessions.map((s) => ({
@@ -437,6 +440,7 @@ export function ManagerDashboard({
           userName: s.userName,
           userPosition: s.userPosition,
           userRole: s.userRole,
+          userProfileId: s.userProfileId,
           branchId: s.branchId,
           taskRole: s.taskRole,
           shift: s.shift,
@@ -497,7 +501,7 @@ export function ManagerDashboard({
     } catch (err) {
       console.error("Failed to load specific history date:", err);
     } finally {
-      setIsLoadingHistory(false);
+      if (!isSilent) setIsLoadingHistory(false);
     }
   }, [setIsLoadingHistory, setSpecificDaySessions, setApprovals, setApprovingSessionIds, setSelectedSession]);
 
@@ -525,9 +529,9 @@ export function ManagerDashboard({
       void loadDbSessions();
       if (activeTabRef.current === "history") {
         if (selectedHistoryDateRef.current) {
-          void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current);
+          void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current, true);
         } else {
-          void loadHistoryRef.current?.();
+          void loadHistoryRef.current?.(true);
         }
       }
     }, 7000);
@@ -543,9 +547,9 @@ export function ManagerDashboard({
         void loadDbSessions();
         if (activeTabRef.current === "history") {
           if (selectedHistoryDateRef.current) {
-            void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current);
+            void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current, true);
           } else {
-            void loadHistoryRef.current?.();
+            void loadHistoryRef.current?.(true);
           }
         }
       }
@@ -555,9 +559,9 @@ export function ManagerDashboard({
       void loadDbSessions(false);
       if (activeTabRef.current === "history") {
         if (selectedHistoryDateRef.current) {
-          void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current);
+          void fetchSpecificHistoryDateRef.current?.(selectedHistoryDateRef.current, true);
         } else {
-          void loadHistoryRef.current?.();
+          void loadHistoryRef.current?.(true);
         }
       }
     };
@@ -886,29 +890,18 @@ export function ManagerDashboard({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            <Link
-              href="/manager/staff-status"
-              className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface)] hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
-              title="จัดการพนักงานและสถานะกะในสาขา"
-            >
-              <Users size={16} className="text-amber-600 shrink-0" />
-              <span className="hidden sm:inline">จัดการพนักงาน</span>
-            </Link>
-
-            <Link
-              href="/manager/leaves"
-              className="text-xs font-bold text-[var(--color-text)] hover:text-rose-950 dark:hover:text-rose-200 bg-[var(--color-surface)] hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-[var(--color-border)] hover:border-rose-400 px-3 py-1.5 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[36px]"
-              title="ระบบจัดการการลาและสถานะพนักงาน"
-            >
-              <HeartPulse size={16} className="text-rose-500 shrink-0" />
-              <span className="hidden sm:inline">จัดการการลา</span>
-            </Link>
-
-            <RoleSwitcher />
-
             <ThemeToggle />
 
             <NotificationCenter />
+
+            <NavbarRefreshControl
+              isLoading={isNavbarRefreshing}
+              isDbLoading={isNavbarDbRefreshing}
+              lastRefreshedAt={navbarLastRefreshedAt}
+              lastRefreshType={navbarLastRefreshType}
+              onRefresh={handleNavbarRefresh}
+              onRefreshFromDb={handleNavbarRefreshFromDb}
+            />
 
             <button
               type="button"
@@ -987,14 +980,25 @@ export function ManagerDashboard({
           </div>
 
           <div className="flex items-center gap-2 self-start md:self-center flex-wrap">
-            <NavbarRefreshControl
-              isLoading={isNavbarRefreshing}
-              isDbLoading={isNavbarDbRefreshing}
-              lastRefreshedAt={navbarLastRefreshedAt}
-              lastRefreshType={navbarLastRefreshType}
-              onRefresh={handleNavbarRefresh}
-              onRefreshFromDb={handleNavbarRefreshFromDb}
-            />
+            <Link
+              href="/manager/staff-status"
+              className="text-xs font-bold text-[var(--color-text)] hover:text-amber-950 dark:hover:text-amber-200 bg-[var(--color-surface-2)] hover:bg-amber-100 dark:hover:bg-amber-950/70 border border-[var(--color-border)] hover:border-amber-400 px-3.5 py-2 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[38px]"
+              title="จัดการพนักงานและสถานะกะในสาขา"
+            >
+              <Users size={16} className="text-amber-600 shrink-0" />
+              <span>จัดการพนักงาน</span>
+            </Link>
+
+            <Link
+              href="/manager/leaves"
+              className="text-xs font-bold text-[var(--color-text)] hover:text-rose-950 dark:hover:text-rose-200 bg-[var(--color-surface-2)] hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-[var(--color-border)] hover:border-rose-400 px-3.5 py-2 rounded-xl transition-all inline-flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer min-h-[38px]"
+              title="ระบบจัดการการลาและสถานะพนักงาน"
+            >
+              <HeartPulse size={16} className="text-rose-500 shrink-0" />
+              <span>จัดการการลา</span>
+            </Link>
+
+            <RoleSwitcher />
           </div>
         </header>
 
@@ -1850,23 +1854,15 @@ export function ManagerDashboard({
       <EditProfileModal
         isOpen={isEditProfileOpen}
         onClose={() => setIsEditProfileOpen(false)}
+        onProfileUpdated={() => {
+          void loadDbSessions(true);
+          void loadHistory(true);
+        }}
       />
 
       {/* Footer */}
-      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)] flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-        <span>Eater Egg Fresh Mart • Manager Portal</span>
-        <span className="hidden sm:inline">•</span>
-        <span>
-          User avatar icons modified from{" "}
-          <a
-            href="https://www.flaticon.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-          >
-            www.flaticon.com
-          </a>
-        </span>
+      <footer className="mt-12 py-6 border-t border-[var(--color-border)] text-center text-xs text-[var(--color-text-muted)]">
+        Eater Egg Fresh Mart • Manager Portal
       </footer>
     </div>
   );
