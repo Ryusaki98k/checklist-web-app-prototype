@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
+import { useLoading } from "../../context/LoadingContext";
 import { ActiveRole } from "../../types";
 import { getRoleDisplayTitle, getRoleShortTitle, getRoleTheme } from "../../utils/roles";
 import {
@@ -21,8 +22,19 @@ interface RoleSwitcherProps {
 
 export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: RoleSwitcherProps) {
   const { currentUser, switchRole, availableRoles } = useApp();
+  const { isPageTransition, isNavigating, isLoading } = useLoading();
   const [isOpen, setIsOpen] = useState(false);
+  const [pendingRole, setPendingRole] = useState<ActiveRole | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isBusy = Boolean(pendingRole) || isPageTransition || isNavigating || isLoading;
+
+  // Clear pending role when loading / transition completes
+  useEffect(() => {
+    if (!isPageTransition && !isNavigating && !isLoading) {
+      setPendingRole(null);
+    }
+  }, [isPageTransition, isNavigating, isLoading]);
 
   // Close dropdown on click outside or Esc
   useEffect(() => {
@@ -84,20 +96,32 @@ export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: Ro
     );
   }
 
+  const handleRoleSelect = (role: ActiveRole) => {
+    if (role === activeRole || isBusy) return;
+    setPendingRole(role);
+    setIsOpen(false);
+    switchRole(role);
+  };
+
   // Multi-role user: Interactive Role Switcher
   return (
     <div className={`relative inline-block text-left ${className}`} ref={dropdownRef}>
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={() => !isBusy && setIsOpen((prev) => !prev)}
+        disabled={isBusy}
         aria-haspopup="true"
         aria-expanded={isOpen}
-        title="สลับบทบาทการทำงาน (Multi-role account)"
-        className={`group inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs border ${currentTheme.bg} ${currentTheme.color} ${currentTheme.border} hover:shadow-xs active:scale-98`}
+        title={pendingRole ? `กำลังสลับเป็น ${getRoleDisplayTitle(pendingRole)}...` : "สลับบทบาทการทำงาน (Multi-role account)"}
+        className={`group inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs border ${currentTheme.bg} ${currentTheme.color} ${currentTheme.border} hover:shadow-xs active:scale-98 disabled:opacity-80 disabled:cursor-wait cursor-pointer`}
       >
-        {renderRoleIcon(activeRole, 15)}
+        {pendingRole ? (
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent shrink-0" />
+        ) : (
+          renderRoleIcon(activeRole, 15)
+        )}
         <span className={showIconOnlyOnMobile ? "hidden sm:inline" : ""}>
-          {getRoleShortTitle(activeRole)}
+          {pendingRole ? `กำลังสลับเป็น ${getRoleShortTitle(pendingRole)}...` : getRoleShortTitle(activeRole)}
         </span>
         <span className="hidden sm:inline-flex text-[10px] uppercase tracking-wider font-extrabold px-1.5 py-0.2 rounded-full bg-white/60 dark:bg-black/30 border border-current opacity-80">
           {availableRoles.length} สิทธิ์
@@ -106,7 +130,7 @@ export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: Ro
           size={13}
           className={`shrink-0 transition-transform duration-200 opacity-70 group-hover:opacity-100 ${
             isOpen ? "rotate-180" : ""
-          }`}
+          } ${pendingRole ? "opacity-0" : ""}`}
         />
       </button>
 
@@ -130,19 +154,16 @@ export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: Ro
           <div className="space-y-1">
             {availableRoles.map((role) => {
               const isActive = role === activeRole;
+              const isTargeting = role === pendingRole;
               const theme = getRoleTheme(role);
 
               return (
                 <button
                   key={role}
                   type="button"
-                  onClick={() => {
-                    setIsOpen(false);
-                    if (!isActive) {
-                      switchRole(role);
-                    }
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                  disabled={isBusy}
+                  onClick={() => handleRoleSelect(role)}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer disabled:cursor-wait ${
                     isActive
                       ? `${theme.bg} ${theme.color} border ${theme.border} font-bold`
                       : "text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
@@ -156,7 +177,11 @@ export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: Ro
                           : "bg-[var(--color-surface-2)]"
                       }`}
                     >
-                      {renderRoleIcon(role, 15)}
+                      {isTargeting ? (
+                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-500 border-t-transparent shrink-0" />
+                      ) : (
+                        renderRoleIcon(role, 15)
+                      )}
                     </div>
                     <div className="min-w-0 text-left">
                       <div className="truncate text-xs">{getRoleDisplayTitle(role)}</div>
@@ -172,6 +197,10 @@ export function RoleSwitcher({ className = "", showIconOnlyOnMobile = true }: Ro
                   {isActive ? (
                     <span className="shrink-0 p-1 rounded-full bg-current/15 text-current">
                       <Check size={12} strokeWidth={3} />
+                    </span>
+                  ) : isTargeting ? (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                      กำลังสลับ...
                     </span>
                   ) : (
                     <span className="text-[10px] text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 font-medium">

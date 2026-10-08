@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ShiftSession, ShiftType, User, ActiveRole } from "../types";
-import { getUserAvailableRoles, canAccessRole } from "../utils/roles";
+import { getUserAvailableRoles, canAccessRole, getRoleDisplayTitle } from "../utils/roles";
 import { STAFF_POSITIONS } from "../types";
 import {
   getActiveSession,
@@ -54,7 +54,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { startLoading, withLoading } = useLoading();
+  const { startLoading, withLoading, resetLoading } = useLoading();
   const [, startTransition] = useTransition();
   const [isReady, setIsReady] = useState(false);
   const [currentUser, setCurrentUserState] = useState<User | null>(null);
@@ -384,6 +384,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const roleDisplay = getRoleDisplayTitle(newRole);
+      const loadingMsg = `กำลังสลับบทบาทเป็น ${roleDisplay}...`;
+
+      let targetPath = "/position";
+      if (newRole === "admin") {
+        targetPath = "/admin/dashboard";
+      } else if (newRole === "manager" || newRole === "manager_assistant") {
+        if (!currentUser.branchName) {
+          targetPath = "/awaiting-assignment";
+        } else {
+          targetPath = "/manager/dashboard";
+        }
+      } else if (newRole === "committee" || newRole === "general_manager") {
+        targetPath = "/manager/dashboard";
+      } else {
+        // Employee role
+        if (!currentUser.branchName) {
+          targetPath = "/awaiting-assignment";
+        } else {
+          targetPath = "/position";
+        }
+      }
+
+      // Immediately activate global loading screen
+      startLoading(loadingMsg, true);
+
+      // Dispatch custom navigation event for progress bar & listeners
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("app:navigating", {
+            detail: { href: targetPath, message: loadingMsg, role: newRole },
+          })
+        );
+      }
+
       const updatedUser: User = {
         ...currentUser,
         activeRole: newRole,
@@ -402,34 +437,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             : undefined,
       };
 
+      saveCurrentUser(updatedUser);
       setCurrentUser(updatedUser);
 
+      const isCurrentPage = typeof window !== "undefined" && window.location.pathname === targetPath;
+
       startTransition(() => {
-        if (newRole === "admin") {
-          router.push("/admin/dashboard");
-        } else if (newRole === "manager" || newRole === "manager_assistant") {
-          if (!updatedUser.branchName) {
-            router.push("/awaiting-assignment");
-          } else {
-            router.push("/manager/dashboard");
-          }
-        } else if (newRole === "committee" || newRole === "general_manager") {
-          router.push("/manager/dashboard");
-        } else {
-          // Employee role
-          if (!updatedUser.branchName) {
-            router.push("/awaiting-assignment");
-          } else {
-            router.push("/position");
-          }
-        }
+        router.push(targetPath);
       });
+
+      if (isCurrentPage) {
+        // Since URL does not change, complete transition gracefully after render settles
+        setTimeout(() => {
+          resetLoading();
+        }, 500);
+      }
     },
-    [currentUser, router]
+    [currentUser, router, startLoading, resetLoading]
   );
 
   async function login(user: User, shift?: ShiftType, redirectPath?: unknown, roleToActivate?: ActiveRole) {
-    startLoading("กำลังเข้าสู่ระบบ...", true);
+    const loginMsg = "กำลังเข้าสู่ระบบและเตรียมข้อมูล...";
+    startLoading(loginMsg, true);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("app:navigating", { detail: { message: loginMsg } }));
+    }
     const targetPath = typeof redirectPath === "string" ? redirectPath : null;
 
     const todayDateStr = getThaiDateString();
@@ -544,7 +576,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function logout(redirectTo?: unknown) {
-    startLoading("กำลังออกจากระบบ...", true);
+    const logoutMsg = "กำลังออกจากระบบ...";
+    startLoading(logoutMsg, true);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("app:navigating", { detail: { message: logoutMsg } }));
+    }
     const targetUrl = typeof redirectTo === "string" ? redirectTo : "/";
 
     try {

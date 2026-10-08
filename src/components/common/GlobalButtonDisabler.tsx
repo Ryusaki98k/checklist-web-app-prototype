@@ -26,8 +26,8 @@ export function GlobalButtonDisabler() {
     () => false
   );
 
-  // Busy when the app is initializing OR an active blocking loading/DB/API operation is running
-  const isBusy = !isMounted || !isAppReady || isLoading;
+  // Busy when the app is initializing OR an active blocking loading/DB/API operation is running OR page transition is active
+  const isBusy = !isMounted || !isAppReady || isLoading || isPageTransition || isNavigating;
   const isBusyRef = useRef(isBusy);
 
   useEffect(() => {

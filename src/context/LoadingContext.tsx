@@ -65,7 +65,7 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
         if (activeCountRef.current === 0) {
           clearDomBusy();
         }
-      }, 1800);
+      }, 12000);
       return;
     }
 
@@ -112,7 +112,7 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
         if (activeCountRef.current === 0) {
           clearDomBusy();
         }
-      }, 1800);
+      }, 12000);
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("app:navigating", { detail: { href, message } }));

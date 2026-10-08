@@ -33,9 +33,9 @@ export function PageTransitionWatcher() {
         setProgress(null);
         activeNavRef.current = false;
         setIsNavigating(false);
-      }, 140);
+      }, 180);
       timersRef.current.push(resetTimer);
-    }, 100);
+    }, 120);
     timersRef.current.push(hideTimer);
 
     resetLoading();
@@ -96,22 +96,54 @@ export function PageTransitionWatcher() {
         // Cancel any pending timers from previous interactions
         clearTimers();
 
+        // Determine informative loading message based on destination route
+        let navMessage = "กำลังเตรียมเนื้อหาหน้าถัดไป...";
+        const customMsg = target.getAttribute("data-loading-text");
+        if (customMsg) {
+          navMessage = customMsg;
+        } else if (url.pathname.startsWith("/admin")) {
+          navMessage = "กำลังเปิดระบบดูแลส่วนกลาง (Admin)...";
+        } else if (url.pathname === "/manager/leaves") {
+          navMessage = "กำลังเปิดระบบจัดการวันลา...";
+        } else if (url.pathname === "/manager/branches") {
+          navMessage = "กำลังเปิดข้อมูลภาพรวมสาขา...";
+        } else if (url.pathname === "/manager/staff-status") {
+          navMessage = "กำลังเปิดสถานะพนักงาน...";
+        } else if (url.pathname.startsWith("/manager")) {
+          navMessage = "กำลังเปิดหน้าแดชบอร์ด...";
+        } else if (url.pathname === "/checklist") {
+          navMessage = "กำลังเปิดรายการเช็คลิสต์...";
+        } else if (url.pathname === "/position") {
+          navMessage = "กำลังเปิดหน้าเลือกตำแหน่งงาน...";
+        } else if (url.pathname === "/shift") {
+          navMessage = "กำลังเปิดหน้าเลือกกะการทำงาน...";
+        } else if (url.pathname === "/guide") {
+          navMessage = "กำลังเปิดคู่มือการใช้งาน...";
+        } else if (url.pathname === "/readme") {
+          navMessage = "กำลังเปิดเอกสารระบบ...";
+        } else if (url.pathname.startsWith("/login")) {
+          navMessage = "กำลังเปิดหน้าเข้าสู่ระบบ...";
+        } else if (url.pathname === "/") {
+          navMessage = "กำลังกลับสู่หน้าหลัก...";
+        }
+
         // Start navigation progress & immediately lock all buttons across all pages
         activeNavRef.current = true;
         setIsVisible(true);
         setProgress(25);
-        startLoading("กำลังเตรียมเนื้อหาหน้าถัดไป...", true);
+        startLoading(navMessage, true);
         setIsNavigating(true);
 
         // Advance progress smoothly and predictably
         timersRef.current.push(setTimeout(() => setProgress(50), 120));
         timersRef.current.push(setTimeout(() => setProgress(75), 350));
-        timersRef.current.push(setTimeout(() => setProgress(88), 700));
+        timersRef.current.push(setTimeout(() => setProgress(88), 750));
+        timersRef.current.push(setTimeout(() => setProgress(94), 1800));
 
-        // Guaranteed safety fallback: auto-complete transition if navigation takes more than 1.5s
+        // Guaranteed safety fallback: auto-complete transition if navigation takes more than 12s
         const fallbackTimer = setTimeout(() => {
           completeTransition();
-        }, 1500);
+        }, 12000);
         timersRef.current.push(fallbackTimer);
       } catch {
         // Ignore invalid URLs
@@ -124,14 +156,15 @@ export function PageTransitionWatcher() {
       activeNavRef.current = true;
       setIsVisible(true);
       setProgress(40);
+      startLoading("กำลังเปลี่ยนหน้า...", true);
       setIsNavigating(true);
 
       // Smooth step
-      timersRef.current.push(setTimeout(() => setProgress(80), 80));
+      timersRef.current.push(setTimeout(() => setProgress(80), 100));
 
       const popstateCompleteTimer = setTimeout(() => {
         completeTransition();
-      }, 200);
+      }, 12000);
       timersRef.current.push(popstateCompleteTimer);
     };
 
@@ -144,13 +177,14 @@ export function PageTransitionWatcher() {
       setProgress(30);
       startLoading(message, true);
       setIsNavigating(true);
-      timersRef.current.push(setTimeout(() => setProgress(65), 120));
-      timersRef.current.push(setTimeout(() => setProgress(85), 350));
+      timersRef.current.push(setTimeout(() => setProgress(65), 150));
+      timersRef.current.push(setTimeout(() => setProgress(85), 400));
+      timersRef.current.push(setTimeout(() => setProgress(94), 1800));
 
-      // Safety fallback for custom navigation
+      // Safety fallback for custom navigation: 12 seconds
       const customFallback = setTimeout(() => {
         completeTransition();
-      }, 1600);
+      }, 12000);
       timersRef.current.push(customFallback);
     };
 
@@ -170,13 +204,13 @@ export function PageTransitionWatcher() {
 
   return (
     <div
-      className={`fixed top-0 left-0 right-0 h-1 z-[9999] pointer-events-none transition-opacity duration-200 ${
+      className={`fixed top-0 left-0 right-0 h-1.5 z-[9999] pointer-events-none transition-opacity duration-200 ${
         isVisible ? "opacity-100" : "opacity-0"
       }`}
       aria-hidden="true"
     >
       <div
-        className="h-full bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400 shadow-[0_0_12px_rgba(245,158,11,0.85)] transition-all ease-out"
+        className="h-full bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400 shadow-[0_0_14px_rgba(245,158,11,0.95)] transition-all ease-out"
         style={{
           width: `${progress ?? 0}%`,
           transitionDuration: progress === 100 ? "160ms" : "250ms",
