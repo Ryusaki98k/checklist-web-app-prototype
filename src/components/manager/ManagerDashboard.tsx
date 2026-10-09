@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useTransition, useRef } from "react";
-import { Notification, ShiftSession, ShiftType, User, ChecklistItem } from "../../types";
+import { Notification, ShiftSession, ShiftType, User, ChecklistItem, Role } from "../../types";
 import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, getShiftBadge, getShiftName } from "../common/Badge";
 import { BrandLogo } from "../common/BrandLogo";
@@ -29,6 +29,7 @@ import { LateReasonModal } from "../common/LateReasonModal";
 import { DbSyncNotification } from "../common/DbSyncNotification";
 import { UserAvatar } from "../common/UserAvatar";
 import { EditProfileModal } from "../common/EditProfileModal";
+import { EnlargeAvatarModal } from "../common/EnlargeAvatarModal";
 import {
   ClipboardCheck,
   ShieldCheck,
@@ -106,10 +107,15 @@ export function ManagerDashboard({
   type ManagerTab = "tasks" | "approvals" | "refrigerator" | "history";
   const [activeTab, setActiveTab] = useState<ManagerTab>("tasks");
 
-  // Notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [enlargedAvatarUser, setEnlargedAvatarUser] = useState<{
+    name: string;
+    position?: string;
+    profileId?: string | null;
+    role?: string;
+  } | null>(null);
 
   // Sub-tabs inside Approvals: daily | special
   const [approvalSubTab, setApprovalSubTab] = useState<"daily" | "special">("daily");
@@ -1812,22 +1818,48 @@ export function ManagerDashboard({
                         key={sess.id}
                         className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xs hover:border-amber-400 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
                       >
-                        <div className="space-y-1.5 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-[var(--color-text)]">
-                              {sess.userName}
-                            </span>
-                            {sess.userPosition && (
-                              <Badge color="muted">{sess.userPosition}</Badge>
-                            )}
-                            {getShiftBadge(sess.shift)}
-                            <Badge color={doneItems === sess.items.length ? "green" : "amber"}>
-                              {doneItems}/{sess.items.length} รายการ
-                            </Badge>
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          {/* Profile picture at the most left */}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEnlargedAvatarUser({
+                                name: sess.userName,
+                                position: sess.userPosition,
+                                profileId: sess.userProfileId,
+                                role: sess.taskRole || sess.userRole,
+                              })
+                            }
+                            className="shrink-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer group"
+                            title={`คลิกเพื่อดูรูปโปรไฟล์ขนาดใหญ่ของ ${sess.userName}`}
+                            aria-label={`ดูรูปโปรไฟล์ขนาดใหญ่ของ ${sess.userName}`}
+                          >
+                            <UserAvatar
+                              name={sess.userName}
+                              profile_id={sess.userProfileId}
+                              role={(sess.taskRole || sess.userRole || "employee") as Role}
+                              size="md"
+                              className="shadow-xs transition-transform group-hover:scale-105"
+                            />
+                          </button>
+
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-[var(--color-text)]">
+                                {sess.userName}
+                              </span>
+                              {sess.userPosition && (
+                                <Badge color="muted">{sess.userPosition}</Badge>
+                              )}
+                              {getShiftBadge(sess.shift)}
+                              <Badge color={doneItems === sess.items.length ? "green" : "amber"}>
+                                {doneItems}/{sess.items.length} รายการ
+                              </Badge>
+                            </div>
+                            <p className="text-[11px] text-[var(--color-text-muted)]">
+                              เริ่ม {fmtTime(sess.startedAt)} น. {sess.completedAt ? `• เสร็จสิ้น ${fmtTime(sess.completedAt)} น.` : "• กำลังปฏิบัติงาน"}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-[var(--color-text-muted)]">
-                            เริ่ม {fmtTime(sess.startedAt)} น. {sess.completedAt ? `• เสร็จสิ้น ${fmtTime(sess.completedAt)} น.` : "• กำลังปฏิบัติงาน"}
-                          </p>
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
@@ -2130,6 +2162,13 @@ export function ManagerDashboard({
           void loadDbSessions(true);
           void loadHistory(true);
         }}
+      />
+
+      {/* Enlarge Profile Picture Modal */}
+      <EnlargeAvatarModal
+        isOpen={Boolean(enlargedAvatarUser)}
+        onClose={() => setEnlargedAvatarUser(null)}
+        user={enlargedAvatarUser}
       />
 
       {/* Footer */}

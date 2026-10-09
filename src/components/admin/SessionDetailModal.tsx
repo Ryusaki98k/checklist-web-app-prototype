@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { ShiftSession } from "../../types";
+import { ShiftSession, Role } from "../../types";
 import { fmtDate, fmtTime } from "../../data/storage";
 import { Badge, Divider, getShiftBadge } from "../common/Badge";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
 import { UserAvatar } from "../common/UserAvatar";
 import { AlertCircle, AlertTriangle, ShieldCheck, CheckCircle2, ShieldAlert, Check } from "lucide-react";
 import { reviewIncompleteShiftAction } from "../../actions/manager";
+import { EnlargeAvatarModal } from "../common/EnlargeAvatarModal";
 
 export function SessionDetailModal({
   session,
@@ -31,7 +32,8 @@ export function SessionDetailModal({
   isApproving?: boolean;
 }) {
   const [sessionOverride, setSessionOverride] = useState<Partial<ShiftSession> | null>(null);
-  const [showApprovalPrompt, setShowApprovalPrompt] = useState(false);
+  const [showExceptionConfirm, setShowExceptionConfirm] = useState(false);
+  const [showEnlargeAvatar, setShowEnlargeAvatar] = useState(false);
   const [incompleteAction, setIncompleteAction] = useState<"no_penalty" | "deduct_points" | "break_streak">("no_penalty");
   const [pointsToDeduct, setPointsToDeduct] = useState<number>(5);
   const [incompleteNote, setIncompleteNote] = useState<string>("");
@@ -40,14 +42,14 @@ export function SessionDetailModal({
 
   useEffect(() => {
     setSessionOverride(null);
-    setShowApprovalPrompt(false);
+    setShowExceptionConfirm(false);
   }, [session?.id]);
 
   useEffect(() => {
-    if (isApproved && showApprovalPrompt) {
-      setShowApprovalPrompt(false);
+    if (isApproved && showExceptionConfirm) {
+      setShowExceptionConfirm(false);
     }
-  }, [isApproved, showApprovalPrompt]);
+  }, [isApproved, showExceptionConfirm]);
 
   const currentSession = session ? { ...session, ...sessionOverride } : null;
 
@@ -116,13 +118,21 @@ export function SessionDetailModal({
         <div>
           <div className="flex items-center justify-between mb-4 gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <UserAvatar
-                name={currentSession.userName}
-                profile_id={currentSession.userProfileId}
-                role={currentSession.userRole as any}
-                size="md"
-                className="shrink-0 shadow-xs"
-              />
+              <button
+                type="button"
+                onClick={() => setShowEnlargeAvatar(true)}
+                className="shrink-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer group"
+                title={`คลิกเพื่อดูรูปโปรไฟล์ขนาดใหญ่ของ ${currentSession.userName}`}
+                aria-label={`ดูรูปโปรไฟล์ขนาดใหญ่ของ ${currentSession.userName}`}
+              >
+                <UserAvatar
+                  name={currentSession.userName}
+                  profile_id={currentSession.userProfileId}
+                  role={(currentSession.userRole || "employee") as Role}
+                  size="md"
+                  className="shadow-xs transition-transform group-hover:scale-105"
+                />
+              </button>
               <div className="min-w-0">
                 <h2 id="session-detail-title" className="text-base font-bold text-[var(--color-text)] truncate">
                   {currentSession.userName}
@@ -501,42 +511,30 @@ export function SessionDetailModal({
 
         {/* Modal Bottom Action: Approve Buttons */}
         {canApprove && onApprove && !isApproved && (
-          <div className="mt-5 pt-4 border-t border-[var(--color-border)] flex flex-col sm:flex-row items-stretch gap-2.5">
-            {/* Option 1: Standard Approval */}
+          <div className="mt-5 pt-4 border-t border-[var(--color-border)] flex flex-row items-center justify-between gap-2.5">
+            {/* Option 2: Exception Approval (อนุโลม) - Small, discreet on the left */}
+            <button
+              type="button"
+              disabled={isApproving}
+              onClick={() => {
+                setShowExceptionConfirm(true);
+              }}
+              className="py-2 px-2.5 sm:px-3 bg-[var(--color-surface-2)]/60 hover:bg-amber-500/10 active:bg-amber-500/20 disabled:opacity-50 text-[var(--color-text-muted)] hover:text-amber-800 dark:hover:text-amber-300 border border-[var(--color-border)] hover:border-amber-400/50 rounded-xl text-[11px] sm:text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+              title="อนุโลม (กรณีพิเศษ): ข้อยกเว้นตามนโยบายความเสมอภาค (ต้องยืนยันความจำเป็น)"
+            >
+              <ShieldAlert size={14} className="text-amber-600 dark:text-amber-400 opacity-80 shrink-0" />
+              <span>อนุโลม</span>
+            </button>
+
+            {/* Option 1: Standard Approval - Main prominent action on the right */}
             <button
               type="button"
               disabled={isApproving}
               onClick={() => {
                 onApprove?.(currentSession.id, false);
               }}
-              className="flex-1 min-h-[44px] py-2.5 px-4 bg-[var(--color-brown)] hover:bg-[var(--color-brown-light)] disabled:opacity-60 text-amber-100 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
+              className="flex-1 min-h-[44px] py-2.5 px-4 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 disabled:opacity-60 text-amber-950 rounded-xl text-xs sm:text-sm font-extrabold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2"
               title="รับรองผลตามเกณฑ์ปกติ: งานตรงเวลาครบ +10 แต้ม / มีรายการล่าช้า +8 แต้มและตัดสตรีค"
-            >
-              {isApproving ? (
-                <>
-                  <svg className="animate-spin h-4 w-4 text-amber-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                  </svg>
-                  <span>กำลังดำเนินการ...</span>
-                </>
-              ) : (
-                <>
-                  <Check size={16} strokeWidth={2.5} />
-                  <span>รับรองตามปกติ (Standard)</span>
-                </>
-              )}
-            </button>
-
-            {/* Option 2: Exception Approval (อนุโลม) */}
-            <button
-              type="button"
-              disabled={isApproving}
-              onClick={() => {
-                onApprove?.(currentSession.id, true);
-              }}
-              className="flex-1 min-h-[44px] py-2.5 px-4 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-amber-950 font-extrabold rounded-xl text-xs sm:text-sm transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2 border border-amber-600/30"
-              title="อนุมัติแบบอนุโลม: รักษาสตรีคต่อเนื่องและมอบ 10 แต้มเต็ม"
             >
               {isApproving ? (
                 <>
@@ -548,8 +546,8 @@ export function SessionDetailModal({
                 </>
               ) : (
                 <>
-                  <ShieldCheck size={17} strokeWidth={2.5} />
-                  <span>อนุโลม (รักษาสตรีค & 10 แต้ม)</span>
+                  <Check size={17} strokeWidth={2.8} />
+                  <span>รับรองตามปกติ (Standard)</span>
                 </>
               )}
             </button>
@@ -566,92 +564,82 @@ export function SessionDetailModal({
         )}
       </div>
 
-      {/* ─── Approval Prompt Modal (Standard vs Exception) ─── */}
-      {showApprovalPrompt && (
+      {/* ─── Exception Approval Confirmation Modal (Equality Policy) ─── */}
+      {showExceptionConfirm && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[60] px-4 animate-in fade-in duration-150"
-          onClick={() => !isApproving && setShowApprovalPrompt(false)}
+          onClick={() => !isApproving && setShowExceptionConfirm(false)}
         >
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="approval-prompt-title"
+            aria-labelledby="exception-confirm-title"
             className="bg-[var(--color-surface)] border-2 border-[var(--color-border)] rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 flex items-center justify-center shrink-0">
-                <ShieldCheck size={22} />
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                <ShieldAlert size={22} />
               </div>
               <div>
-                <h3 id="approval-prompt-title" className="text-base font-bold text-[var(--color-text)]">
-                  เลือกรูปแบบการอนุมัติกะงาน ({approveRoleTitle})
+                <h3 id="exception-confirm-title" className="text-sm sm:text-base font-bold text-[var(--color-text)]">
+                  ยืนยันการอนุมัติแบบอนุโลม (ข้อยกเว้นพิเศษ)
                 </h3>
                 <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  พนักงาน: <span className="font-semibold text-[var(--color-text)]">{currentSession.userName}</span>
+                  พนักงาน: <strong className="text-[var(--color-text)]">{currentSession.userName}</strong>
                 </p>
               </div>
             </div>
 
-            <div className="space-y-2.5 pt-1">
-              {/* Option 1: Standard Approval */}
-              <button
-                type="button"
-                disabled={isApproving}
-                onClick={() => {
-                  setShowApprovalPrompt(false);
-                  onApprove?.(currentSession.id, false);
-                }}
-                className="w-full text-left p-3.5 rounded-xl border border-[var(--color-border)] hover:border-amber-500 bg-[var(--color-surface-2)] hover:bg-amber-500/5 transition-all cursor-pointer group disabled:opacity-60"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[var(--color-text)] group-hover:text-amber-600 flex items-center gap-1.5">
-                    <span>✓ อนุมัติตามปกติ (Standard Approval)</span>
-                  </span>
-                  <span className="text-[10px] font-mono text-[var(--color-text-muted)]">เกณฑ์ปกติ</span>
-                </div>
-                <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
-                  คำนวณคะแนนตามผลการตรวจจริง (งานผ่านตรงเวลาครบ +10 แต้ม / หากมีรายการล่าช้า +8 แต้มและตัดสตรีคเป็น 0)
-                </p>
-              </button>
-
-              {/* Option 2: Exception Approval (อนุโลม) */}
-              <button
-                type="button"
-                disabled={isApproving}
-                onClick={() => {
-                  setShowApprovalPrompt(false);
-                  onApprove?.(currentSession.id, true);
-                }}
-                className="w-full text-left p-3.5 rounded-xl border-2 border-amber-500/70 hover:border-amber-500 bg-amber-500/10 hover:bg-amber-500/15 transition-all cursor-pointer group shadow-xs disabled:opacity-60"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
-                    <span>🛡️ อนุมัติแบบอนุโลม (Exception Approval)</span>
-                  </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-amber-950">
-                    รักษาสตรีค & 10 แต้ม
-                  </span>
-                </div>
-                <p className="text-[11px] text-amber-900 dark:text-amber-300 mt-1 leading-relaxed">
-                  อนุโลมให้สิทธิประโยชน์รักษาสตรีคต่อเนื่อง (สถานะ Flawed) และ <strong className="font-bold underline">มอบ 10 แต้มเต็ม</strong> แทนที่จะถูกตัดสตรีคและได้ 8 แต้ม
-                </p>
-              </button>
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-950 dark:text-amber-200 space-y-2 leading-relaxed">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-100">
+                <span>⚖️ นโยบายความเสมอภาค (Equality Policy)</span>
+              </div>
+              <p className="text-[11px] text-[var(--color-text-muted)] leading-normal">
+                การอนุมัติแบบอนุโลมมีไว้สำหรับกรณีเหตุจำเป็นเฉพาะเจาะจงเท่านั้น เพื่อรักษามาตรฐานความเป็นธรรมและความเสมอภาคแก่พนักงานทุกคน
+              </p>
+              <div className="pt-2 border-t border-amber-500/20 text-[11px] text-amber-900 dark:text-amber-200">
+                <span>ผลกระทบ: รักษาสตรีคต่อเนื่อง (สถานะ Flawed) และมอบคะแนน 10 แต้มเต็ม</span>
+              </div>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 disabled={isApproving}
-                onClick={() => setShowApprovalPrompt(false)}
-                className="px-4 py-2 rounded-xl border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer disabled:opacity-60"
+                onClick={() => setShowExceptionConfirm(false)}
+                className="px-4 py-2 rounded-xl border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors cursor-pointer disabled:opacity-60"
               >
                 ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={isApproving}
+                onClick={() => {
+                  setShowExceptionConfirm(false);
+                  onApprove?.(currentSession.id, true);
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+              >
+                <ShieldCheck size={14} />
+                <span>ยืนยันอนุมัติแบบอนุโลม</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Enlarge Profile Picture Modal */}
+      <EnlargeAvatarModal
+        isOpen={showEnlargeAvatar}
+        onClose={() => setShowEnlargeAvatar(false)}
+        user={{
+          name: currentSession.userName,
+          position: currentSession.userPosition,
+          profileId: currentSession.userProfileId,
+          role: currentSession.userRole,
+        }}
+      />
     </div>
   );
 }
