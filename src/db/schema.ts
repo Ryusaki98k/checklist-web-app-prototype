@@ -1,6 +1,7 @@
 import { boolean, integer, jsonb, pgSchema, timestamp, time, uuid, text, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { getDatabaseSchema } from "./config";
 
-export const checklistSchema = pgSchema("checklist_web_app");
+export const checklistSchema = pgSchema(getDatabaseSchema());
 
 export const roleEnum = checklistSchema.enum('role', ['admin', 'committee', 'general_manager', 'manager', 'manager_assistant', 'employee']);
 export const managerTypeEnum = checklistSchema.enum('manager_type', ['none', 'assistant', 'store']);

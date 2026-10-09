@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "db:push": "tsx tools/drizzle_push.ts",
-    "db:reset": "tsx tools/reset_checklist_schema.ts"
+    "db:reset": "tsx tools/reset_checklist_schema.ts",
+    "db:setup-schemas": "tsx tools/setup_prod_prev_schemas.ts",
+    "db:sync-preview": "tsx tools/sync_preview_from_prod.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

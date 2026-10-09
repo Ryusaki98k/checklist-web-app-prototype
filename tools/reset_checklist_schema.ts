@@ -1,6 +1,7 @@
 import { db } from "../src/db";
 import { sql } from "drizzle-orm";
 import * as readline from "readline";
+import { getDatabaseSchema } from "../src/db/config";
 
 /**
  * ==============================================================================
@@ -43,7 +44,7 @@ export const PRESERVED_TABLES: string[] = [
   "cron_settings",
 ];
 
-const TARGET_SCHEMA = "checklist_web_app";
+const TARGET_SCHEMA = getDatabaseSchema();
 
 // Helper for CLI arguments
 function parseArgs() {

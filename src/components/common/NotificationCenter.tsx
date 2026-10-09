@@ -10,6 +10,7 @@ import {
 } from "../../actions/notifications";
 import { useApp } from "../../context/AppContext";
 import { createClient, isSupabaseConfigured } from "../../db/supabase/client";
+import { getDatabaseSchema } from "../../db/config";
 import { broadcastScoresUpdated } from "../../utils/sessionApprovalBuffer";
 
 function formatNotificationDateTime(dateStr: string | Date | undefined): string {
@@ -111,7 +112,7 @@ export function NotificationCenter() {
             "postgres_changes",
             {
               event: "*",
-              schema: "checklist_web_app",
+              schema: getDatabaseSchema(),
               table: "notifications",
             },
             (payload: any) => {

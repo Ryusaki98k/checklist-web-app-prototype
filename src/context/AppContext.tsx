@@ -26,6 +26,7 @@ import {
 import { getUserByIdAction, syncOAuthUserAction } from "../actions/auth";
 import { getBranchesAction } from "../actions/branch";
 import { createClient, isSupabaseConfigured } from "../db/supabase/client";
+import { getDatabaseSchema } from "../db/config";
 import { secureGetItem, secureRemoveItem } from "../utils/crypto";
 import { invalidateBranchCache } from "../utils/cache";
 import { useLoading } from "./LoadingContext";
@@ -357,7 +358,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             "postgres_changes",
             {
               event: "INSERT",
-              schema: "checklist_web_app",
+              schema: getDatabaseSchema(),
               table: "notifications",
               filter: `recipient_id=eq.${currentUser.id}`,
             },

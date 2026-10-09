@@ -1,7 +1,10 @@
 import { defineConfig } from 'drizzle-kit';
 import 'dotenv/config';
+import { getDatabaseSchema, getDatabaseUrl } from './src/db/config';
 
-const dbUrl = new URL(process.env.DATABASE_URL!);
+const connectionUrl = getDatabaseUrl();
+const dbUrl = new URL(connectionUrl);
+const activeSchema = getDatabaseSchema();
 
 export default defineConfig({
     out: './drizzle',
@@ -16,5 +19,5 @@ export default defineConfig({
         ssl: 'require',
         prepare: false,
     } as any,
-    schemaFilter: ['checklist_web_app'],
+    schemaFilter: [activeSchema],
 });
