@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Snowflake, CheckCircle2, Clock, UserCheck, AlertTriangle, RefreshCw, Check, Edit2, RotateCcw, FileSpreadsheet, Download } from "lucide-react";
+import {
+  Snowflake,
+  CheckCircle2,
+  Clock,
+  UserCheck,
+  AlertTriangle,
+  RefreshCw,
+  Check,
+  Edit2,
+  RotateCcw,
+  FileSpreadsheet,
+  Download,
+  LayoutGrid,
+  List,
+  Sparkles,
+} from "lucide-react";
 import {
   RefrigeratorTaskItem,
   getBranchRefrigeratorTasksAction,
@@ -30,6 +45,12 @@ export function BranchRefrigeratorChecklist({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Filter & Layout View Mode (Responsive Grid vs Linear Row / Android Detection)
+  const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
+  const [isAndroid, setIsAndroid] = useState<boolean>(false);
+  const userManuallyToggledRef = useRef<boolean>(false);
 
   // Background in-flight sync tracking
   const [syncingTaskIds, setSyncingTaskIds] = useState<Set<string>>(new Set());
@@ -125,6 +146,57 @@ export function BranchRefrigeratorChecklist({
   useEffect(() => {
     onTasksChangeRef.current?.(tasks);
   }, [tasks]);
+
+  // --- Responsive View Mode (Android / Screen Width Detection) ---
+  useEffect(() => {
+    const checkIsAndroid = () => {
+      if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+      const ua = navigator.userAgent || "";
+      if (/android/i.test(ua)) return true;
+      const navData = (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData;
+      if (navData?.platform?.toLowerCase() === "android") return true;
+      return false;
+    };
+
+    const detectedAndroid = checkIsAndroid();
+    setIsAndroid(detectedAndroid);
+
+    let savedMode: string | null = null;
+    try {
+      savedMode = localStorage.getItem("branch_ref_view_mode");
+    } catch {}
+
+    if (savedMode === "grid" || savedMode === "list") {
+      userManuallyToggledRef.current = true;
+      setViewMode(savedMode as "grid" | "list");
+    } else if (detectedAndroid) {
+      // On Android: strictly linear row
+      setViewMode("list");
+    } else {
+      // On wide screens (>= 768px): grid view; on narrow screens: linear row
+      setViewMode(window.innerWidth >= 768 ? "grid" : "list");
+    }
+
+    const handleResize = () => {
+      if (userManuallyToggledRef.current) return;
+      if (checkIsAndroid()) {
+        setViewMode("list");
+      } else {
+        setViewMode(window.innerWidth >= 768 ? "grid" : "list");
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const handleSetViewMode = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    userManuallyToggledRef.current = true;
+    try {
+      localStorage.setItem("branch_ref_view_mode", mode);
+    } catch {}
+  };
 
   function handleOpenCheck(task: RefrigeratorTaskItem) {
     if (task.disableCheck) {
@@ -402,6 +474,12 @@ export function BranchRefrigeratorChecklist({
   const progress = total > 0 ? Math.round((done / total) * 100) : 0;
   const allDone = total > 0 && done === total;
 
+  const filteredTasks = tasks.filter((t) => {
+    if (filter === "pending") return !t.completed;
+    if (filter === "done") return t.completed;
+    return true;
+  });
+
   return (
     <div className="space-y-4">
       {/* Header Banner */}
@@ -523,6 +601,99 @@ export function BranchRefrigeratorChecklist({
         </div>
       </div>
 
+      {/* Control Bar: Filter Tabs & View Mode Switcher */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+        {/* Quick Filter: ทั้งหมด / รอตรวจ / เสร็จแล้ว */}
+        <div
+          role="tablist"
+          aria-label="กรองรายการตู้แช่"
+          className="flex bg-[var(--color-surface-2)] p-1 rounded-xl text-xs font-semibold gap-1 border border-[var(--color-border)] shadow-2xs self-start sm:self-auto overflow-x-auto max-w-full"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "all"}
+            onClick={() => setFilter("all")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold text-xs whitespace-nowrap ${
+              filter === "all"
+                ? "bg-sky-600 text-white shadow-xs"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            ทั้งหมด ({total})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "pending"}
+            onClick={() => setFilter("pending")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold text-xs whitespace-nowrap ${
+              filter === "pending"
+                ? "bg-amber-500 text-amber-950 font-black shadow-xs dark:bg-amber-400"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            รอตรวจ ({total - done})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === "done"}
+            onClick={() => setFilter("done")}
+            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold text-xs whitespace-nowrap ${
+              filter === "done"
+                ? "bg-emerald-600 text-white font-black shadow-xs"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            เสร็จแล้ว ({done})
+          </button>
+        </div>
+
+        {/* View Mode Switcher: Grid vs Linear Row */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          {isAndroid && (
+            <span className="hidden sm:inline-flex items-center text-[11px] font-bold text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800">
+              Android: แถวเดี่ยว
+            </span>
+          )}
+          <div
+            className="flex items-center bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] shadow-2xs gap-1"
+            role="group"
+            aria-label="เปลี่ยนมุมมองการแสดงผล"
+          >
+            <button
+              type="button"
+              onClick={() => handleSetViewMode("grid")}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                viewMode === "grid"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              }`}
+              title="มุมมองตาราง (Grid View สำหรับจอขนาดกว้าง)"
+              aria-label="มุมมองตาราง"
+            >
+              <LayoutGrid size={14} />
+              <span className="hidden xs:inline">ตาราง (Grid)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetViewMode("list")}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                viewMode === "list"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              }`}
+              title="มุมมองแถวยาว (Row View สำหรับจอมือถือ / Android)"
+              aria-label="มุมมองแถวยาว"
+            >
+              <List size={14} />
+              <span className="hidden xs:inline">แถวเดี่ยว (Row)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Refrigerator Tasks List */}
       {loading ? (
         <div className="p-8 text-center bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl">
@@ -546,21 +717,226 @@ export function BranchRefrigeratorChecklist({
           <p className="text-sm font-bold text-[var(--color-text)]">ยังไม่มีรายการตู้แช่ในสาขานี้</p>
           <p className="text-xs text-[var(--color-text-muted)] mt-1">ผู้จัดการร้านสามารถเพิ่มรายการตู้แช่ได้ที่แดชบอร์ดบริหาร</p>
         </div>
+      ) : filteredTasks.length === 0 ? (
+        <div className="p-8 text-center bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xs">
+          <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 flex items-center justify-center mx-auto mb-2.5">
+            {filter === "pending" ? <Sparkles size={24} /> : <Check size={24} />}
+          </div>
+          <p className="text-sm sm:text-base font-extrabold text-[var(--color-text)]">
+            {filter === "pending"
+              ? "ยอดเยี่ยม! ตรวจเช็คตู้แช่ครบถ้วนทุกตู้แล้ว"
+              : filter === "done"
+              ? "ยังไม่มีรายการที่ตรวจเสร็จสิ้นในรอบนี้"
+              : "ยังไม่มีรายการตู้แช่ในสาขานี้"}
+          </p>
+          <p className="text-xs sm:text-sm text-[var(--color-text-muted)] mt-1.5 max-w-sm mx-auto leading-relaxed font-medium">
+            {filter === "pending"
+              ? "ตู้แช่ทั้งหมดในสาขานี้ได้รับการบันทึกข้อมูลเรียบร้อยแล้ว"
+              : "คุณสามารถสลับแท็บเพื่อดูรายการอื่นได้"}
+          </p>
+        </div>
       ) : (
-        <div className="space-y-2.5" role="group" aria-label="รายการเช็คลิสต์ตู้แช่">
-          {tasks.map((task) => {
+        <div
+          className={
+            viewMode === "grid"
+              ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-3.5"
+              : "space-y-2.5 sm:space-y-3"
+          }
+          role="group"
+          aria-label={`รายการเช็คลิสต์ตู้แช่ (${viewMode === "grid" ? "มุมมองตาราง" : "มุมมองแถวเดี่ยว"})`}
+        >
+          {filteredTasks.map((task) => {
             const isDone = task.completed;
             const isSyncing = syncingTaskIds.has(task.taskId);
             const isTempHigh = task.temperature !== null && task.temperature !== undefined && task.temperature > task.maxTemperature;
             const isTempLow = task.temperature !== null && task.temperature !== undefined && task.minTemperature !== undefined && task.temperature < task.minTemperature;
             const isTempWarning = isTempHigh || isTempLow;
 
+            if (viewMode === "grid") {
+              return (
+                <div
+                  key={task.taskId}
+                  onClick={() => {
+                    if (!task.disableCheck && !isSyncing) {
+                      handleOpenCheck(task);
+                    }
+                  }}
+                  className={`p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
+                    isDone
+                      ? "bg-[var(--color-surface-2)]/90 border-[var(--color-border)] hover:border-emerald-500/60 hover:shadow-xs"
+                      : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-sky-400 hover:shadow-md"
+                  }`}
+                >
+                  {/* Top Section: Icon, Name, Criteria, Action Button */}
+                  <div>
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div
+                          className={`mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-transform ${
+                            isDone
+                              ? "border-emerald-600 bg-emerald-600 text-white shadow-2xs"
+                              : "border-sky-400/80 bg-sky-50 dark:bg-sky-950/40 text-sky-600"
+                          }`}
+                        >
+                          {isDone ? (
+                            <Check size={14} strokeWidth={3} />
+                          ) : (
+                            <Snowflake size={12} strokeWidth={2.5} />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <h3 className={`text-base font-extrabold leading-tight truncate ${task.disableCheck ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text)]"}`}>
+                            {task.name}
+                          </h3>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                            <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-muted)]">
+                              เกณฑ์: {task.minTemperature}°C ~ {task.maxTemperature}°C
+                            </span>
+                            {task.disableCheck && (
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                                ปิดใช้งาน
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Button */}
+                      <div className="shrink-0">
+                        {task.disableCheck ? (
+                          <span className="px-2.5 py-1 rounded-xl bg-[var(--color-surface-2)] text-[var(--color-text-muted)] font-bold text-xs border border-[var(--color-border)] cursor-not-allowed inline-flex items-center opacity-70">
+                            <span>งดตรวจ</span>
+                          </span>
+                        ) : isDone ? (
+                          <button
+                            type="button"
+                            disabled={isSyncing}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCheck(task);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="แก้ไขผลตรวจ"
+                          >
+                            <Edit2 size={12} />
+                            <span>แก้ไข</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={isSyncing}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCheck(task);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs transition-all cursor-pointer shadow-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isSyncing ? (
+                              <>
+                                <RefreshCw size={13} className="animate-spin" />
+                                <span>กำลังบันทึก...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Check size={13} strokeWidth={2.5} />
+                                <span>บันทึกตรวจ</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Body / Completed Details */}
+                  {isDone ? (
+                    <div className="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)] space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap text-xs">
+                        <span className="inline-flex items-center gap-1 font-bold text-emerald-800 dark:text-emerald-300">
+                          <CheckCircle2 size={13} />
+                          ตรวจแล้ว
+                        </span>
+
+                        {isSyncing && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 rounded-md border border-sky-300 dark:border-sky-800 animate-pulse">
+                            <RefreshCw size={10} className="animate-spin text-sky-600 dark:text-sky-400" />
+                            <span>กำลังบันทึก...</span>
+                          </span>
+                        )}
+
+                        {task.completedByUserName && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text)] bg-[var(--color-surface)] px-1.5 py-0.5 rounded-md border border-[var(--color-border)] truncate max-w-[130px]" title={task.completedByUserName}>
+                            <UserCheck size={11} className="text-sky-600 shrink-0" />
+                            <span className="truncate">{task.completedByUserName}</span>
+                          </span>
+                        )}
+
+                        {task.completedAt && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--color-text-muted)]">
+                            <Clock size={11} />
+                            {fmtTime(task.completedAt)}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                        {task.temperature !== null && task.temperature !== undefined && (
+                          <span
+                            className={`text-xs font-mono font-extrabold px-2 py-0.5 rounded-lg border ${
+                              isTempWarning
+                                ? "bg-rose-100 dark:bg-rose-950/80 border-rose-300 text-rose-950 dark:text-rose-200"
+                                : "bg-emerald-100 dark:bg-emerald-950/80 border-emerald-300 text-emerald-950 dark:text-emerald-200"
+                            }`}
+                          >
+                            วัดได้ {task.temperature}°C
+                          </span>
+                        )}
+
+                        <span
+                          className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${
+                            task.isOkay
+                                ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300"
+                                : "bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300"
+                          }`}
+                        >
+                          {task.isOkay ? "✓ สภาพปกติ" : "⚠ ผิดปกติ"}
+                        </span>
+
+                        {task.comment && (
+                          <span className="text-xs text-[var(--color-text-muted)] italic truncate max-w-[160px]" title={task.comment}>
+                            &ldquo;{task.comment}&rdquo;
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 pt-2.5 border-t border-[var(--color-border-subtle)] flex items-center justify-between text-xs text-[var(--color-text-muted)]">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        <span>ยังไม่ได้ตรวจเช็ค</span>
+                      </span>
+                      <span className="text-[11px] text-sky-600 dark:text-sky-400 font-bold group-hover:underline">
+                        แตะเพื่อบันทึก &rarr;
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Linear Row View (default for mobile / Android / linear preference)
             return (
               <div
                 key={task.taskId}
-                className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${
+                onClick={() => {
+                  if (!task.disableCheck && !isSyncing) {
+                    handleOpenCheck(task);
+                  }
+                }}
+                className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer ${
                   isDone
-                    ? "bg-[var(--color-surface-2)]/90 border-[var(--color-border)]"
+                    ? "bg-[var(--color-surface-2)]/90 border-[var(--color-border)] hover:border-emerald-500/50"
                     : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-sky-400 hover:shadow-xs"
                 }`}
               >
@@ -671,7 +1047,10 @@ export function BranchRefrigeratorChecklist({
                       <button
                         type="button"
                         disabled={isSyncing}
-                        onClick={() => handleOpenCheck(task)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenCheck(task);
+                        }}
                         className="px-2.5 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-2)] text-[var(--color-text)] text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
                         title="แก้ไขผลตรวจ"
                       >
@@ -682,7 +1061,10 @@ export function BranchRefrigeratorChecklist({
                       <button
                         type="button"
                         disabled={isSyncing}
-                        onClick={() => handleOpenCheck(task)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenCheck(task);
+                        }}
                         className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-extrabold text-xs transition-all cursor-pointer shadow-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isSyncing ? (

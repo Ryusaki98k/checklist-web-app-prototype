@@ -1203,26 +1203,6 @@ export function ManagerDashboard({
           </section>
         )}
 
-        {/* ─── Checklist Hub Link Banner ──────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent border border-amber-300/40 dark:border-amber-700/40 p-3 sm:p-4 rounded-2xl">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-900 dark:text-amber-200 flex items-center justify-center font-bold">
-              <Sliders size={20} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-[var(--color-text)]">ระบบศูนย์จัดการเช็คลิสต์ 3 ประเภท (Checklist Hub)</h3>
-              <p className="text-xs text-[var(--color-text-muted)]">กำหนดงานประจำวัน (Daily) • งานส่วนกลางแบ่งกะตู้แช่ (Joint) • ภารกิจพิเศษ (Special)</p>
-            </div>
-          </div>
-          <Link
-            href="/manager/checklists"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-amber-950 transition-all shadow-sm shrink-0"
-          >
-            <span>เข้าสู่ศูนย์จัดการเช็คลิสต์</span>
-            <ChevronRight size={15} />
-          </Link>
-        </div>
-
         {/* ─── Navigation Tabs ──────────────────────────────────────────────── */}
         <div className="bg-[var(--color-surface-2)] p-1.5 rounded-2xl border border-[var(--color-border)] shadow-2xs">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
@@ -1707,48 +1687,57 @@ export function ManagerDashboard({
         ═══════════════════════════════════════════════════════════════════════ */}
         {activeTab === "approvals" && (
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm space-y-5 animate-fade-in">
-            {/* ─── 3 Sub-tabs inside Approvals ─────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] pb-3">
-              <button
-                type="button"
-                onClick={() => setApprovalSubTab("daily")}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  approvalSubTab === "daily"
-                    ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
-                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                }`}
+            {/* ─── Sub-tabs inside Approvals & Checklist Hub Link ─────────── */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setApprovalSubTab("daily")}
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    approvalSubTab === "daily"
+                      ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
+                      : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                  }`}
+                >
+                  <UserCheck size={16} />
+                  <span>งานประจำวันรายบุคคล (Daily Sessions)</span>
+                  {pendingApprovalsCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-500 text-white font-black animate-pulse">
+                      {pendingApprovalsCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setApprovalSubTab("special");
+                    void loadSpecialTasksToReview();
+                  }}
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    approvalSubTab === "special"
+                      ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
+                      : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                  }`}
+                >
+                  <Sparkles size={16} />
+                  <span>ภารกิจพิเศษ (Special Tasks)</span>
+                  {specialTasksToReview.filter((t) => t.status === "submitted").length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-amber-950 font-black animate-pulse">
+                      {specialTasksToReview.filter((t) => t.status === "submitted").length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              <Link
+                href="/manager/checklists"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 active:scale-95 text-amber-950 transition-all shadow-xs shrink-0 self-start sm:self-auto"
               >
-                <UserCheck size={16} />
-                <span>งานประจำวันรายบุคคล (Daily Sessions)</span>
-                {pendingApprovalsCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-500 text-white font-black animate-pulse">
-                    {pendingApprovalsCount}
-                  </span>
-                )}
-              </button>
-
-
-
-              <button
-                type="button"
-                onClick={() => {
-                  setApprovalSubTab("special");
-                  void loadSpecialTasksToReview();
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  approvalSubTab === "special"
-                    ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
-                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                }`}
-              >
-                <Sparkles size={16} />
-                <span>ภารกิจพิเศษ (Special Tasks)</span>
-                {specialTasksToReview.filter((t) => t.status === "submitted").length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-amber-950 font-black animate-pulse">
-                    {specialTasksToReview.filter((t) => t.status === "submitted").length}
-                  </span>
-                )}
-              </button>
+                <Sliders size={14} />
+                <span>เข้าสู่ศูนย์จัดการเช็คลิสต์</span>
+                <ChevronRight size={14} />
+              </Link>
             </div>
 
             {/* ─── SUB-TAB 1: DAILY SESSIONS APPROVAL ──────────────────── */}

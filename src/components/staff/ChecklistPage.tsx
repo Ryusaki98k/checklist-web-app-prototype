@@ -563,7 +563,7 @@ export function ChecklistPage({
         ความคืบหน้าเช็คลิสต์ {done} จาก {total} รายการ ({progress}%)
       </div>
 
-      <div className={`w-full space-y-4 transition-all ${isStockShift ? "max-w-6xl" : "max-w-2xl"}`}>
+      <div className={`w-full space-y-4 transition-all ${isStockShift || activeMainTab === "refrigerators" ? "max-w-6xl" : "max-w-2xl"}`}>
         {/* Top App Bar */}
         <nav aria-label="แถบข้อมูลผู้ใช้งานและเครื่องมือ" className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl px-2.5 sm:px-4 py-2 sm:py-3 shadow-xs flex items-center justify-between gap-1.5 sm:gap-4 relative z-20">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
@@ -1267,7 +1267,7 @@ export function ChecklistPage({
 
       {/* Sticky Bottom Ergonomic Action Dock (Floor Staff Thumb Zone) */}
       <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--color-surface)]/95 backdrop-blur-md border-t border-[var(--color-border)] p-2.5 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-md">
-        <div className={`mx-auto flex items-center justify-between gap-2 sm:gap-3 ${isStockShift ? "max-w-6xl" : "max-w-2xl"}`}>
+        <div className={`mx-auto flex items-center justify-between gap-2 sm:gap-3 ${isStockShift || activeMainTab === "refrigerators" ? "max-w-6xl" : "max-w-2xl"}`}>
           {/* Progress pill indicator */}
           <div className="flex flex-col shrink-0">
             <span className="text-[11px] sm:text-xs font-bold text-[var(--color-text)] leading-tight">
