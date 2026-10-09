@@ -1,4 +1,4 @@
-import { eq, or, and, isNull, inArray, desc } from "drizzle-orm";
+import { eq, or, and, isNull, inArray, desc, lt } from "drizzle-orm";
 import { notifications, branches, notificationReads } from "../db/schema";
 import { INotificationService } from "./types";
 import { Notification, Role } from "../types";
@@ -171,6 +171,66 @@ export class NotificationService implements INotificationService {
     } catch (err: any) {
       console.error("markAllAsRead error:", err);
       return { success: false, error: err?.message };
+    }
+  }
+
+  async cleanOldNotifications(retentionDays: number = 7): Promise<{
+    success: boolean;
+    deletedNotifications: number;
+    deletedNotificationReads: number;
+    cutoffDate?: string;
+    error?: string;
+  }> {
+    try {
+      const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+
+      // Find old notifications older than retention days (default 7 days)
+      const oldNotifs = await this.db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(lt(notifications.created_at, cutoffDate));
+
+      const oldNotifIds: string[] = oldNotifs.map((n: { id: string }) => n.id);
+      let deletedReadsCount = 0;
+      let deletedNotifsCount = 0;
+
+      if (oldNotifIds.length > 0) {
+        // 1. Delete associated notification reads first
+        const deletedReads = await this.db
+          .delete(notificationReads)
+          .where(inArray(notificationReads.notification_id, oldNotifIds))
+          .returning({ notificationId: notificationReads.notification_id });
+        deletedReadsCount += deletedReads.length;
+
+        // 2. Delete the notifications themselves
+        const deletedNotifs = await this.db
+          .delete(notifications)
+          .where(inArray(notifications.id, oldNotifIds))
+          .returning({ id: notifications.id });
+        deletedNotifsCount += deletedNotifs.length;
+      }
+
+      // 3. Clean any orphaned or stale notification reads older than the cutoff
+      const orphanedReads = await this.db
+        .delete(notificationReads)
+        .where(lt(notificationReads.read_at, cutoffDate))
+        .returning({ notificationId: notificationReads.notification_id });
+      deletedReadsCount += orphanedReads.length;
+
+      return {
+        success: true,
+        deletedNotifications: deletedNotifsCount,
+        deletedNotificationReads: deletedReadsCount,
+        cutoffDate: cutoffDate.toISOString(),
+      };
+    } catch (err: any) {
+      console.error("NotificationService.cleanOldNotifications error:", err);
+      return {
+        success: false,
+        deletedNotifications: 0,
+        deletedNotificationReads: 0,
+        error: err?.message || "Failed to clean old notifications",
+      };
     }
   }
 }

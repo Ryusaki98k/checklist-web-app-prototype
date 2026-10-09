@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/cleanup-data",
-      "schedule": "50 16 * * 0"
+      "schedule": "50 16 * * *"
     },
     {
       "path": "/api/cron/daily-refrigerators",

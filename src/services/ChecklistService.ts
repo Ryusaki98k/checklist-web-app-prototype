@@ -1,5 +1,5 @@
 import { eq, and, or, gte, lte, lt, desc, asc, inArray, isNull, sql } from "drizzle-orm";
-import { tasks, branchTasks, taskWork, shiftSession, users, branches, refrigerators, notifications, pointTransactions, employeeLeaves, refrigeratorTasks, specialTasks } from "../db/schema";
+import { tasks, branchTasks, taskWork, shiftSession, users, branches, refrigerators, notifications, notificationReads, pointTransactions, employeeLeaves, refrigeratorTasks, specialTasks } from "../db/schema";
 import { IChecklistService, INotificationService } from "./types";
 import { ShiftSession, ShiftType, ChecklistItem, BranchDailyTask } from "../types";
 import { getThaiDateString } from "../data/storage";
@@ -1431,6 +1431,7 @@ export class ChecklistService implements IChecklistService {
     retentionDays: number = 14,
     options?: {
       refrigeratorRetentionDays?: number;
+      notificationRetentionDays?: number;
       cleanShiftSessions?: boolean;
       cleanRefrigeratorTasks?: boolean;
       cleanNotifications?: boolean;
@@ -1441,11 +1442,13 @@ export class ChecklistService implements IChecklistService {
     success: boolean;
     cutoffDate?: string;
     refrigeratorCutoffDate?: string;
+    notificationCutoffDate?: string;
     deleted?: {
       shiftSessions: number;
       taskWorks: number;
       refrigeratorTasks: number;
       notifications: number;
+      notificationReads: number;
       pointTransactions: number;
       employeeLeaves: number;
     };
@@ -1465,6 +1468,10 @@ export class ChecklistService implements IChecklistService {
       const refM = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", month: "2-digit" }).format(refCutoffDate);
       const refD = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", day: "2-digit" }).format(refCutoffDate);
       const refCutoffDateStr = `${refY}-${refM}-${refD}`;
+
+      // Notifications retention: strictly preserved for up to 7 days (1 week)
+      const notifRetentionDays = options?.notificationRetentionDays ?? 7;
+      const notifCutoffDate = new Date(Date.now() - notifRetentionDays * 24 * 60 * 60 * 1000);
 
       const doCleanSessions = options?.cleanShiftSessions !== false;
       const doCleanRefs = options?.cleanRefrigeratorTasks !== false;
@@ -1520,19 +1527,44 @@ export class ChecklistService implements IChecklistService {
         deletedPointsCount = deletedPoints.length;
       }
 
-      // 4. Delete old notifications referencing old sessions or created before cutoff
+      // 4. Delete old notifications (strictly preserved for up to 7 days / 1 week) & associated notification reads
       let deletedNotifsCount = 0;
+      let deletedNotificationReadsCount = 0;
       if (doCleanNotifs) {
-        const notifConditions = [lt(notifications.created_at, cutoffDate)];
+        const notifConditions = [lt(notifications.created_at, notifCutoffDate)];
         if (oldSessionIds.length > 0) {
           notifConditions.push(inArray(notifications.shift_session_id, oldSessionIds));
         }
 
-        const deletedNotifs = await this.db
-          .delete(notifications)
-          .where(or(...notifConditions))
-          .returning({ id: notifications.id });
-        deletedNotifsCount = deletedNotifs.length;
+        const oldNotifs = await this.db
+          .select({ id: notifications.id })
+          .from(notifications)
+          .where(or(...notifConditions));
+
+        const oldNotifIds: string[] = oldNotifs.map((n: { id: string }) => n.id);
+
+        if (oldNotifIds.length > 0) {
+          // 4.1 Delete associated notification reads first
+          const deletedReads = await this.db
+            .delete(notificationReads)
+            .where(inArray(notificationReads.notification_id, oldNotifIds))
+            .returning({ notificationId: notificationReads.notification_id });
+          deletedNotificationReadsCount += deletedReads.length;
+
+          // 4.2 Delete old notifications
+          const deletedNotifs = await this.db
+            .delete(notifications)
+            .where(inArray(notifications.id, oldNotifIds))
+            .returning({ id: notifications.id });
+          deletedNotifsCount = deletedNotifs.length;
+        }
+
+        // 4.3 Also clean any orphaned or stale notification reads older than the notification cutoff
+        const staleReads = await this.db
+          .delete(notificationReads)
+          .where(lt(notificationReads.read_at, notifCutoffDate))
+          .returning({ notificationId: notificationReads.notification_id });
+        deletedNotificationReadsCount += staleReads.length;
       }
 
       // 5. Delete old shift sessions
@@ -1567,11 +1599,14 @@ export class ChecklistService implements IChecklistService {
       return {
         success: true,
         cutoffDate: cutoffDate.toISOString(),
+        refrigeratorCutoffDate: refCutoffDate.toISOString(),
+        notificationCutoffDate: notifCutoffDate.toISOString(),
         deleted: {
           shiftSessions: deletedSessions,
           taskWorks: deletedTaskWorks,
           refrigeratorTasks: deletedRefsCount,
           notifications: deletedNotifsCount,
+          notificationReads: deletedNotificationReadsCount,
           pointTransactions: deletedPointsCount,
           employeeLeaves: deletedLeaves,
         },

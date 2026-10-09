@@ -7,6 +7,7 @@ import {
     getRefrigeratorsAction,
     updateRefrigeratorAction,
     batchToggleRefrigeratorDisableCheckAction,
+    batchUpdateRefrigeratorsAction,
 } from "../../actions/refrigerator";
 import { Snowflake, AlertOctagon, ClipboardCheck, Settings, Pencil, X } from "lucide-react";
 import { BranchRefrigeratorLiveView } from "./BranchRefrigeratorLiveView";
@@ -19,9 +20,11 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
 
     const [editId, setEditId] = useState<string | null>(null);
 
-    // Batch Action State
+    // Batch Action & Batch Edit State
     const [selectedRefIds, setSelectedRefIds] = useState<Set<string>>(new Set());
     const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+    const [isBatchEditing, setIsBatchEditing] = useState(false);
+    const [batchKeepNames, setBatchKeepNames] = useState(true);
 
     // Form State
     const [formName, setFormName] = useState("ตู้แช่");
@@ -40,6 +43,10 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id);
             else next.add(id);
+            if (isBatchEditing && next.size === 0) {
+                setEditId(null);
+                setIsBatchEditing(false);
+            }
             return next;
         });
     };
@@ -47,8 +54,38 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
     const handleSelectAll = () => {
         if (selectedRefIds.size === refrigerators.length) {
             setSelectedRefIds(new Set());
+            if (isBatchEditing) {
+                setEditId(null);
+                setIsBatchEditing(false);
+            }
         } else {
             setSelectedRefIds(new Set(refrigerators.map((r) => r.id)));
+        }
+    };
+
+    const handleOpenBatchEdit = () => {
+        if (selectedRefIds.size === 0) return;
+        setIsBatchEditing(true);
+        setEditId("batch");
+        setBatchKeepNames(true);
+
+        const selected = refrigerators.filter((r) => selectedRefIds.has(r.id));
+        if (selected.length > 0) {
+            const allSameMin = selected.every((r) => (r.min_temperature ?? 0) === (selected[0].min_temperature ?? 0));
+            const allSameMax = selected.every((r) => (r.max_temperature ?? 4) === (selected[0].max_temperature ?? 4));
+            const allSameDisable = selected.every((r) => r.disable_check === selected[0].disable_check);
+
+            setFormMinTemp(allSameMin ? (selected[0].min_temperature ?? 0) : (selected[0].min_temperature ?? 0));
+            setFormMaxTemp(allSameMax ? (selected[0].max_temperature ?? 4) : (selected[0].max_temperature ?? 4));
+            setFormDisable(allSameDisable ? selected[0].disable_check : false);
+            setFormName(selected[0].name || "ตู้แช่");
+        }
+        setFormError("");
+
+        if (typeof window !== "undefined" && window.innerWidth < 1024) {
+            setTimeout(() => {
+                editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 50);
         }
     };
 
@@ -145,10 +182,11 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
     }
 
     function handleOpenEdit(ref: RefrigeratorConfig) {
-        if (editId === ref.id) {
+        if (editId === ref.id && !isBatchEditing) {
             handleCancel();
             return;
         }
+        setIsBatchEditing(false);
         setEditId(ref.id);
         setFormName(ref.name);
         setFormMinTemp(ref.min_temperature ?? 0);
@@ -164,12 +202,72 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
 
     function handleCancel() {
         setEditId(null);
+        setIsBatchEditing(false);
         setFormError("");
     }
 
     async function handleSave() {
         if (!editId) return;
 
+        if (isBatchEditing) {
+            if (selectedRefIds.size === 0) {
+                setFormError("กรุณาเลือกตู้แช่อย่างน้อย 1 ตู้");
+                return;
+            }
+
+            if (!batchKeepNames && !formName.trim()) {
+                setFormError("กรุณาระบุชื่อตู้แช่ หรือเลือกคงชื่อเดิมไว้");
+                return;
+            }
+
+            if (formMinTemp < -100 || formMinTemp > 100 || formMaxTemp < -100 || formMaxTemp > 100) {
+                setFormError("อุณหภูมิต้องอยู่ระหว่าง -100°C ถึง 100°C");
+                return;
+            }
+
+            if (formMinTemp > formMaxTemp) {
+                setFormError("อุณหภูมิต่ำสุดต้องไม่เกินอุณหภูมิสูงสุด");
+                return;
+            }
+
+            setSaving(true);
+            setFormError("");
+
+            const ids = Array.from(selectedRefIds);
+            const res = await batchUpdateRefrigeratorsAction({
+                refrigeratorIds: ids,
+                name: batchKeepNames ? undefined : formName.trim(),
+                minTemperature: formMinTemp,
+                maxTemperature: formMaxTemp,
+                disableCheck: formDisable,
+                branchId: user.branchId,
+            });
+
+            if (res.success) {
+                setRefrigerators((prev) =>
+                    prev.map((r) =>
+                        selectedRefIds.has(r.id)
+                            ? {
+                                  ...r,
+                                  ...(batchKeepNames ? {} : { name: formName.trim() }),
+                                  min_temperature: formMinTemp,
+                                  max_temperature: formMaxTemp,
+                                  disable_check: formDisable,
+                              }
+                            : r
+                    )
+                );
+                setSelectedRefIds(new Set());
+                setLiveRefreshKey((k) => k + 1);
+                handleCancel();
+            } else {
+                setFormError(res.error || "เกิดข้อผิดพลาดในการบันทึกข้อมูลแบบกลุ่ม");
+            }
+            setSaving(false);
+            return;
+        }
+
+        // Single Edit
         if (!formName.trim()) {
             setFormError("กรุณาระบุชื่อตู้แช่");
             return;
@@ -282,10 +380,16 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             </span>
                                             <div>
                                                 <h4 className="font-bold text-sm text-[var(--color-text)] leading-tight">
-                                                    แก้ไขตู้: {formName}
+                                                    {isBatchEditing ? (
+                                                        <span>แก้ไขพร้อมกัน ({selectedRefIds.size} ตู้)</span>
+                                                    ) : (
+                                                        <span>แก้ไขตู้: {formName}</span>
+                                                    )}
                                                 </h4>
                                                 <span className="text-[10px] text-[var(--color-text-muted)] font-mono">
-                                                    แก้ไขค่าและบันทึกข้อมูล
+                                                    {isBatchEditing
+                                                        ? "แก้ไขเกณฑ์อุณหภูมิและสถานะของตู้ที่เลือกพร้อมกัน"
+                                                        : "แก้ไขค่าและบันทึกข้อมูล"}
                                                 </span>
                                             </div>
                                         </div>
@@ -309,17 +413,36 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                     {/* Form Inputs */}
                                     <div className="space-y-3 text-xs">
                                         <div>
-                                            <label htmlFor="ref-name" className="block font-semibold text-[var(--color-text)] mb-1">
-                                                ชื่อตู้แช่ (เช่น F019, ตู้แช่เบียร์, ตู้ 1)
-                                            </label>
-                                            <input
-                                                id="ref-name"
-                                                type="text"
-                                                value={formName}
-                                                onChange={(e) => setFormName(e.target.value)}
-                                                placeholder="เช่น F019"
-                                                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 rounded-xl px-3 py-2 text-sm font-bold text-[var(--color-text)] outline-none transition-all"
-                                            />
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label htmlFor="ref-name" className="block font-semibold text-[var(--color-text)]">
+                                                    ชื่อตู้แช่
+                                                </label>
+                                                {isBatchEditing && (
+                                                    <label className="inline-flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 px-2 py-0.5 rounded-lg select-none">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={batchKeepNames}
+                                                            onChange={(e) => setBatchKeepNames(e.target.checked)}
+                                                            className="w-3.5 h-3.5 rounded text-amber-500 focus:ring-amber-400 cursor-pointer"
+                                                        />
+                                                        <span>คงชื่อเดิมของแต่ละตู้ไว้</span>
+                                                    </label>
+                                                )}
+                                            </div>
+                                            {isBatchEditing && batchKeepNames ? (
+                                                <div className="w-full bg-[var(--color-surface)]/70 border border-dashed border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-text-muted)] italic">
+                                                    คงชื่อเดิมของตู้แช่ทั้ง {selectedRefIds.size} ตู้ไว้ (ไม่เปลี่ยนชื่อ)
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    id="ref-name"
+                                                    type="text"
+                                                    value={formName}
+                                                    onChange={(e) => setFormName(e.target.value)}
+                                                    placeholder={isBatchEditing ? "เช่น ตู้แช่รวม" : "เช่น F019"}
+                                                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 rounded-xl px-3 py-2 text-sm font-bold text-[var(--color-text)] outline-none transition-all"
+                                                />
+                                            )}
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-2">
@@ -369,7 +492,9 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                                     className="w-4 h-4 text-amber-500 rounded focus:ring-amber-400 cursor-pointer"
                                                 />
                                                 <span className="text-xs font-semibold text-[var(--color-text)]">
-                                                    ปิดการตรวจสอบตู้แช่นี้ (งดตรวจ / ซ่อมบำรุง)
+                                                    {isBatchEditing
+                                                        ? `ปิดการตรวจสอบตู้แช่ที่เลือกทั้งหมด (${selectedRefIds.size} ตู้ - งดตรวจ / ซ่อมบำรุง)`
+                                                        : "ปิดการตรวจสอบตู้แช่นี้ (งดตรวจ / ซ่อมบำรุง)"}
                                                 </span>
                                             </label>
                                         </div>
@@ -390,7 +515,11 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             disabled={saving}
                                             className="flex-1 py-2.5 px-3 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-xl transition-colors border border-amber-500 shadow-sm disabled:opacity-50 cursor-pointer text-center"
                                         >
-                                            {saving ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                                            {saving
+                                                ? "กำลังบันทึก..."
+                                                : isBatchEditing
+                                                ? `บันทึกการแก้ไข (${selectedRefIds.size} ตู้)`
+                                                : "บันทึกการแก้ไข"}
                                         </button>
                                     </div>
                                 </div>
@@ -430,27 +559,47 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <button
                                                     type="button"
-                                                    disabled={isBatchUpdating}
+                                                    disabled={isBatchUpdating || saving}
+                                                    onClick={handleOpenBatchEdit}
+                                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-50 shadow-xs flex items-center gap-1.5 ${
+                                                        isBatchEditing
+                                                            ? "bg-amber-400 text-amber-950 ring-2 ring-amber-600 font-extrabold shadow-sm"
+                                                            : "bg-amber-400 hover:bg-amber-300 text-amber-950 border border-amber-500/70"
+                                                    }`}
+                                                    title="แก้ไขข้อมูลตู้แช่ที่เลือกพร้อมกัน"
+                                                >
+                                                    <Pencil size={13} />
+                                                    <span>แก้ไขที่เลือก ({selectedRefIds.size})</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={isBatchUpdating || saving}
                                                     onClick={() => void handleBatchToggleDisableCheck(true)}
-                                                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-900 dark:text-amber-200 hover:bg-amber-500/30 border border-amber-500/40 transition-all cursor-pointer disabled:opacity-50"
+                                                    className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-900 dark:text-amber-200 hover:bg-amber-500/30 border border-amber-500/40 transition-all cursor-pointer disabled:opacity-50"
                                                     title="ปิดการตรวจชั่วคราวสำหรับตู้ที่เลือกทั้งหมด"
                                                 >
                                                     ✕ ปิดตรวจที่เลือก ({selectedRefIds.size})
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    disabled={isBatchUpdating}
+                                                    disabled={isBatchUpdating || saving}
                                                     onClick={() => void handleBatchToggleDisableCheck(false)}
-                                                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                                                    className="px-2.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer disabled:opacity-50 shadow-xs"
                                                     title="เปิดการตรวจประจำวันสำหรับตู้ที่เลือกทั้งหมด"
                                                 >
                                                     ✓ เปิดตรวจที่เลือก ({selectedRefIds.size})
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    disabled={isBatchUpdating}
-                                                    onClick={() => setSelectedRefIds(new Set())}
-                                                    className="px-2 py-1 text-xs font-semibold rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] border border-transparent hover:border-[var(--color-border)] transition-all cursor-pointer"
+                                                    disabled={isBatchUpdating || saving}
+                                                    onClick={() => {
+                                                        setSelectedRefIds(new Set());
+                                                        if (isBatchEditing) {
+                                                            setEditId(null);
+                                                            setIsBatchEditing(false);
+                                                        }
+                                                    }}
+                                                    className="px-2 py-1.5 text-xs font-semibold rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] border border-transparent hover:border-[var(--color-border)] transition-all cursor-pointer"
                                                 >
                                                     ยกเลิก
                                                 </button>
@@ -477,7 +626,7 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                             {!loading && refrigerators.length > 0 && (
                                 <div className={`grid grid-cols-1 sm:grid-cols-2 ${editId ? "" : "lg:grid-cols-3"} gap-3`}>
                                     {refrigerators.map((ref) => {
-                                        const isEditingThis = editId === ref.id;
+                                        const isEditingThis = (!isBatchEditing && editId === ref.id) || (isBatchEditing && selectedRefIds.has(ref.id));
                                         const isSelected = selectedRefIds.has(ref.id);
                                         return (
                                             <div
@@ -515,9 +664,14 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                                                 <h4 className={`font-bold text-sm ${ref.disable_check ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text)]"}`}>
                                                                     {ref.name}
                                                                 </h4>
-                                                                {isEditingThis && (
+                                                                {editId === ref.id && !isBatchEditing && (
                                                                     <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-400 text-amber-950">
                                                                         กำลังแก้ไข
+                                                                    </span>
+                                                                )}
+                                                                {isBatchEditing && selectedRefIds.has(ref.id) && (
+                                                                    <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-md bg-amber-400 text-amber-950">
+                                                                        แก้ไขกลุ่ม
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -541,11 +695,11 @@ export function RefrigeratorConfigView({ user }: { user: User }) {
                                                             type="button"
                                                             onClick={() => handleOpenEdit(ref)}
                                                             className={`p-1.5 min-h-[32px] min-w-[32px] flex items-center justify-center rounded-lg transition-all cursor-pointer ${
-                                                                isEditingThis
+                                                                editId === ref.id && !isBatchEditing
                                                                     ? "bg-amber-400 text-amber-950 ring-2 ring-amber-500 font-bold"
                                                                     : "text-[var(--color-text-muted)] hover:text-amber-950 hover:bg-amber-100/70 dark:hover:bg-amber-950/50 dark:hover:text-amber-200"
                                                             }`}
-                                                            title={isEditingThis ? "ยกเลิกการแก้ไข" : "แก้ไขข้อมูลตู้นี้"}
+                                                            title={editId === ref.id && !isBatchEditing ? "ยกเลิกการแก้ไข" : "แก้ไขข้อมูลตู้นี้"}
                                                         >
                                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />

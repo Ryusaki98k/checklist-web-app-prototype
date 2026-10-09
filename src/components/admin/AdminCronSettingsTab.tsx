@@ -519,7 +519,7 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                           {[
                             { key: "cleanShiftSessions", label: "ประวัติการเปิด-ปิดกะ และเช็คลิสต์งาน" },
                             { key: "cleanRefrigeratorTasks", label: "บันทึกอุณหภูมิตู้แช่เก่า (เก็บย้อนหลัง 1 เดือน)" },
-                            { key: "cleanNotifications", label: "การแจ้งเตือนเก่าที่พ้นระยะเวลา" },
+                            { key: "cleanNotifications", label: "การแจ้งเตือนและประวัติการอ่าน (เก็บย้อนหลัง 7 วัน)" },
                             { key: "cleanPointTransactions", label: "ประวัติธุรกรรมแต้มเก่า" },
                             { key: "cleanEmployeeLeaves", label: "ประวัติการลาพนักงานเก่า" },
                           ].map((item) => (
@@ -539,6 +539,9 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                             </label>
                           ))}
                         </div>
+                        <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed pt-1">
+                          * การแจ้งเตือน (Notifications) และประวัติการเปิดอ่าน (Notification Reads) จะมีอายุจัดเก็บสูงสุด 7 วัน (1 สัปดาห์) ส่วนบันทึกตรวจตู้แช่จะเก็บย้อนหลัง 30 วัน
+                        </p>
                       </div>
                     </div>
                   )}
@@ -606,24 +609,24 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                       </div>
 
                       {/* Operation Options */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {/* Transaction Audit */}
-                        <label className="flex items-start gap-3 p-3.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 hover:bg-[var(--color-surface-2)] transition-all cursor-pointer">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Clear Point Transactions (Requested: Clear weekly transactions) */}
+                        <label className="flex items-start gap-3 p-3.5 rounded-xl border border-purple-200 dark:border-purple-900/50 bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-50/70 dark:hover:bg-purple-950/30 transition-all cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={(draft.config as unknown as Partial<ResetScoresConfig>)?.recordTransaction !== false}
+                            checked={(draft.config as unknown as Partial<ResetScoresConfig>)?.clearPointTransactions !== false}
                             onChange={(e) =>
-                              handleConfigChange(job.id, "recordTransaction", e.target.checked)
+                              handleConfigChange(job.id, "clearPointTransactions", e.target.checked)
                             }
                             className="mt-1 h-4 w-4 rounded-sm border-gray-300 text-purple-600 focus:ring-purple-500"
                           />
                           <div className="space-y-0.5">
-                            <span className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1.5">
-                              <ShieldCheck size={13} className="text-purple-600 dark:text-purple-400" />
-                              บันทึกประวัติธุรกรรมแต้ม (Audit Trail)
+                            <span className="text-xs font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
+                              <Trash2 size={13} className="text-purple-600 dark:text-purple-400" />
+                              ล้างประวัติธุรกรรมแต้ม (Clear Transactions)
                             </span>
                             <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed">
-                              บันทึกรายการล้างคะแนนเดิมลงในตารางประวัติธุรกรรมแต้มเพื่อใช้ตรวจสอบย้อนหลัง
+                              ล้างรายการธุรกรรมแต้มรอบสัปดาห์ของพนักงานร่วมด้วย เนื่องจากคะแนนจะถูกรีเซ็ตใหม่ทุกสัปดาห์ เพื่อเริ่มรอบใหม่สะอาดตา (แนะนำ)
                             </p>
                           </div>
                         </label>
@@ -666,6 +669,32 @@ export function AdminCronSettingsTab({ showToast }: AdminCronSettingsTabProps) {
                             </span>
                             <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed">
                               ค่าเริ่มต้นคือปิดไว้ (คงสตรีคไว้เพื่อวัดความต่อเนื่องข้ามสัปดาห์ หากเปิดจะล้างสตรีคเป็น 0 ด้วย)
+                            </p>
+                          </div>
+                        </label>
+
+                        {/* Transaction Audit Trail (Fallback if not clearing transactions) */}
+                        <label className={`flex items-start gap-3 p-3.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 hover:bg-[var(--color-surface-2)] transition-all cursor-pointer ${
+                          (draft.config as unknown as Partial<ResetScoresConfig>)?.clearPointTransactions !== false ? "opacity-60" : ""
+                        }`}>
+                          <input
+                            type="checkbox"
+                            disabled={(draft.config as unknown as Partial<ResetScoresConfig>)?.clearPointTransactions !== false}
+                            checked={(draft.config as unknown as Partial<ResetScoresConfig>)?.clearPointTransactions !== false ? false : Boolean((draft.config as unknown as Partial<ResetScoresConfig>)?.recordTransaction)}
+                            onChange={(e) =>
+                              handleConfigChange(job.id, "recordTransaction", e.target.checked)
+                            }
+                            className="mt-1 h-4 w-4 rounded-sm border-gray-300 text-purple-600 focus:ring-purple-500"
+                          />
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1.5">
+                              <ShieldCheck size={13} className="text-purple-600 dark:text-purple-400" />
+                              บันทึกประวัติล้างแต้ม (Audit Trail)
+                            </span>
+                            <p className="text-[11px] text-[var(--color-text-subtle)] leading-relaxed">
+                              {(draft.config as unknown as Partial<ResetScoresConfig>)?.clearPointTransactions !== false
+                                ? "ปิดอัตโนมัติเนื่องจากเปิดการล้างประวัติธุรกรรมแต้มรอบสัปดาห์แล้ว"
+                                : "บันทึกรายการล้างคะแนนเดิมลงในธุรกรรมแต้มเพื่อใช้ตรวจสอบย้อนหลัง"}
                             </p>
                           </div>
                         </label>

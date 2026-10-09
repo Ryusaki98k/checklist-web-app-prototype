@@ -442,6 +442,87 @@ export class RefrigeratorService implements IRefrigeratorService {
     }
   }
 
+  async batchUpdateRefrigerators(params: {
+    refrigeratorIds: string[];
+    name?: string;
+    minTemperature: number;
+    maxTemperature: number;
+    disableCheck: boolean;
+    branchId?: string;
+  }): Promise<{ success: boolean; count?: number; error?: string }> {
+    try {
+      const { refrigeratorIds, name, minTemperature, maxTemperature, disableCheck, branchId } = params;
+      if (!refrigeratorIds || refrigeratorIds.length === 0) {
+        return { success: true, count: 0 };
+      }
+
+      let effectiveBranchId = branchId;
+      if (!effectiveBranchId && refrigeratorIds.length > 0) {
+        const [firstRef] = await this.db
+          .select({ branch_id: refrigerators.branch_id })
+          .from(refrigerators)
+          .where(eq(refrigerators.id, refrigeratorIds[0]))
+          .limit(1);
+        if (firstRef?.branch_id) {
+          effectiveBranchId = firstRef.branch_id;
+        }
+      }
+
+      const clampedMin = clampTemperature(minTemperature);
+      const clampedMax = clampTemperature(maxTemperature);
+
+      const updateData: {
+        min_temperature: number;
+        max_temperature: number;
+        disable_check: boolean;
+        name?: string;
+      } = {
+        min_temperature: clampedMin,
+        max_temperature: clampedMax,
+        disable_check: disableCheck,
+      };
+
+      if (name && name.trim()) {
+        updateData.name = name.trim();
+      }
+
+      await this.db
+        .update(refrigerators)
+        .set(updateData)
+        .where(inArray(refrigerators.id, refrigeratorIds));
+
+      const targetDate = getThaiDateString();
+
+      if (disableCheck) {
+        // If disabled, delete incomplete tasks for today so they disappear live
+        await this.db
+          .delete(refrigeratorTasks)
+          .where(
+            and(
+              inArray(refrigeratorTasks.refrigerator_id, refrigeratorIds),
+              eq(refrigeratorTasks.task_date, targetDate),
+              isNull(refrigeratorTasks.completed_at)
+            )
+          );
+      } else if (effectiveBranchId) {
+        // If re-enabled, ensure daily tasks exist
+        await this.ensureDailyRefrigeratorTasks(effectiveBranchId, targetDate);
+      }
+
+      if (effectiveBranchId) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, effectiveBranchId));
+      }
+
+      return { success: true, count: refrigeratorIds.length };
+    } catch (err: unknown) {
+      console.error("RefrigeratorService.batchUpdateRefrigerators error:", err);
+      return { success: false, error: (err as Error)?.message || "เกิดข้อผิดพลาดในการแก้ไขข้อมูลตู้แช่แบบกลุ่ม" };
+    }
+  }
+
   async ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const targetDate = dateStr || getThaiDateString();

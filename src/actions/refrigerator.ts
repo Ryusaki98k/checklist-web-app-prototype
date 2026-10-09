@@ -90,6 +90,22 @@ export async function batchToggleRefrigeratorDisableCheckAction(params: {
   return await services.refrigerator.batchToggleRefrigeratorDisableCheck(params);
 }
 
+export async function batchUpdateRefrigeratorsAction(params: {
+  refrigeratorIds: string[];
+  name?: string;
+  minTemperature: number;
+  maxTemperature: number;
+  disableCheck: boolean;
+  branchId?: string;
+}): Promise<{ success: boolean; count?: number; error?: string }> {
+  const services = getServices();
+  return await services.refrigerator.batchUpdateRefrigerators({
+    ...params,
+    minTemperature: clampTemperature(params.minTemperature),
+    maxTemperature: clampTemperature(params.maxTemperature),
+  });
+}
+
 export async function getBranchRefrigeratorTasksAction(params: {
   userId?: string;
   branchId?: string;

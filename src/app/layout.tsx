@@ -8,6 +8,7 @@ import { PageTransitionWatcher } from "../components/common/PageTransitionWatche
 import { GlobalLoadingOverlay } from "../components/common/GlobalLoadingOverlay";
 import { GlobalButtonDisabler } from "../components/common/GlobalButtonDisabler";
 import { WeeklyLeaderboardPopup } from "../components/common/WeeklyLeaderboardPopup";
+import { AutoReloadWatcher } from "../components/common/AutoReloadWatcher";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -92,6 +93,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <GlobalLoadingOverlay />
           <AppProvider>
             <GlobalButtonDisabler />
+            <AutoReloadWatcher />
             <main id="main-content" tabIndex={-1} className="min-h-full flex-1 focus-visible:outline-none">
               {children}
             </main>

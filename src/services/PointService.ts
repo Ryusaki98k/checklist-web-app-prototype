@@ -464,6 +464,7 @@ export class PointService implements IPointService {
   async processWeeklyLeaderboardAndReset(params?: {
     resetRoles?: string[];
     recordTransaction?: boolean;
+    clearPointTransactions?: boolean;
     notifyEmployees?: boolean;
     resetStreaks?: boolean;
   }): Promise<{
@@ -474,6 +475,7 @@ export class PointService implements IPointService {
     snapshotsCreated: number;
     affectedUsersCount: number;
     totalPointsReset: number;
+    deletedTransactionsCount?: number;
     error?: string;
   }> {
     try {
@@ -483,7 +485,8 @@ export class PointService implements IPointService {
         params?.resetRoles && params.resetRoles.length > 0
           ? params.resetRoles
           : ["employee", "manager_assistant"];
-      const shouldRecordTx = params?.recordTransaction !== false;
+      const shouldClearTx = params?.clearPointTransactions !== false;
+      const shouldRecordTx = !shouldClearTx && params?.recordTransaction !== false;
       const shouldNotify = params?.notifyEmployees !== false;
       const shouldResetStreaks = Boolean(params?.resetStreaks); // Defaults to false: keep streaks!
 
@@ -516,15 +519,16 @@ export class PointService implements IPointService {
         console.warn("processWeeklyLeaderboardAndReset: Failed to save to Supabase Storage");
       }
 
-      // 4. Reset scores in database for the new week
+      // 5. Reset scores and clear transactions in database for the new week
       const resetRes = await this.resetEmployeeScores({
         resetRoles: targetRoles,
         recordTransaction: shouldRecordTx,
+        clearPointTransactions: shouldClearTx,
         notifyEmployees: false, // Notification handled below with weekly context
         resetStreaks: shouldResetStreaks,
       });
 
-      // 4. Send weekly summary notification
+      // 6. Send weekly summary notification
       if (shouldNotify && this.notificationService) {
         await this.notificationService.createNotification({
           recipientRole: "employee",
@@ -542,6 +546,7 @@ export class PointService implements IPointService {
         snapshotsCreated: storageSaved ? 1 + allBranches.length : 0,
         affectedUsersCount: resetRes.affectedUsersCount,
         totalPointsReset: resetRes.totalPointsReset,
+        deletedTransactionsCount: resetRes.deletedTransactionsCount,
       };
     } catch (err: unknown) {
       console.error("processWeeklyLeaderboardAndReset error:", err);
@@ -554,6 +559,7 @@ export class PointService implements IPointService {
         snapshotsCreated: 0,
         affectedUsersCount: 0,
         totalPointsReset: 0,
+        deletedTransactionsCount: 0,
         error: message,
       };
     }
@@ -562,20 +568,24 @@ export class PointService implements IPointService {
   async resetEmployeeScores(params?: {
     resetRoles?: string[];
     recordTransaction?: boolean;
+    clearPointTransactions?: boolean;
     notifyEmployees?: boolean;
     resetStreaks?: boolean;
   }): Promise<{
     success: boolean;
     affectedUsersCount: number;
     totalPointsReset: number;
+    deletedTransactionsCount?: number;
     error?: string;
   }> {
     try {
+      const now = new Date();
       const targetRoles =
         params?.resetRoles && params.resetRoles.length > 0
           ? params.resetRoles
           : ["employee", "manager_assistant"];
-      const shouldRecordTx = params?.recordTransaction !== false;
+      const shouldClearTx = params?.clearPointTransactions !== false;
+      const shouldRecordTx = !shouldClearTx && params?.recordTransaction !== false;
       const shouldNotify = params?.notifyEmployees !== false;
       const shouldResetStreaks = Boolean(params?.resetStreaks);
 
@@ -592,34 +602,60 @@ export class PointService implements IPointService {
       );
 
       let totalPointsReset = 0;
+      for (const u of usersToReset) {
+        totalPointsReset += u.point || 0;
+      }
 
-      if (usersToReset.length > 0) {
-        // 1. Audit trail: Record reset transaction for users who had points
-        if (shouldRecordTx) {
-          const now = new Date();
-          const txValues = usersToReset
-            .filter((u: typeof users.$inferSelect) => (u.point || 0) > 0)
-            .map((u: typeof users.$inferSelect) => {
-              totalPointsReset += u.point;
-              return {
-                user_id: u.id,
-                points: -u.point,
-                type: "weekly_reset",
-                description: `รีเซ็ตคะแนนรอบสัปดาห์ใหม่หลังสรุปผลวันอาทิตย์ (ล้างคะแนนเดิม ${u.point} แต้ม)`,
-                created_at: now,
-              };
-            });
+      // 1. Audit trail: Record reset transaction for users who had points (only if NOT clearing transactions)
+      if (shouldRecordTx && usersToReset.length > 0) {
+        const txValues = usersToReset
+          .filter((u: typeof users.$inferSelect) => (u.point || 0) > 0)
+          .map((u: typeof users.$inferSelect) => {
+            return {
+              user_id: u.id,
+              points: -u.point,
+              type: "weekly_reset",
+              description: `รีเซ็ตคะแนนรอบสัปดาห์ใหม่หลังสรุปผลวันอาทิตย์ (ล้างคะแนนเดิม ${u.point} แต้ม)`,
+              created_at: now,
+            };
+          });
 
-          if (txValues.length > 0) {
-            await this.db.insert(pointTransactions).values(txValues);
-          }
+        if (txValues.length > 0) {
+          await this.db.insert(pointTransactions).values(txValues);
+        }
+      }
+
+      // 2. Clear point transactions for target users if enabled (user request: clears transactions as points reset every week anyway)
+      let deletedTransactionsCount = 0;
+      const targetUserIds = targetUsers.map((u: any) => u.id);
+      if (shouldClearTx && targetUserIds.length > 0) {
+        const isAllUsersTargeted = targetUsers.length === allUsers.length;
+        if (isAllUsersTargeted) {
+          const deletedTxs = await this.db
+            .delete(pointTransactions)
+            .where(lte(pointTransactions.created_at, now))
+            .returning({ id: pointTransactions.id });
+          deletedTransactionsCount = deletedTxs.length;
         } else {
-          for (const u of usersToReset) {
-            totalPointsReset += u.point || 0;
+          const CHUNK_SIZE = 200;
+          for (let i = 0; i < targetUserIds.length; i += CHUNK_SIZE) {
+            const chunk = targetUserIds.slice(i, i + CHUNK_SIZE);
+            const deletedTxs = await this.db
+              .delete(pointTransactions)
+              .where(
+                and(
+                  inArray(pointTransactions.user_id, chunk),
+                  lte(pointTransactions.created_at, now)
+                )
+              )
+              .returning({ id: pointTransactions.id });
+            deletedTransactionsCount += deletedTxs.length;
           }
         }
+      }
 
-        // 2. Reset points in database for affected users
+      // 3. Reset points in database for affected users
+      if (usersToReset.length > 0) {
         const updatePayload: {
           point: number;
           point_streak?: number;
@@ -632,15 +668,17 @@ export class PointService implements IPointService {
         }
 
         const userIdsToUpdate = usersToReset.map((u: any) => u.id);
-        if (userIdsToUpdate.length > 0) {
+        const CHUNK_SIZE = 200;
+        for (let i = 0; i < userIdsToUpdate.length; i += CHUNK_SIZE) {
+          const chunk = userIdsToUpdate.slice(i, i + CHUNK_SIZE);
           await this.db
             .update(users)
             .set(updatePayload)
-            .where(inArray(users.id, userIdsToUpdate));
+            .where(inArray(users.id, chunk));
         }
       }
 
-      // 3. Send broadcast notification if enabled
+      // 4. Send broadcast notification if enabled
       if (shouldNotify && this.notificationService) {
         await this.notificationService.createNotification({
           recipientRole: "employee",
@@ -654,6 +692,7 @@ export class PointService implements IPointService {
         success: true,
         affectedUsersCount: usersToReset.length,
         totalPointsReset,
+        deletedTransactionsCount,
       };
     } catch (err: unknown) {
       console.error("resetEmployeeScores error:", err);
@@ -662,6 +701,7 @@ export class PointService implements IPointService {
         success: false,
         affectedUsersCount: 0,
         totalPointsReset: 0,
+        deletedTransactionsCount: 0,
         error: message,
       };
     }

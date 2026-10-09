@@ -44,13 +44,14 @@ const DEFAULT_CRON_JOBS: CronSetting[] = [
   {
     id: "reset-scores",
     name: "ประมวลผลตารางคะแนนสัปดาห์และรีเซ็ตคะแนน (Weekly Leaderboard & Score Reset)",
-    description: "รวบรวมและบันทึกตารางอันดับประจำสัปดาห์ (Weekly Leaderboard Snapshot) ทุกคืนวันอาทิตย์ เวลา 23:55 น. ก่อนขึ้นวันใหม่ จากนั้นรีเซ็ตคะแนนสะสมของพนักงานเพื่อเริ่มรอบการแข่งขันใหม่ในวันจันทร์",
+    description: "รวบรวมและบันทึกตารางอันดับประจำสัปดาห์ (Weekly Leaderboard Snapshot) ทุกคืนวันอาทิตย์ เวลา 23:55 น. พร้อมรีเซ็ตคะแนนสะสมและล้างประวัติธุรกรรมแต้มของพนักงานเพื่อเริ่มรอบการแข่งขันใหม่ในสัปดาห์ถัดไป",
     schedule_cron: "55 16 * * 0",
     schedule_description: "ทุกวันอาทิตย์ เวลา 23:55 น.",
     enabled: true,
     config: {
       resetRoles: ["employee", "manager_assistant"],
-      recordTransaction: true,
+      clearPointTransactions: true,
+      recordTransaction: false,
       notifyEmployees: true,
       resetStreaks: false,
     },
@@ -61,13 +62,14 @@ const DEFAULT_CRON_JOBS: CronSetting[] = [
   {
     id: "cleanup-data",
     name: "ล้างข้อมูลประวัติและบันทึกเก่า (Data Retention Cleanup)",
-    description: "ลบประวัติงาน กะ และข้อมูลการดำเนินงานที่เก่ากว่ากำหนดโดยอัตโนมัติ เพื่อรักษาประสิทธิภาพของระบบ (ข้อมูลบันทึกตู้แช่เก็บรักษาย้อนหลัง 1 เดือน)",
-    schedule_cron: "50 16 * * 0",
-    schedule_description: "ทุกวันอาทิตย์ เวลา 23:50 น.",
+    description: "ลบประวัติงาน กะ และข้อมูลการดำเนินงานที่เก่ากว่ากำหนดโดยอัตโนมัติ เพื่อรักษาประสิทธิภาพของระบบ (การแจ้งเตือนและประวัติการอ่านเก็บรักษาย้อนหลัง 7 วัน / 1 สัปดาห์, ข้อมูลบันทึกตู้แช่เก็บรักษาย้อนหลัง 1 เดือน)",
+    schedule_cron: "50 16 * * *",
+    schedule_description: "ทุกวัน เวลา 23:50 น.",
     enabled: true,
     config: {
       retentionDays: 14,
       refrigeratorRetentionDays: 30,
+      notificationRetentionDays: 7,
       cleanShiftSessions: true,
       cleanRefrigeratorTasks: true,
       cleanNotifications: true,
@@ -178,8 +180,18 @@ export class CronService implements ICronService {
 
       const mapped: CronSetting[] = records.map((r: typeof cronSettings.$inferSelect) => {
         const rawConfig = (r.config as Record<string, unknown>) || {};
-        if (r.id === "cleanup-data" && rawConfig.refrigeratorRetentionDays === undefined) {
-          rawConfig.refrigeratorRetentionDays = 30;
+        if (r.id === "cleanup-data") {
+          if (rawConfig.refrigeratorRetentionDays === undefined) {
+            rawConfig.refrigeratorRetentionDays = 30;
+          }
+          if (rawConfig.notificationRetentionDays === undefined) {
+            rawConfig.notificationRetentionDays = 7;
+          }
+        }
+        if (r.id === "reset-scores") {
+          if (rawConfig.clearPointTransactions === undefined) {
+            rawConfig.clearPointTransactions = true;
+          }
         }
         return {
           id: r.id,
@@ -319,8 +331,10 @@ export class CronService implements ICronService {
 
         const retentionDays = Number(mergedConfig.retentionDays) || 14;
         const refrigeratorRetentionDays = Number(mergedConfig.refrigeratorRetentionDays) || 30;
+        const notificationRetentionDays = Number(mergedConfig.notificationRetentionDays) || 7;
         const options = {
           refrigeratorRetentionDays,
+          notificationRetentionDays,
           cleanShiftSessions: mergedConfig.cleanShiftSessions !== false,
           cleanRefrigeratorTasks: mergedConfig.cleanRefrigeratorTasks !== false,
           cleanNotifications: mergedConfig.cleanNotifications !== false,
@@ -338,11 +352,12 @@ export class CronService implements ICronService {
           taskWorks: 0,
           refrigeratorTasks: 0,
           notifications: 0,
+          notificationReads: 0,
           pointTransactions: 0,
           employeeLeaves: 0,
         };
 
-        const summaryMsg = `ล้างข้อมูลเก่าสำเร็จ (กะและงานย่อยเก่ากว่า ${retentionDays} วัน, ตู้แช่เก่ากว่า ${refrigeratorRetentionDays} วัน / 1 เดือน): ปิดกะ/ลบประวัติกะ ${deleted.shiftSessions} กะ, งานย่อย ${deleted.taskWorks} รายการ, บันทึกตู้แช่ ${deleted.refrigeratorTasks} รายการ, แจ้งเตือน ${deleted.notifications} รายการ, คะแนน ${deleted.pointTransactions} รายการ, ข้อมูลลา ${deleted.employeeLeaves} รายการ`;
+        const summaryMsg = `ล้างข้อมูลเก่าสำเร็จ (กะและงานย่อยเก่ากว่า ${retentionDays} วัน, แจ้งเตือนและประวัติอ่านเก่ากว่า ${notificationRetentionDays} วัน / 1 สัปดาห์, ตู้แช่เก่ากว่า ${refrigeratorRetentionDays} วัน): ปิดกะ/ลบประวัติกะ ${deleted.shiftSessions} กะ, งานย่อย ${deleted.taskWorks} รายการ, บันทึกตู้แช่ ${deleted.refrigeratorTasks} รายการ, แจ้งเตือน ${deleted.notifications} รายการ (ประวัติอ่าน ${deleted.notificationReads || 0} รายการ), คะแนน ${deleted.pointTransactions} รายการ, ข้อมูลลา ${deleted.employeeLeaves} รายการ`;
 
         await this.recordExecution(id, {
           status: "success",
@@ -441,13 +456,15 @@ export class CronService implements ICronService {
         }
 
         const resetRoles = (mergedConfig.resetRoles as string[]) || ["employee", "manager_assistant"];
-        const recordTransaction = mergedConfig.recordTransaction !== false;
+        const clearPointTransactions = mergedConfig.clearPointTransactions !== false;
+        const recordTransaction = Boolean(mergedConfig.recordTransaction);
         const notifyEmployees = mergedConfig.notifyEmployees !== false;
         const resetStreaks = Boolean(mergedConfig.resetStreaks);
 
         const res = await this.pointService.processWeeklyLeaderboardAndReset({
           resetRoles,
           recordTransaction,
+          clearPointTransactions,
           notifyEmployees,
           resetStreaks,
         });
@@ -456,7 +473,11 @@ export class CronService implements ICronService {
           throw new Error(res.error || "เกิดข้อผิดพลาดในการประมวลผลตารางอันดับและรีเซ็ตคะแนนประจำสัปดาห์");
         }
 
-        const summaryMsg = `ประมวลผลตารางคะแนนประจำสัปดาห์สำเร็จ (รอบ ${res.weekStartDate} ถึง ${res.weekEndDate}): บันทึก Snapshot ${res.snapshotsCreated} ชุด, พนักงานที่รีเซ็ตคะแนน ${res.affectedUsersCount} คน (ล้างแต้มเดิมรวม ${res.totalPointsReset} แต้ม, สตรีค: ${resetStreaks ? "รีเซ็ต" : "รักษาสถิติเดิม"})`;
+        const txDetail = clearPointTransactions
+          ? `, ล้างธุรกรรมแต้ม ${res.deletedTransactionsCount || 0} รายการ`
+          : "";
+
+        const summaryMsg = `ประมวลผลตารางคะแนนประจำสัปดาห์สำเร็จ (รอบ ${res.weekStartDate} ถึง ${res.weekEndDate}): บันทึก Snapshot ${res.snapshotsCreated} ชุด, พนักงานที่รีเซ็ตคะแนน ${res.affectedUsersCount} คน (ล้างแต้มเดิมรวม ${res.totalPointsReset} แต้ม${txDetail}, สตรีค: ${resetStreaks ? "รีเซ็ต" : "รักษาสถิติเดิม"})`;
 
         await this.recordExecution(id, {
           status: "success",

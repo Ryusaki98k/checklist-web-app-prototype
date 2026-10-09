@@ -60,6 +60,13 @@ export interface INotificationService {
 
   markAsRead(notificationId: string, userId: string): Promise<{ success: boolean; error?: string }>;
   markAllAsRead(userId: string, role?: Role, branchId?: string): Promise<{ success: boolean; error?: string }>;
+  cleanOldNotifications(retentionDays?: number): Promise<{
+    success: boolean;
+    deletedNotifications: number;
+    deletedNotificationReads: number;
+    cutoffDate?: string;
+    error?: string;
+  }>;
 }
 
 export interface IPointService {
@@ -121,6 +128,7 @@ export interface IPointService {
   processWeeklyLeaderboardAndReset(params?: {
     resetRoles?: string[];
     recordTransaction?: boolean;
+    clearPointTransactions?: boolean;
     notifyEmployees?: boolean;
     resetStreaks?: boolean;
   }): Promise<{
@@ -131,18 +139,21 @@ export interface IPointService {
     snapshotsCreated: number;
     affectedUsersCount: number;
     totalPointsReset: number;
+    deletedTransactionsCount?: number;
     error?: string;
   }>;
 
   resetEmployeeScores(params?: {
     resetRoles?: string[];
     recordTransaction?: boolean;
+    clearPointTransactions?: boolean;
     notifyEmployees?: boolean;
     resetStreaks?: boolean;
   }): Promise<{
     success: boolean;
     affectedUsersCount: number;
     totalPointsReset: number;
+    deletedTransactionsCount?: number;
     error?: string;
   }>;
 
@@ -227,6 +238,7 @@ export interface IChecklistService {
     retentionDays?: number,
     options?: {
       refrigeratorRetentionDays?: number;
+      notificationRetentionDays?: number;
       cleanShiftSessions?: boolean;
       cleanRefrigeratorTasks?: boolean;
       cleanNotifications?: boolean;
@@ -237,11 +249,13 @@ export interface IChecklistService {
     success: boolean;
     cutoffDate?: string;
     refrigeratorCutoffDate?: string;
+    notificationCutoffDate?: string;
     deleted?: {
       shiftSessions: number;
       taskWorks: number;
       refrigeratorTasks: number;
       notifications: number;
+      notificationReads: number;
       pointTransactions: number;
       employeeLeaves: number;
     };
@@ -696,6 +710,14 @@ export interface IRefrigeratorService {
     disableCheck: boolean;
     branchId?: string;
   }): Promise<{ success: boolean; count?: number; error?: string }>;
+  batchUpdateRefrigerators(params: {
+    refrigeratorIds: string[];
+    name?: string;
+    minTemperature: number;
+    maxTemperature: number;
+    disableCheck: boolean;
+    branchId?: string;
+  }): Promise<{ success: boolean; count?: number; error?: string }>;
   ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }>;
   getBranchRefrigeratorTasks(params: {
     userId?: string;
@@ -756,6 +778,7 @@ export type CronJobId = "cleanup-data" | "end-shifts" | "daily-refrigerators" | 
 export interface CleanupDataConfig {
   retentionDays: number;
   refrigeratorRetentionDays?: number;
+  notificationRetentionDays?: number;
   cleanShiftSessions: boolean;
   cleanRefrigeratorTasks: boolean;
   cleanNotifications: boolean;
@@ -777,6 +800,7 @@ export interface DailyRefrigeratorsConfig {
 export interface ResetScoresConfig {
   resetRoles: string[];
   recordTransaction: boolean;
+  clearPointTransactions: boolean;
   notifyEmployees: boolean;
   resetStreaks: boolean;
 }
