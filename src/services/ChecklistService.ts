@@ -1,7 +1,7 @@
 import { eq, and, or, gte, lte, lt, desc, asc, inArray, isNull, sql } from "drizzle-orm";
-import { tasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions, employeeLeaves } from "../db/schema";
+import { tasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions, employeeLeaves, jointTaskWork, specialTasks } from "../db/schema";
 import { IChecklistService, INotificationService } from "./types";
-import { ShiftSession, ShiftType, ChecklistItem } from "../types";
+import { ShiftSession, ShiftType, ChecklistItem, JointTaskItem, BranchDailyTask } from "../types";
 
 export function isSpecialZeroPointTask(taskName: string): boolean {
   // Retained for backward compatibility if called with a task name
@@ -141,6 +141,10 @@ export class ChecklistService implements IChecklistService {
           ? ["morning", "afternoon", "night", "morning_afternoon"]
           : [dbShift, "morning_afternoon"];
 
+      const branchTaskCondition = branchId
+        ? or(eq(tasks.branch_id, branchId), isNull(tasks.branch_id))
+        : isNull(tasks.branch_id);
+
       const [rawTasks, [existingSession]] = await Promise.all([
         this.db
           .select()
@@ -149,7 +153,9 @@ export class ChecklistService implements IChecklistService {
             and(
               eq(tasks.task_role, taskRole),
               inArray(tasks.shift, allowedShifts),
-              eq(tasks.disabled, false)
+              eq(tasks.disabled, false),
+              eq(tasks.is_joint, false),
+              branchTaskCondition
             )
           )
           .orderBy(asc(tasks.start)),
@@ -1489,6 +1495,419 @@ export class ChecklistService implements IChecklistService {
     } catch (err: any) {
       console.error("ChecklistService.cleanupOldData error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการล้างข้อมูลเก่า" };
+    }
+  }
+
+  async getBranchDailyTasks(branchId?: string): Promise<{ success: boolean; tasks?: BranchDailyTask[]; error?: string }> {
+    try {
+      const condition = branchId
+        ? or(eq(tasks.branch_id, branchId), isNull(tasks.branch_id))
+        : isNull(tasks.branch_id);
+
+      const dbTasks = await this.db
+        .select()
+        .from(tasks)
+        .where(condition)
+        .orderBy(asc(tasks.task_role), asc(tasks.start));
+
+      const mapped: BranchDailyTask[] = dbTasks.map((t: any) => ({
+        id: t.id,
+        branchId: t.branch_id,
+        name: t.name,
+        taskRole: t.task_role,
+        shift: t.shift === "morning_afternoon" ? "both" : t.shift,
+        startTime: t.start || "00:00",
+        endTime: t.end || "00:00",
+        disabled: Boolean(t.disabled),
+        forManagers: Boolean(t.for_managers),
+        isJoint: Boolean(t.is_joint),
+        selectableRoles: (t.selectable_roles as string[]) || [t.task_role],
+        category: t.category,
+      }));
+
+      return { success: true, tasks: mapped };
+    } catch (err: any) {
+      console.error("ChecklistService.getBranchDailyTasks error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการดึงรายการงานประจำสาขา" };
+    }
+  }
+
+  async createBranchDailyTask(params: {
+    branchId?: string | null;
+    name: string;
+    taskRole: "cashier" | "stock" | "manager_assistant";
+    shift: ShiftType;
+    startTime: string;
+    endTime: string;
+    disabled?: boolean;
+    forManagers?: boolean;
+    isJoint?: boolean;
+    selectableRoles?: string[];
+    category?: string | null;
+  }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
+    try {
+      const dbShift = mapShiftToDbShift(params.shift);
+      const [newTask] = await this.db
+        .insert(tasks)
+        .values({
+          branch_id: params.branchId || null,
+          name: params.name.trim(),
+          task_role: params.taskRole,
+          shift: dbShift,
+          start: params.startTime || "00:00:00",
+          end: params.endTime || "00:00:00",
+          disabled: params.disabled ?? false,
+          for_managers: params.forManagers ?? false,
+          is_joint: params.isJoint ?? false,
+          selectable_roles: params.selectableRoles || [params.taskRole],
+          category: params.category || null,
+        })
+        .returning();
+
+      if (params.branchId) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, params.branchId));
+      }
+
+      return {
+        success: true,
+        task: {
+          id: newTask.id,
+          branchId: newTask.branch_id,
+          name: newTask.name,
+          taskRole: newTask.task_role,
+          shift: newTask.shift === "morning_afternoon" ? "both" : newTask.shift,
+          startTime: newTask.start,
+          endTime: newTask.end,
+          disabled: Boolean(newTask.disabled),
+          forManagers: Boolean(newTask.for_managers),
+          isJoint: Boolean(newTask.is_joint),
+          selectableRoles: (newTask.selectable_roles as string[]) || [newTask.task_role],
+          category: newTask.category,
+        },
+      };
+    } catch (err: any) {
+      console.error("ChecklistService.createBranchDailyTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการสร้างงานประจำสาขา" };
+    }
+  }
+
+  async updateBranchDailyTask(params: {
+    id: string;
+    branchId?: string | null;
+    name?: string;
+    taskRole?: "cashier" | "stock" | "manager_assistant";
+    shift?: ShiftType;
+    startTime?: string;
+    endTime?: string;
+    disabled?: boolean;
+    forManagers?: boolean;
+    isJoint?: boolean;
+    selectableRoles?: string[];
+    category?: string | null;
+  }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
+    try {
+      const updateData: any = {};
+      if (params.name !== undefined) updateData.name = params.name.trim();
+      if (params.taskRole !== undefined) updateData.task_role = params.taskRole;
+      if (params.shift !== undefined) updateData.shift = mapShiftToDbShift(params.shift);
+      if (params.startTime !== undefined) updateData.start = params.startTime;
+      if (params.endTime !== undefined) updateData.end = params.endTime;
+      if (params.disabled !== undefined) updateData.disabled = params.disabled;
+      if (params.forManagers !== undefined) updateData.for_managers = params.forManagers;
+      if (params.isJoint !== undefined) updateData.is_joint = params.isJoint;
+      if (params.selectableRoles !== undefined) updateData.selectable_roles = params.selectableRoles;
+      if (params.category !== undefined) updateData.category = params.category;
+
+      const [updated] = await this.db
+        .update(tasks)
+        .set(updateData)
+        .where(eq(tasks.id, params.id))
+        .returning();
+
+      if (updated?.branch_id) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, updated.branch_id));
+      }
+
+      return {
+        success: true,
+        task: updated
+          ? {
+              id: updated.id,
+              branchId: updated.branch_id,
+              name: updated.name,
+              taskRole: updated.task_role,
+              shift: updated.shift === "morning_afternoon" ? "both" : updated.shift,
+              startTime: updated.start,
+              endTime: updated.end,
+              disabled: Boolean(updated.disabled),
+              forManagers: Boolean(updated.for_managers),
+              isJoint: Boolean(updated.is_joint),
+              selectableRoles: (updated.selectable_roles as string[]) || [updated.task_role],
+              category: updated.category,
+            }
+          : undefined,
+      };
+    } catch (err: any) {
+      console.error("ChecklistService.updateBranchDailyTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการอัปเดตงานประจำสาขา" };
+    }
+  }
+
+  async deleteBranchDailyTask(taskId: string, branchId?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.db.delete(tasks).where(eq(tasks.id, taskId));
+
+      if (branchId) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, branchId));
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("ChecklistService.deleteBranchDailyTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการลบงาน" };
+    }
+  }
+
+  async getBranchJointTasks(params: {
+    branchId: string;
+    dateStr?: string;
+    shift?: ShiftType;
+  }): Promise<{ success: boolean; data?: JointTaskItem[]; error?: string }> {
+    try {
+      const { branchId, dateStr, shift } = params;
+      const targetDate = dateStr || getThaiStartAndEndOfDay().dateStr;
+
+      // 1. Fetch joint tasks definitions for this branch (or global templates)
+      const jointDefs = await this.db
+        .select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.is_joint, true),
+            eq(tasks.disabled, false),
+            or(eq(tasks.branch_id, branchId), isNull(tasks.branch_id))
+          )
+        )
+        .orderBy(asc(tasks.name));
+
+      if (jointDefs.length === 0) {
+        return { success: true, data: [] };
+      }
+
+      const taskIds = jointDefs.map((t: any) => t.id);
+
+      // 2. Fetch existing joint work entries for today
+      const workConditions = [
+        eq(jointTaskWork.branch_id, branchId),
+        eq(jointTaskWork.task_date, targetDate),
+        inArray(jointTaskWork.task_id, taskIds),
+      ];
+
+      const workRows = await this.db
+        .select()
+        .from(jointTaskWork)
+        .where(and(...workConditions));
+
+      const workMap = new Map<string, any>(workRows.map((w: any) => [w.task_id, w]));
+
+      // 3. User names map
+      const userIds = workRows.map((w: any) => w.completed_by).filter(Boolean);
+      let userMap = new Map<string, string>();
+      if (userIds.length > 0) {
+        const uRows = await this.db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(inArray(users.id, userIds));
+        userMap = new Map(uRows.map((u: any) => [u.id, u.name]));
+      }
+
+      const items: JointTaskItem[] = jointDefs.map((def: any) => {
+        const work = workMap.get(def.id);
+        const completed = Boolean(work?.completed_at);
+        const completedByUserName = work?.completed_by ? userMap.get(work.completed_by) || "พนักงาน" : null;
+
+        return {
+          id: work?.id || def.id,
+          taskId: def.id,
+          branchId,
+          taskDate: targetDate,
+          shift: work?.shift ? (work.shift === "morning_afternoon" ? "both" : work.shift) : (def.shift === "morning_afternoon" ? "both" : def.shift),
+          name: def.name,
+          selectableRoles: (def.selectable_roles as string[]) || [def.task_role],
+          category: def.category,
+          completed,
+          completedAt: work?.completed_at ? new Date(work.completed_at).toISOString() : null,
+          completedByUserId: work?.completed_by || null,
+          completedByUserName,
+          comment: work?.comment || null,
+        };
+      });
+
+      // Filter by shift if shift specified
+      const filtered = shift && shift !== "both"
+        ? items.filter((it) => it.shift === shift || !it.shift)
+        : items;
+
+      return { success: true, data: filtered };
+    } catch (err: any) {
+      console.error("ChecklistService.getBranchJointTasks error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการดึงรายการงานส่วนกลาง" };
+    }
+  }
+
+  async toggleJointTaskItem(params: {
+    jointWorkId?: string;
+    taskId: string;
+    branchId: string;
+    dateStr: string;
+    shift?: ShiftType;
+    userId: string;
+    completed: boolean;
+    comment?: string;
+  }): Promise<{ success: boolean; data?: JointTaskItem; conflict?: boolean; message?: string; error?: string }> {
+    try {
+      const { taskId, branchId, dateStr, shift, userId, completed, comment } = params;
+      const dbShift = shift ? mapShiftToDbShift(shift) : null;
+
+      // 1. Check existing work row for this task & date
+      const [existingWork] = await this.db
+        .select()
+        .from(jointTaskWork)
+        .where(
+          and(
+            eq(jointTaskWork.task_id, taskId),
+            eq(jointTaskWork.branch_id, branchId),
+            eq(jointTaskWork.task_date, dateStr)
+          )
+        )
+        .limit(1);
+
+      // Concurrency check: If another user already completed this item, prevent race condition & overwrite
+      if (completed && existingWork?.completed_at && existingWork.completed_by && existingWork.completed_by !== userId) {
+        const [completedByUser] = await this.db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, existingWork.completed_by))
+          .limit(1);
+
+        const [t] = await this.db.select({ name: tasks.name }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+        const completedName = completedByUser?.name || "พนักงานท่านอื่น";
+        const completedTime = new Date(existingWork.completed_at).toLocaleTimeString("th-TH", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        return {
+          success: false,
+          conflict: true,
+          message: `งาน "${t?.name || "งานส่วนกลาง"}" ได้รับการบันทึกโดย ${completedName} เมื่อเวลา ${completedTime} น. แล้ว (ระบบป้องกันการบันทึกซ้ำ)`,
+        };
+      }
+
+      let activeRow: any;
+      const now = completed ? new Date() : null;
+
+      if (existingWork) {
+        const [updated] = await this.db
+          .update(jointTaskWork)
+          .set({
+            completed_by: completed ? userId : null,
+            completed_at: now,
+            comment: completed && comment ? comment : null,
+            shift: dbShift || existingWork.shift,
+          })
+          .where(
+            and(
+              eq(jointTaskWork.id, existingWork.id),
+              completed
+                ? or(sql`${jointTaskWork.completed_at} IS NULL`, eq(jointTaskWork.completed_by, userId))
+                : sql`TRUE`
+            )
+          )
+          .returning();
+
+        if (!updated && completed) {
+          return {
+            success: false,
+            conflict: true,
+            message: "รายการนี้เพิ่งถูกบันทึกโดยเพื่อนร่วมงาน ระบบกำลังอัปเดตข้อมูลล่าสุด",
+          };
+        }
+        activeRow = updated || existingWork;
+      } else if (completed) {
+        const [inserted] = await this.db
+          .insert(jointTaskWork)
+          .values({
+            task_id: taskId,
+            branch_id: branchId,
+            task_date: dateStr,
+            shift: dbShift,
+            completed_by: userId,
+            completed_at: now,
+            comment: comment || null,
+          })
+          .onConflictDoUpdate({
+            target: [jointTaskWork.task_id, jointTaskWork.branch_id, jointTaskWork.task_date],
+            set: {
+              completed_by: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${userId} ELSE ${jointTaskWork.completed_by} END`,
+              completed_at: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${now} ELSE ${jointTaskWork.completed_at} END`,
+              comment: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${comment || null} ELSE ${jointTaskWork.comment} END`,
+            },
+          })
+          .returning();
+
+        if (inserted && inserted.completed_by && inserted.completed_by !== userId) {
+          return {
+            success: false,
+            conflict: true,
+            message: "รายการนี้เพิ่งถูกบันทึกโดยเพื่อนร่วมงาน ระบบกำลังอัปเดตข้อมูลล่าสุด",
+          };
+        }
+        activeRow = inserted;
+      }
+
+      // Touch branch last_update
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, branchId));
+
+      const [taskDef] = await this.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      let userName: string | null = null;
+      if (activeRow?.completed_by) {
+        const [u] = await this.db.select({ name: users.name }).from(users).where(eq(users.id, activeRow.completed_by)).limit(1);
+        userName = u?.name || null;
+      }
+
+      const resultItem: JointTaskItem = {
+        id: activeRow?.id || taskId,
+        taskId,
+        branchId,
+        taskDate: dateStr,
+        shift: activeRow?.shift ? (activeRow.shift === "morning_afternoon" ? "both" : activeRow.shift) : null,
+        name: taskDef?.name || "งานส่วนกลาง",
+        selectableRoles: (taskDef?.selectable_roles as string[]) || [taskDef?.task_role || "stock"],
+        category: taskDef?.category,
+        completed: Boolean(activeRow?.completed_at),
+        completedAt: activeRow?.completed_at ? new Date(activeRow.completed_at).toISOString() : null,
+        completedByUserId: activeRow?.completed_by || null,
+        completedByUserName: userName,
+        comment: activeRow?.comment || null,
+      };
+
+      return { success: true, data: resultItem };
+    } catch (err: any) {
+      console.error("ChecklistService.toggleJointTaskItem error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการบันทึกงานส่วนกลาง" };
     }
   }
 }

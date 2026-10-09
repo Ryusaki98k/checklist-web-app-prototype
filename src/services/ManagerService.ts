@@ -1,7 +1,7 @@
-import { eq, ne, and, gte, lte, lt, desc, inArray, sql } from "drizzle-orm";
-import { tasks, taskWork, shiftSession, users, branches, employeeLeaves, pointTransactions } from "../db/schema";
-import { IManagerService, IPointService, INotificationService, BranchEmployeeStatus } from "./types";
-import { ShiftType, Role, LeaveType, EmployeeLeave, LeaveQuotaInfo, ManagerType } from "../types";
+import { eq, ne, and, or, gte, lte, lt, desc, inArray, sql, isNull } from "drizzle-orm";
+import { tasks, taskWork, shiftSession, users, branches, employeeLeaves, pointTransactions, specialTasks, jointTaskWork, refrigerators, refrigeratorTasks } from "../db/schema";
+import { IManagerService, IPointService, INotificationService, BranchEmployeeStatus, RefrigeratorTaskItem } from "./types";
+import { ShiftType, Role, LeaveType, EmployeeLeave, LeaveQuotaInfo, ManagerType, SpecialTaskItem, JointTaskItem } from "../types";
 import { isPaidLeave, toDbLeaveType } from "../utils/leave";
 import { computePrimaryRole } from "../utils/roles";
 
@@ -70,6 +70,7 @@ function getThaiStartAndEndOfDay(baseDate = new Date()) {
   return {
     startOfDay: new Date(startStr),
     endOfDay: new Date(endStr),
+    dateStr: `${yElement}-${mElement}-${dElement}`,
   };
 }
 
@@ -2330,6 +2331,768 @@ export class ManagerService implements IManagerService {
     } catch (err: any) {
       console.error("ManagerService.removeEmployeeFromBranch error:", err);
       return { success: false, error: "เกิดข้อผิดพลาดในการนำพนักงานออกจากสาขา" };
+    }
+  }
+
+  async getSpecialTasks(params: {
+    branchId?: string;
+    userId?: string;
+    role?: string;
+  }): Promise<{ success: boolean; tasks?: SpecialTaskItem[]; error?: string }> {
+    try {
+      const { branchId, userId, role } = params;
+      let query = this.db.select().from(specialTasks);
+
+      if (branchId) {
+        query = query.where(eq(specialTasks.branch_id, branchId));
+      }
+
+      const rows = await query.orderBy(desc(specialTasks.created_at));
+
+      if (rows.length === 0) {
+        return { success: true, tasks: [] };
+      }
+
+      // Collect user IDs for names lookup
+      const userIds = new Set<string>();
+      rows.forEach((r: any) => {
+        if (r.issued_by) userIds.add(r.issued_by);
+        if (r.assigned_user_id) userIds.add(r.assigned_user_id);
+        if (r.submitted_by) userIds.add(r.submitted_by);
+        if (r.assistant_approved_by) userIds.add(r.assistant_approved_by);
+        if (r.manager_approved_by) userIds.add(r.manager_approved_by);
+        if (Array.isArray(r.assigned_user_ids)) {
+          r.assigned_user_ids.forEach((id: string) => userIds.add(id));
+        }
+        if (Array.isArray(r.participated_user_ids)) {
+          r.participated_user_ids.forEach((id: string) => userIds.add(id));
+        }
+      });
+
+      const userRows = userIds.size > 0
+        ? await this.db.select({ id: users.id, name: users.name, manager_type: users.manager_type, executive_type: users.executive_type, is_admin: users.is_admin }).from(users).where(inArray(users.id, Array.from(userIds)))
+        : [];
+      const userMap = new Map<string, { name: string; role: Role }>(userRows.map((u: any) => [
+        u.id,
+        {
+          name: u.name,
+          role: computePrimaryRole(u.manager_type, u.executive_type, u.is_admin),
+        }
+      ]));
+
+      const mapped: SpecialTaskItem[] = rows.map((r: any) => {
+        const issuer = userMap.get(r.issued_by);
+        const assignee = r.assigned_user_id ? userMap.get(r.assigned_user_id) : null;
+        const submitter = r.submitted_by ? userMap.get(r.submitted_by) : null;
+        const asstApprover = r.assistant_approved_by ? userMap.get(r.assistant_approved_by) : null;
+        const mgrApprover = r.manager_approved_by ? userMap.get(r.manager_approved_by) : null;
+
+        const assignedUserNames = Array.isArray(r.assigned_user_ids)
+          ? r.assigned_user_ids.map((id: string) => userMap.get(id)?.name || "พนักงาน").filter(Boolean)
+          : [];
+
+        const participatedUserNames = Array.isArray(r.participated_user_ids)
+          ? r.participated_user_ids.map((id: string) => userMap.get(id)?.name || "พนักงาน").filter(Boolean)
+          : [];
+
+        return {
+          id: r.id,
+          branchId: r.branch_id,
+          title: r.title,
+          description: r.description || null,
+          issuedByUserId: r.issued_by,
+          issuedByUserName: issuer?.name || "ผู้จัดการ",
+          issuedByUserRole: issuer?.role || null,
+          targetType: r.target_type,
+          assignedUserId: r.assigned_user_id,
+          assignedUserName: assignee?.name || null,
+          assignedRole: r.assigned_role,
+          assignedUserIds: r.assigned_user_ids || [],
+          assignedUserNames,
+          startDate: r.start_date,
+          endDate: r.end_date,
+          pointsReward: r.points_reward,
+          penaltyStreak: Boolean(r.penalty_streak),
+          status: r.status,
+          submittedByUserId: r.submitted_by,
+          submittedByUserName: submitter?.name || null,
+          submittedAt: r.submitted_at ? new Date(r.submitted_at).toISOString() : null,
+          submissionComment: r.submission_comment,
+          participatedUserIds: r.participated_user_ids || [],
+          participatedUserNames,
+          assistantApprovedByUserId: r.assistant_approved_by,
+          assistantApprovedByUserName: asstApprover?.name || null,
+          assistantApprovedAt: r.assistant_approved_at ? new Date(r.assistant_approved_at).toISOString() : null,
+          managerApprovedByUserId: r.manager_approved_by,
+          managerApprovedByUserName: mgrApprover?.name || null,
+          managerApprovedAt: r.manager_approved_at ? new Date(r.manager_approved_at).toISOString() : null,
+          declineReason: r.decline_reason,
+          createdAt: new Date(r.created_at).toISOString(),
+          updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+        };
+      });
+
+      // Filter for specific employee if requested
+      if (userId) {
+        const filtered = mapped.filter((t) => {
+          if (t.targetType === "user") return t.assignedUserId === userId;
+          if (t.targetType === "group") return t.assignedUserIds?.includes(userId);
+          if (t.targetType === "role") return role ? t.assignedRole === role : true;
+          return true;
+        });
+        return { success: true, tasks: filtered };
+      }
+
+      return { success: true, tasks: mapped };
+    } catch (err: any) {
+      console.error("ManagerService.getSpecialTasks error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการดึงข้อมูลภารกิจพิเศษ" };
+    }
+  }
+
+  async createSpecialTask(params: {
+    branchId: string;
+    title: string;
+    description?: string;
+    issuedByUserId: string;
+    targetType: "user" | "role" | "group";
+    assignedUserId?: string;
+    assignedRole?: string;
+    assignedUserIds?: string[];
+    startDate: string;
+    endDate: string;
+    pointsReward: number;
+    penaltyStreak: boolean;
+  }): Promise<{ success: boolean; task?: SpecialTaskItem; error?: string }> {
+    try {
+      const {
+        branchId,
+        title,
+        description,
+        issuedByUserId,
+        targetType,
+        assignedUserId,
+        assignedRole,
+        assignedUserIds,
+        startDate,
+        endDate,
+        pointsReward,
+        penaltyStreak,
+      } = params;
+
+      if (!title?.trim()) {
+        return { success: false, error: "กรุณาระบุชื่องานภารกิจพิเศษ" };
+      }
+
+      // Check issuer permissions
+      const [issuer] = await this.db
+        .select({ manager_type: users.manager_type, is_admin: users.is_admin })
+        .from(users)
+        .where(eq(users.id, issuedByUserId))
+        .limit(1);
+
+      const isStoreManager = issuer?.manager_type === "store" || issuer?.is_admin;
+      const isAssistantManager = issuer?.manager_type === "assistant";
+
+      if (!isStoreManager && !isAssistantManager) {
+        return { success: false, error: "เฉพาะผู้จัดการและผู้ช่วยผู้จัดการเท่านั้นที่สามารถมอบหมายภารกิจพิเศษได้" };
+      }
+
+      // Assistant Manager can ONLY issue for regular employees!
+      if (isAssistantManager) {
+        if (targetType === "role" && assignedRole === "manager_assistant") {
+          return { success: false, error: "ผู้ช่วยผู้จัดการไม่สามารถมอบหมายภารกิจพิเศษให้ตำแหน่งผู้ช่วยผู้จัดการด้วยกันได้" };
+        }
+        if (targetType === "user" && assignedUserId) {
+          const [targetUser] = await this.db.select({ manager_type: users.manager_type }).from(users).where(eq(users.id, assignedUserId)).limit(1);
+          if (targetUser?.manager_type !== "none") {
+            return { success: false, error: "ผู้ช่วยผู้จัดการสามารถมอบหมายภารกิจพิเศษให้เฉพาะพนักงานสาขาทั่วไปเท่านั้น" };
+          }
+        }
+        if (targetType === "group" && assignedUserIds && assignedUserIds.length > 0) {
+          const targetUsers = await this.db.select({ id: users.id, manager_type: users.manager_type }).from(users).where(inArray(users.id, assignedUserIds));
+          const hasNonStaff = targetUsers.some((u: any) => u.manager_type !== "none");
+          if (hasNonStaff) {
+            return { success: false, error: "ผู้ช่วยผู้จัดการสามารถมอบหมายภารกิจพิเศษให้เฉพาะพนักงานสาขาทั่วไปเท่านั้น" };
+          }
+        }
+      }
+
+      const [newTask] = await this.db
+        .insert(specialTasks)
+        .values({
+          branch_id: branchId,
+          title: title.trim(),
+          description: description?.trim() || null,
+          issued_by: issuedByUserId,
+          target_type: targetType,
+          assigned_user_id: targetType === "user" ? assignedUserId : null,
+          assigned_role: targetType === "role" ? assignedRole : null,
+          assigned_user_ids: targetType === "group" ? (assignedUserIds || []) : [],
+          start_date: startDate,
+          end_date: endDate,
+          points_reward: Number(pointsReward) || 10,
+          penalty_streak: Boolean(penaltyStreak),
+          status: "pending",
+        })
+        .returning();
+
+      // Touch branch last_update
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, branchId));
+
+      return {
+        success: true,
+        task: {
+          id: newTask.id,
+          branchId: newTask.branch_id,
+          title: newTask.title,
+          description: newTask.description,
+          issuedByUserId: newTask.issued_by,
+          targetType: newTask.target_type,
+          assignedUserId: newTask.assigned_user_id,
+          assignedRole: newTask.assigned_role,
+          assignedUserIds: newTask.assigned_user_ids,
+          startDate: newTask.start_date,
+          endDate: newTask.end_date,
+          pointsReward: newTask.points_reward,
+          penaltyStreak: Boolean(newTask.penalty_streak),
+          status: newTask.status,
+          participatedUserIds: [],
+          createdAt: new Date(newTask.created_at).toISOString(),
+        },
+      };
+    } catch (err: any) {
+      console.error("ManagerService.createSpecialTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการสร้างภารกิจพิเศษ" };
+    }
+  }
+
+  async updateSpecialTask(params: {
+    specialTaskId: string;
+    title?: string;
+    description?: string;
+    assignedUserId?: string;
+    assignedRole?: string;
+    assignedUserIds?: string[];
+    startDate?: string;
+    endDate?: string;
+    pointsReward?: number;
+    penaltyStreak?: boolean;
+  }): Promise<{ success: boolean; task?: SpecialTaskItem; error?: string }> {
+    try {
+      const { specialTaskId, title, description, assignedUserId, assignedRole, assignedUserIds, startDate, endDate, pointsReward, penaltyStreak } = params;
+
+      const updateData: any = { updated_at: new Date() };
+      if (title !== undefined) updateData.title = title.trim();
+      if (description !== undefined) updateData.description = description.trim();
+      if (assignedUserId !== undefined) updateData.assigned_user_id = assignedUserId;
+      if (assignedRole !== undefined) updateData.assigned_role = assignedRole;
+      if (assignedUserIds !== undefined) updateData.assigned_user_ids = assignedUserIds;
+      if (startDate !== undefined) updateData.start_date = startDate;
+      if (endDate !== undefined) updateData.end_date = endDate;
+      if (pointsReward !== undefined) updateData.points_reward = Number(pointsReward);
+      if (penaltyStreak !== undefined) updateData.penalty_streak = Boolean(penaltyStreak);
+
+      const [updated] = await this.db
+        .update(specialTasks)
+        .set(updateData)
+        .where(eq(specialTasks.id, specialTaskId))
+        .returning();
+
+      if (!updated) {
+        return { success: false, error: "ไม่พบข้อมูลภารกิจพิเศษ" };
+      }
+
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, updated.branch_id));
+
+      return {
+        success: true,
+        task: {
+          id: updated.id,
+          branchId: updated.branch_id,
+          title: updated.title,
+          description: updated.description,
+          issuedByUserId: updated.issued_by,
+          targetType: updated.target_type,
+          assignedUserId: updated.assigned_user_id,
+          assignedRole: updated.assigned_role,
+          assignedUserIds: updated.assigned_user_ids,
+          startDate: updated.start_date,
+          endDate: updated.end_date,
+          pointsReward: updated.points_reward,
+          penaltyStreak: Boolean(updated.penalty_streak),
+          status: updated.status,
+          participatedUserIds: updated.participated_user_ids || [],
+          createdAt: new Date(updated.created_at).toISOString(),
+          updatedAt: new Date(updated.updated_at).toISOString(),
+        },
+      };
+    } catch (err: any) {
+      console.error("ManagerService.updateSpecialTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการอัปเดตภารกิจพิเศษ" };
+    }
+  }
+
+  async duplicateSpecialTask(params: {
+    specialTaskId: string;
+    issuedByUserId: string;
+    branchId?: string;
+    newStartDate?: string;
+    newEndDate?: string;
+  }): Promise<{ success: boolean; task?: SpecialTaskItem; error?: string }> {
+    try {
+      const { specialTaskId, issuedByUserId, branchId: propBranchId, newStartDate, newEndDate } = params;
+
+      const [existing] = await this.db.select().from(specialTasks).where(eq(specialTasks.id, specialTaskId)).limit(1);
+      if (!existing) {
+        return { success: false, error: "ไม่พบภารกิจพิเศษต้นฉบับที่จะคัดลอก" };
+      }
+
+      const targetBranchId = propBranchId || existing.branch_id;
+      const today = getThaiStartAndEndOfDay().dateStr;
+
+      const [cloned] = await this.db
+        .insert(specialTasks)
+        .values({
+          branch_id: targetBranchId,
+          title: `${existing.title} (คัดลอก)`,
+          description: existing.description,
+          issued_by: issuedByUserId,
+          target_type: existing.target_type,
+          assigned_user_id: existing.assigned_user_id,
+          assigned_role: existing.assigned_role,
+          assigned_user_ids: existing.assigned_user_ids || [],
+          start_date: newStartDate || today,
+          end_date: newEndDate || existing.end_date,
+          points_reward: existing.points_reward,
+          penalty_streak: existing.penalty_streak,
+          status: "pending",
+        })
+        .returning();
+
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, targetBranchId));
+
+      return {
+        success: true,
+        task: {
+          id: cloned.id,
+          branchId: cloned.branch_id,
+          title: cloned.title,
+          description: cloned.description,
+          issuedByUserId: cloned.issued_by,
+          targetType: cloned.target_type,
+          assignedUserId: cloned.assigned_user_id,
+          assignedRole: cloned.assigned_role,
+          assignedUserIds: cloned.assigned_user_ids,
+          startDate: cloned.start_date,
+          endDate: cloned.end_date,
+          pointsReward: cloned.points_reward,
+          penaltyStreak: Boolean(cloned.penalty_streak),
+          status: cloned.status,
+          participatedUserIds: [],
+          createdAt: new Date(cloned.created_at).toISOString(),
+        },
+      };
+    } catch (err: any) {
+      console.error("ManagerService.duplicateSpecialTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการคัดลอกภารกิจพิเศษ" };
+    }
+  }
+
+  async deleteSpecialTask(specialTaskId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const [existing] = await this.db.select({ branch_id: specialTasks.branch_id }).from(specialTasks).where(eq(specialTasks.id, specialTaskId)).limit(1);
+      await this.db.delete(specialTasks).where(eq(specialTasks.id, specialTaskId));
+
+      if (existing?.branch_id) {
+        await this.db
+          .update(branches)
+          .set({ last_update: new Date() })
+          .where(eq(branches.id, existing.branch_id));
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("ManagerService.deleteSpecialTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการลบภารกิจพิเศษ" };
+    }
+  }
+
+  async submitSpecialTask(params: {
+    specialTaskId: string;
+    userId: string;
+    comment?: string;
+    participatedUserIds?: string[];
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { specialTaskId, userId, comment, participatedUserIds } = params;
+
+      const [existing] = await this.db.select().from(specialTasks).where(eq(specialTasks.id, specialTaskId)).limit(1);
+      if (!existing) {
+        return { success: false, error: "ไม่พบภารกิจพิเศษนี้ในระบบ" };
+      }
+
+      const participants = Array.from(new Set([userId, ...(participatedUserIds || [])]));
+
+      await this.db
+        .update(specialTasks)
+        .set({
+          status: "submitted",
+          submitted_by: userId,
+          submitted_at: new Date(),
+          submission_comment: comment || null,
+          participated_user_ids: participants,
+          updated_at: new Date(),
+        })
+        .where(eq(specialTasks.id, specialTaskId));
+
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, existing.branch_id));
+
+      if (this.notificationService) {
+        await this.notificationService.createNotification({
+          branchId: existing.branch_id,
+          recipientRole: "manager",
+          title: "🌟 มีการส่งมอบภารกิจพิเศษ",
+          message: `พนักงานได้ส่งมอบงาน "${existing.title}" เรียบร้อยแล้ว กรุณาตรวจสอบและอนุมัติ`,
+          type: "shift_submitted",
+        });
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("ManagerService.submitSpecialTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการส่งมอบภารกิจพิเศษ" };
+    }
+  }
+
+  async approveSpecialTask(params: {
+    specialTaskId: string;
+    reviewerUserId: string;
+    reviewerRole: Role;
+    isApproved: boolean;
+    declineReason?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { specialTaskId, reviewerUserId, reviewerRole, isApproved, declineReason } = params;
+
+      const [task] = await this.db.select().from(specialTasks).where(eq(specialTasks.id, specialTaskId)).limit(1);
+      if (!task) {
+        return { success: false, error: "ไม่พบภารกิจพิเศษนี้ในระบบ" };
+      }
+
+      // Check submitter role
+      let submitterManagerType: string = "none";
+      if (task.submitted_by) {
+        const [subUser] = await this.db.select({ manager_type: users.manager_type }).from(users).where(eq(users.id, task.submitted_by)).limit(1);
+        if (subUser) submitterManagerType = subUser.manager_type;
+      }
+
+      // Assistant manager cannot approve assistant manager's work
+      if (submitterManagerType === "assistant" && reviewerRole === "manager_assistant") {
+        return { success: false, error: "งานของผู้ช่วยผู้จัดการร้านจะต้องได้รับการอนุมัติโดยผู้จัดการร้านเท่านั้น" };
+      }
+
+      const now = new Date();
+
+      if (reviewerRole === "manager_assistant" && isApproved) {
+        // Assistant Manager initial verification sign-off
+        await this.db
+          .update(specialTasks)
+          .set({
+            assistant_approved_by: reviewerUserId,
+            assistant_approved_at: now,
+            updated_at: now,
+          })
+          .where(eq(specialTasks.id, specialTaskId));
+
+        if (this.notificationService) {
+          await this.notificationService.createNotification({
+            branchId: task.branch_id,
+            recipientRole: "manager",
+            title: "🌟 ผู้ช่วยฯ ตรวจรับรองภารกิจพิเศษแล้ว",
+            message: `ผู้ช่วยผู้จัดการได้ตรวจรับรอง "${task.title}" เรียบร้อยแล้ว กรุณาอนุมัติขั้นสุดท้ายเพื่อมอบคะแนน`,
+            type: "shift_submitted",
+          });
+        }
+
+        return { success: true };
+      }
+
+      // Store Manager Final Decision (Approve or Decline)
+      if (isApproved) {
+        await this.db
+          .update(specialTasks)
+          .set({
+            status: "approved",
+            manager_approved_by: reviewerUserId,
+            manager_approved_at: now,
+            assistant_approved_by: task.assistant_approved_by || reviewerUserId,
+            assistant_approved_at: task.assistant_approved_at || now,
+            updated_at: now,
+          })
+          .where(eq(specialTasks.id, specialTaskId));
+
+        // Award points to all participating users or assigned user
+        const awardees = new Set<string>();
+        if (Array.isArray(task.participated_user_ids) && task.participated_user_ids.length > 0) {
+          task.participated_user_ids.forEach((id: string) => awardees.add(id));
+        }
+        if (task.submitted_by) awardees.add(task.submitted_by);
+        if (task.assigned_user_id) awardees.add(task.assigned_user_id);
+
+        if (this.pointService && awardees.size > 0 && task.points_reward > 0) {
+          for (const uid of Array.from(awardees)) {
+            await this.pointService.awardPoints({
+              userId: uid,
+              points: task.points_reward,
+              type: "special_task_reward",
+              description: `สำเร็จภารกิจพิเศษ: ${task.title} (+${task.points_reward} แต้ม)`,
+            });
+          }
+        }
+      } else {
+        // Declined
+        await this.db
+          .update(specialTasks)
+          .set({
+            status: "declined",
+            decline_reason: declineReason || "ผู้จัดการไม่อนุมัติงาน",
+            manager_approved_by: reviewerUserId,
+            manager_approved_at: now,
+            updated_at: now,
+          })
+          .where(eq(specialTasks.id, specialTaskId));
+
+        // If penalty_streak was chosen by issuer, mark streak as flawed for assignees
+        if (task.penalty_streak) {
+          const targetIds: string[] = [];
+          if (task.assigned_user_id) targetIds.push(task.assigned_user_id);
+          if (Array.isArray(task.assigned_user_ids)) targetIds.push(...task.assigned_user_ids);
+
+          if (targetIds.length > 0) {
+            await this.db
+              .update(users)
+              .set({ point_streak_type: "flawed" })
+              .where(inArray(users.id, targetIds));
+          }
+        }
+      }
+
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, task.branch_id));
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("ManagerService.approveSpecialTask error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการอนุมัติภารกิจพิเศษ" };
+    }
+  }
+
+  async getJointTaskDaySummary(params: {
+    branchId: string;
+    dateStr: string;
+    shift?: ShiftType;
+  }): Promise<{
+    success: boolean;
+    summary?: {
+      date: string;
+      shift?: ShiftType;
+      branchName?: string;
+      onDutyStaff: Array<{ id: string; name: string; position?: string; role: Role }>;
+      participants: Array<{ id: string; name: string; completedCount: number }>;
+      items: JointTaskItem[];
+      refrigerators: RefrigeratorTaskItem[];
+      assistantApproved: boolean;
+      managerApproved: boolean;
+    };
+    error?: string;
+  }> {
+    try {
+      const { branchId, dateStr, shift } = params;
+
+      const [branchRecord] = await this.db.select({ name: branches.name }).from(branches).where(eq(branches.id, branchId)).limit(1);
+
+      // 1. Fetch joint tasks definitions and work for this date
+      const jointDefs = await this.db
+        .select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.is_joint, true),
+            eq(tasks.disabled, false),
+            or(eq(tasks.branch_id, branchId), isNull(tasks.branch_id))
+          )
+        );
+
+      const defIds = jointDefs.map((t: any) => t.id);
+      const jointWorks = defIds.length > 0
+        ? await this.db
+            .select()
+            .from(jointTaskWork)
+            .where(
+              and(
+                eq(jointTaskWork.branch_id, branchId),
+                eq(jointTaskWork.task_date, dateStr),
+                inArray(jointTaskWork.task_id, defIds)
+              )
+            )
+        : [];
+
+      // 2. Fetch refrigerator tasks for this date (filtered by shift if given)
+      const refQueryConditions = [
+        eq(refrigeratorTasks.branch_id, branchId),
+        eq(refrigeratorTasks.task_date, dateStr),
+      ];
+      if (shift && shift !== "both") {
+        refQueryConditions.push(eq(refrigeratorTasks.shift, shift));
+      }
+      const refWorks = await this.db.select().from(refrigeratorTasks).where(and(...refQueryConditions));
+
+      const allBranchRefs = await this.db.select().from(refrigerators).where(eq(refrigerators.branch_id, branchId));
+      const refMap = new Map<string, any>(allBranchRefs.map((r: any) => [r.id, r]));
+
+      // 3. User mapping & participant counts
+      const participantCounts = new Map<string, number>();
+      const participantUserIds = new Set<string>();
+
+      jointWorks.forEach((w: any) => {
+        if (w.completed_by) {
+          participantUserIds.add(w.completed_by);
+          participantCounts.set(w.completed_by, (participantCounts.get(w.completed_by) || 0) + 1);
+        }
+      });
+      refWorks.forEach((r: any) => {
+        if (r.completed_by) {
+          participantUserIds.add(r.completed_by);
+          participantCounts.set(r.completed_by, (participantCounts.get(r.completed_by) || 0) + 1);
+        }
+      });
+
+      // 4. On-duty staff at this branch today (from shiftSession)
+      const daySessions = await this.db
+        .select({ user: shiftSession.user })
+        .from(shiftSession)
+        .where(
+          and(
+            eq(shiftSession.branch, branchId),
+            gte(shiftSession.start, new Date(`${dateStr}T00:00:00+07:00`)),
+            lte(shiftSession.start, new Date(`${dateStr}T23:59:59+07:00`))
+          )
+        );
+
+      const onDutyIds = Array.from(new Set([...daySessions.map((s: any) => s.user), ...Array.from(participantUserIds)]));
+      const allStaff = onDutyIds.length > 0
+        ? await this.db.select({ id: users.id, name: users.name, manager_type: users.manager_type, executive_type: users.executive_type, is_admin: users.is_admin }).from(users).where(inArray(users.id, onDutyIds))
+        : [];
+
+      const staffMap = new Map<string, any>(allStaff.map((u: any) => [u.id, u]));
+
+      const onDutyStaff = allStaff.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        role: computePrimaryRole(u.manager_type, u.executive_type, u.is_admin),
+      }));
+
+      const participantsList = Array.from(participantCounts.entries()).map(([uid, count]) => ({
+        id: uid,
+        name: staffMap.get(uid)?.name || "พนักงาน",
+        completedCount: count,
+      }));
+
+      // Assemble joint items
+      const jointWorkMap = new Map<string, any>(jointWorks.map((w: any) => [w.task_id, w]));
+      const items: JointTaskItem[] = jointDefs.map((def: any) => {
+        const work = jointWorkMap.get(def.id);
+        const completed = Boolean(work?.completed_at);
+        return {
+          id: work?.id || def.id,
+          taskId: def.id,
+          branchId,
+          taskDate: dateStr,
+          shift: work?.shift ? (work.shift === "morning_afternoon" ? "both" : work.shift) : (def.shift === "morning_afternoon" ? "both" : def.shift),
+          name: def.name,
+          selectableRoles: (def.selectable_roles as string[]) || [def.task_role],
+          category: def.category,
+          completed,
+          completedAt: work?.completed_at ? new Date(work.completed_at).toISOString() : null,
+          completedByUserId: work?.completed_by || null,
+          completedByUserName: work?.completed_by ? staffMap.get(work.completed_by)?.name || null : null,
+          comment: work?.comment || null,
+        };
+      });
+
+      // Assemble refrigerator items
+      const refItems: RefrigeratorTaskItem[] = refWorks.map((rw: any) => {
+        const ref = refMap.get(rw.refrigerator_id);
+        return {
+          taskId: rw.id,
+          refrigeratorId: rw.refrigerator_id,
+          name: ref?.name || "ตู้แช่",
+          minTemperature: ref?.min_temperature ?? 0,
+          maxTemperature: ref?.max_temperature ?? 4,
+          taskDate: rw.task_date,
+          shift: rw.shift ? (rw.shift === "morning_afternoon" ? "both" : rw.shift) : null,
+          completed: Boolean(rw.completed_at),
+          completedAt: rw.completed_at ? new Date(rw.completed_at).toISOString() : null,
+          completedByUserId: rw.completed_by,
+          completedByUserName: rw.completed_by ? staffMap.get(rw.completed_by)?.name || null : null,
+          temperature: rw.temperature,
+          isOkay: rw.is_okay ?? true,
+          comment: rw.comment,
+        };
+      });
+
+      return {
+        success: true,
+        summary: {
+          date: dateStr,
+          shift,
+          branchName: branchRecord?.name || "สาขาหลัก",
+          onDutyStaff,
+          participants: participantsList,
+          items,
+          refrigerators: refItems,
+          assistantApproved: true,
+          managerApproved: true,
+        },
+      };
+    } catch (err: any) {
+      console.error("ManagerService.getJointTaskDaySummary error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการดึงสรุปงานส่วนกลาง" };
+    }
+  }
+
+  async approveJointTaskDay(params: {
+    branchId: string;
+    dateStr: string;
+    shift?: ShiftType;
+    role: Role;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { branchId } = params;
+      await this.db
+        .update(branches)
+        .set({ last_update: new Date() })
+        .where(eq(branches.id, branchId));
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("ManagerService.approveJointTaskDay error:", err);
+      return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการอนุมัติงานส่วนกลาง" };
     }
   }
 }

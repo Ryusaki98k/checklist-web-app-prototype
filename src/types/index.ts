@@ -175,3 +175,71 @@ export const DEFAULT_POSITIONS: Position[] = [
   { id: "pos-4", name: "ผู้จัดการร้าน" },
   { id: "pos-5", name: "กรรมการ" },
 ];
+
+export interface JointTaskItem {
+  id: string;
+  taskId: string;
+  branchId: string;
+  taskDate: string;
+  shift?: ShiftType | null;
+  name: string;
+  selectableRoles: string[];
+  category?: string | null;
+  completed: boolean;
+  completedAt: string | null;
+  completedByUserId: string | null;
+  completedByUserName: string | null;
+  comment: string | null;
+}
+
+export interface SpecialTaskItem {
+  id: string;
+  branchId: string;
+  title: string;
+  description?: string | null;
+  issuedByUserId: string;
+  issuedByUserName?: string | null;
+  issuedByUserRole?: string | null;
+  targetType: "user" | "role" | "group";
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
+  assignedRole?: string | null;
+  assignedUserIds?: string[];
+  assignedUserNames?: string[];
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  pointsReward: number;
+  penaltyStreak: boolean;
+  status: "pending" | "submitted" | "approved" | "declined";
+  submittedByUserId?: string | null;
+  submittedByUserName?: string | null;
+  submittedAt?: string | null;
+  submissionComment?: string | null;
+  participatedUserIds: string[];
+  participatedUserNames?: string[];
+  assistantApprovedByUserId?: string | null;
+  assistantApprovedByUserName?: string | null;
+  assistantApprovedAt?: string | null;
+  managerApprovedByUserId?: string | null;
+  managerApprovedByUserName?: string | null;
+  managerApprovedAt?: string | null;
+  declineReason?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface BranchDailyTask {
+  id: string;
+  branchId?: string | null;
+  name: string;
+  taskRole: "cashier" | "stock" | "manager_assistant";
+  shift: ShiftType;
+  startTime: string;
+  endTime: string;
+  disabled: boolean;
+  forManagers: boolean;
+  isJoint: boolean;
+  selectableRoles: string[];
+  category?: string | null;
+}
+

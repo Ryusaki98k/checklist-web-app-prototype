@@ -17,13 +17,22 @@ import {
   LogOut, 
   Sparkles, 
   ArrowRight, 
-  Store, 
   AlertCircle,
-  LayoutDashboard
+  LayoutDashboard,
+  Users,
+  Flame,
+  Calendar,
+  Send,
+  ShieldAlert,
+  X
 } from "lucide-react";
 import { BranchRefrigeratorChecklist } from "./BranchRefrigeratorChecklist";
+import { JointTaskDetailsModal } from "./JointTaskDetailsModal";
 import { LateReasonModal } from "../common/LateReasonModal";
 import { getOrCreateShiftSessionAction, validateShiftCompletionAction } from "../../actions/checklist";
+import { getBranchJointTasksAction, toggleJointTaskItemAction } from "../../actions/jointTask";
+import { getSpecialTasksAction, submitSpecialTaskAction } from "../../actions/specialTask";
+import { SpecialTaskItem, JointTaskItem } from "../../types";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 import { DbSyncNotification } from "../common/DbSyncNotification";
 import { useApp } from "../../context/AppContext";
@@ -88,7 +97,6 @@ export function ChecklistPage({
   const isPageBusy = isValidatingDb || isEnding;
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
-  const [mobileTab, setMobileTab] = useState<"tasks" | "refrigerators">("tasks");
 
   const isStockShift =
     session.taskRole === "stock" ||
@@ -121,6 +129,140 @@ export function ChecklistPage({
   const [items, setItems] = useState<ChecklistItem[]>(session.items || []);
   const [shiftCompleted, setShiftCompleted] = useState<boolean>(Boolean(session.completedAt));
   const [prevSession, setPrevSession] = useState(session);
+
+  // --- ROW 2: Joint Tasks State ---
+  const [jointTasks, setJointTasks] = useState<JointTaskItem[]>([]);
+  const [isJointModalOpen, setIsJointModalOpen] = useState(false);
+  const [jointSubTab, setJointSubTab] = useState<"refrigerators" | "joint_tasks">("refrigerators");
+
+  // --- ROW 3: Special Tasks State ---
+  const [specialTasks, setSpecialTasks] = useState<SpecialTaskItem[]>([]);
+  const [submittingSpecialTask, setSubmittingSpecialTask] = useState<SpecialTaskItem | null>(null);
+  const [submissionComment, setSubmissionComment] = useState("");
+  const [isSubmittingSpecial, setIsSubmittingSpecial] = useState(false);
+
+  // Toast feedback for Joint & Special tasks
+  const [rowToast, setRowToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const showRowToast = (type: "success" | "error", text: string) => {
+    setRowToast({ type, text });
+    setTimeout(() => setRowToast(null), 4000);
+  };
+
+  const branchId = session.branchId || currentUser?.branchId;
+
+  const loadJointTasks = useCallback(async () => {
+    if (!branchId) return;
+    try {
+      const res = await getBranchJointTasksAction({
+        branchId,
+        shift: session.shift,
+      });
+      if (res.success && res.data) {
+        setJointTasks(res.data);
+      }
+    } catch {
+      // non-blocking
+    }
+  }, [branchId, session.shift]);
+
+  const loadSpecialTasks = useCallback(async () => {
+    if (!branchId) return;
+    try {
+      const res = await getSpecialTasksAction({
+        branchId,
+        userId: session.userId,
+        role: session.taskRole || currentUser?.role,
+      });
+      if (res.success && res.tasks) {
+        setSpecialTasks(res.tasks);
+      }
+    } catch {
+      // non-blocking
+    }
+  }, [branchId, session.userId, session.taskRole, currentUser]);
+
+  useEffect(() => {
+    void loadJointTasks();
+    void loadSpecialTasks();
+    const interval = setInterval(() => {
+      void loadJointTasks();
+      void loadSpecialTasks();
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [loadJointTasks, loadSpecialTasks]);
+
+  const handleToggleJointTask = async (task: JointTaskItem) => {
+    if (!branchId) return;
+    const willComplete = !task.completed;
+
+    // Optimistic update
+    setJointTasks((prev) =>
+      prev.map((t) =>
+        t.taskId === task.taskId
+          ? {
+              ...t,
+              completed: willComplete,
+              completedByUserId: willComplete ? session.userId : null,
+              completedByUserName: willComplete ? (session.userName || "คุณ") : null,
+              completedAt: willComplete ? new Date().toISOString() : null,
+            }
+          : t
+      )
+    );
+
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const res = await toggleJointTaskItemAction({
+        jointWorkId: task.id,
+        taskId: task.taskId,
+        branchId,
+        dateStr: today,
+        shift: session.shift,
+        userId: session.userId,
+        completed: willComplete,
+      });
+
+      if (res.conflict) {
+        showRowToast("error", res.message || "รายการนี้ถูกตรวจเช็คโดยเพื่อนร่วมงานแล้ว");
+        void loadJointTasks();
+      } else if (!res.success) {
+        showRowToast("error", res.error || "เกิดข้อผิดพลาดในการบันทึก");
+        void loadJointTasks();
+      } else if (res.data) {
+        setJointTasks((prev) =>
+          prev.map((t) => (t.taskId === task.taskId ? res.data! : t))
+        );
+      }
+    } catch (err: any) {
+      showRowToast("error", err?.message || "การเชื่อมต่อขัดข้อง");
+      void loadJointTasks();
+    }
+  };
+
+  const handleSubmitSpecialTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!submittingSpecialTask) return;
+    setIsSubmittingSpecial(true);
+    try {
+      const res = await submitSpecialTaskAction({
+        specialTaskId: submittingSpecialTask.id,
+        userId: session.userId,
+        comment: submissionComment.trim() || undefined,
+      });
+      if (res.success) {
+        showRowToast("success", "ส่งมอบภารกิจพิเศษสำเร็จ! รอการอนุมัติจากผู้จัดการ");
+        setSubmittingSpecialTask(null);
+        setSubmissionComment("");
+        void loadSpecialTasks();
+      } else {
+        showRowToast("error", res.error || "ไม่สามารถส่งมอบภารกิจได้");
+      }
+    } catch (err: any) {
+      showRowToast("error", err?.message || "เกิดข้อผิดพลาดในการส่งมอบ");
+    } finally {
+      setIsSubmittingSpecial(false);
+    }
+  };
 
   if (session !== prevSession) {
     setPrevSession(session);
@@ -555,85 +697,67 @@ export function ChecklistPage({
           </div>
         </header>
 
-        {/* Mobile Tab Switcher for Stock Shift */}
-        {isStockShift && (
-          <div className="lg:hidden flex bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] text-xs font-bold gap-1 shadow-2xs">
-            <button
-              type="button"
-              disabled={isPageBusy}
-              onClick={() => setMobileTab("tasks")}
-              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                mobileTab === "tasks"
-                  ? "bg-[var(--color-brown)] text-amber-100 dark:bg-amber-400 dark:text-amber-950 shadow-xs"
-                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+        {/* Feedback toast for Row 2 & 3 */}
+        {rowToast && (
+          <div className="fixed top-5 right-5 z-50 animate-bounce">
+            <div
+              className={`px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs sm:text-sm font-bold border ${
+                rowToast.type === "success"
+                  ? "bg-emerald-50 dark:bg-emerald-950 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+                  : "bg-rose-50 dark:bg-rose-950 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200"
               }`}
             >
-              📋 งานประจำกะ ({done}/{total})
-            </button>
-            <button
-              type="button"
-              disabled={isPageBusy}
-              onClick={() => setMobileTab("refrigerators")}
-              className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                mobileTab === "refrigerators"
-                  ? "bg-sky-600 text-white shadow-xs"
-                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-              }`}
-            >
-              ❄️ เช็คลิสต์ตู้แช่สาขา
-            </button>
+              {rowToast.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+              <span>{rowToast.text}</span>
+            </div>
           </div>
         )}
 
-        {/* Main Content Layout (2 Columns for Stock, 1 Column for Others) */}
-        <div className={isStockShift ? "grid grid-cols-1 lg:grid-cols-2 gap-6 items-start" : ""}>
-          {/* Left Column: Usual Shift Tasks */}
-          <div className={`space-y-4 ${isStockShift && mobileTab === "refrigerators" ? "hidden lg:block" : "block"}`}>
-            {/* Filter Segmented Control */}
-            <div className="flex items-center justify-between gap-2 px-1">
-          <div
-            role="tablist"
-            aria-label="กรองรายการเช็คลิสต์"
-            onKeyDown={(e) => {
-              const filterTabs: Array<"all" | "pending" | "done"> = ["all", "pending", "done"];
-              const currentIndex = filterTabs.indexOf(filter);
-              if (e.key === "ArrowRight") {
-                e.preventDefault();
-                setFilter(filterTabs[(currentIndex + 1) % filterTabs.length]);
-              } else if (e.key === "ArrowLeft") {
-                e.preventDefault();
-                setFilter(filterTabs[(currentIndex - 1 + filterTabs.length) % filterTabs.length]);
-              }
-            }}
-            className="flex w-full sm:w-auto bg-[var(--color-surface-2)] p-1 rounded-xl text-xs font-semibold gap-1 border border-[var(--color-border)] shadow-2xs"
-          >
-            {(["all", "pending", "done"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                role="tab"
-                disabled={isPageBusy}
-                aria-selected={filter === t}
-                tabIndex={filter === t ? 0 : -1}
-                onClick={() => setFilter(t)}
-                className={`flex-1 sm:flex-initial px-2 sm:px-3.5 py-2 min-h-[40px] sm:min-h-[34px] rounded-lg transition-all text-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center truncate ${
-                  filter === t
-                    ? "bg-[var(--color-brown)] text-amber-200 dark:bg-amber-400 dark:text-amber-950 shadow-xs font-bold"
-                    : "text-[var(--color-text)] hover:bg-black/5 dark:hover:bg-white/5 font-semibold"
-                }`}
-              >
-                {t === "all" ? `ทั้งหมด (${total})` : t === "pending" ? `ที่ต้องทำ (${total - done})` : `เสร็จแล้ว (${done})`}
-              </button>
-            ))}
-          </div>
+        {/* 3-Row Cooperative Checklist System */}
+        <div className="space-y-8">
+          {/* ═══════════════════════════════════════════════════════════════════
+              ROW 1: งานประจำวันของฉัน (Daily Shift Tasks)
+          ═══════════════════════════════════════════════════════════════════ */}
+          <section className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span>แถวที่ 1: งานประจำวันของฉัน (Daily Tasks)</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 font-extrabold">
+                    {session.shift === "morning" ? "กะเช้า" : session.shift === "afternoon" ? "กะบ่าย" : session.shift === "night" ? "กะดึก/ปิดร้าน" : "ทุกช่วงกะ"}
+                  </span>
+                </h2>
+                <p className="text-xs text-[var(--color-text-muted)] font-medium mt-0.5">
+                  รายการงานประจำกะที่ต้องตรวจเช็คให้ครบถ้วนเพื่อส่งมอบงานจบกะ
+                </p>
+              </div>
 
-          {allDone && (
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold font-mono text-emerald-800 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full">
-              <Check size={12} strokeWidth={3} />
-              พร้อมจบกะ
-            </span>
-          )}
-        </div>
+              {/* Filter Segmented Control */}
+              <div
+                role="tablist"
+                aria-label="กรองรายการเช็คลิสต์"
+                className="flex bg-[var(--color-surface-2)] p-1 rounded-xl text-xs font-semibold gap-1 border border-[var(--color-border)] shadow-2xs self-start sm:self-auto"
+              >
+                {(["all", "pending", "done"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    role="tab"
+                    disabled={isPageBusy}
+                    aria-selected={filter === t}
+                    onClick={() => setFilter(t)}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold text-xs ${
+                      filter === t
+                        ? "bg-[var(--color-brown)] text-amber-200 dark:bg-amber-400 dark:text-amber-950 shadow-xs"
+                        : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                    }`}
+                  >
+                    {t === "all" ? `ทั้งหมด (${total})` : t === "pending" ? `รอดำเนินการ (${total - done})` : `เสร็จแล้ว (${done})`}
+                  </button>
+                ))}
+              </div>
+            </div>
 
         {/* Shift Completed Notice Banner */}
         {shiftCompleted && (
@@ -798,11 +922,65 @@ export function ChecklistPage({
             </div>
           )}
         </div>
-          </div>
+      </section>
 
-          {/* Right Column: Branch Refrigerator Checklist for Stock Shift */}
-          {isStockShift && (
-            <div className={`space-y-4 ${mobileTab === "tasks" ? "hidden lg:block" : "block"}`}>
+          {/* ═══════════════════════════════════════════════════════════════════
+              ROW 2: งานส่วนกลาง (Joint Tasks & Refrigerator Checks)
+          ═══════════════════════════════════════════════════════════════════ */}
+          <section className="space-y-4 pt-6 border-t-2 border-[var(--color-border)]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+                  <span>แถวที่ 2: งานส่วนกลาง (Joint Tasks)</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 font-extrabold">
+                    แชร์ร่วมในสาขา
+                  </span>
+                </h2>
+                <p className="text-xs text-[var(--color-text-muted)] font-medium mt-0.5">
+                  งานที่หลายคนช่วยกันตรวจเช็คได้ พร้อมระบบป้องกันการเขียนทับซ้อน (Concurrency Safe)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsJointModalOpen(true)}
+                  className="px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Users size={15} className="text-sky-600 dark:text-sky-400" />
+                  <span>ดูรายละเอียดผู้ร่วมงาน</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Joint sub-tabs: Refrigerators vs Other Joint Tasks */}
+            <div className="flex bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] text-xs font-bold gap-1">
+              <button
+                type="button"
+                onClick={() => setJointSubTab("refrigerators")}
+                className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
+                  jointSubTab === "refrigerators"
+                    ? "bg-sky-600 text-white shadow-xs"
+                    : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                }`}
+              >
+                ❄️ ตรวจเช็คตู้แช่สาขา (รอบเช้า & รอบบ่าย)
+              </button>
+              <button
+                type="button"
+                onClick={() => setJointSubTab("joint_tasks")}
+                className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
+                  jointSubTab === "joint_tasks"
+                    ? "bg-sky-600 text-white shadow-xs"
+                    : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                }`}
+              >
+                🤝 รายการงานส่วนกลางอื่น ๆ ({jointTasks.length})
+              </button>
+            </div>
+
+            {jointSubTab === "refrigerators" ? (
               <BranchRefrigeratorChecklist
                 userId={session.userId}
                 userName={session.userName}
@@ -810,10 +988,246 @@ export function ChecklistPage({
                 shiftSessionId={session.id}
                 shift={session.shift}
               />
+            ) : (
+              <div className="space-y-2.5">
+                {jointTasks.length === 0 ? (
+                  <div className="p-8 text-center bg-[var(--color-surface)] border border-dashed border-[var(--color-border)] rounded-2xl">
+                    <Users size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+                    <p className="text-sm font-bold text-[var(--color-text)]">ไม่มีรายการงานส่วนกลางเพิ่มเติมสำหรับตำแหน่งนี้</p>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">ผู้จัดการสามารถกำหนดงานส่วนกลางได้จากระบบจัดการเช็คลิสต์</p>
+                  </div>
+                ) : (
+                  jointTasks.map((jt) => (
+                    <div
+                      key={jt.id}
+                      className={`p-4 rounded-2xl border transition-all flex items-start justify-between gap-3 ${
+                        jt.completed
+                          ? "bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-500/30"
+                          : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-sky-400"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleJointTask(jt)}
+                          className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all cursor-pointer ${
+                            jt.completed
+                              ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                              : "border-[var(--color-border)] hover:border-sky-500 bg-[var(--color-surface)]"
+                          }`}
+                        >
+                          {jt.completed && <Check size={14} strokeWidth={3} />}
+                        </button>
+                        <div>
+                          <p className={`text-sm font-extrabold ${jt.completed ? "line-through text-[var(--color-text-muted)]" : "text-[var(--color-text)]"}`}>
+                            {jt.name}
+                          </p>
+                          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mt-1 flex-wrap">
+                            {jt.category && (
+                              <span className="px-2 py-0.5 rounded-md bg-[var(--color-surface-2)] font-semibold">
+                                {jt.category}
+                              </span>
+                            )}
+                            {jt.completed ? (
+                              <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+                                ✓ ตรวจแล้วโดย {jt.completedByUserName || "เพื่อนร่วมงาน"}{jt.completedAt ? ` เมื่อ ${fmtTime(jt.completedAt)} น.` : ""}
+                              </span>
+                            ) : (
+                              <span>รอดำเนินการตรวจเช็ค</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ═══════════════════════════════════════════════════════════════════
+              ROW 3: ภารกิจพิเศษ (Special Period Tasks)
+          ═══════════════════════════════════════════════════════════════════ */}
+          <section className="space-y-4 pt-6 border-t-2 border-[var(--color-border)]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span>แถวที่ 3: ภารกิจพิเศษ (Special Period Tasks)</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 font-extrabold">
+                    {specialTasks.length} ภารกิจ
+                  </span>
+                </h2>
+                <p className="text-xs text-[var(--color-text-muted)] font-medium mt-0.5">
+                  ภารกิจที่ได้รับมอบหมายตามช่วงเวลา พร้อมคะแนนพิเศษและเงื่อนไขรักษาสตรีค
+                </p>
+              </div>
             </div>
-          )}
+
+            {specialTasks.length === 0 ? (
+              <div className="p-8 text-center bg-[var(--color-surface)] border border-dashed border-[var(--color-border)] rounded-2xl">
+                <Sparkles size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
+                <p className="text-sm font-bold text-[var(--color-text)]">ไม่มีภารกิจพิเศษที่เปิดอยู่ในขณะนี้</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">เมื่อผู้จัดการออกภารกิจใหม่ จะปรากฏในแถวนี้โดยอัตโนมัติ</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {specialTasks.map((st) => (
+                  <div
+                    key={st.id}
+                    className="p-4 sm:p-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-3 flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h3 className="font-extrabold text-sm sm:text-base text-[var(--color-text)]">
+                            {st.title}
+                          </h3>
+                          <p className="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-3">
+                            {st.description || "ไม่มีรายละเอียดเพิ่มเติม"}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider shrink-0 ${
+                            st.status === "approved"
+                              ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300"
+                              : st.status === "submitted"
+                              ? "bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300"
+                              : st.status === "declined"
+                              ? "bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300"
+                              : "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300"
+                          }`}
+                        >
+                          {st.status === "approved"
+                            ? "อนุมัติแล้ว"
+                            : st.status === "submitted"
+                            ? "รออนุมัติ"
+                            : st.status === "declined"
+                            ? "ไม่อนุมัติ"
+                            : "รอดำเนินการ"}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1">
+                        <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-300 font-extrabold flex items-center gap-1">
+                          <Flame size={12} />
+                          +{st.pointsReward} คะแนนพิเศษ
+                        </span>
+                        <span className="px-2 py-0.5 rounded-lg bg-[var(--color-surface-2)] text-[var(--color-text-muted)] font-medium flex items-center gap-1">
+                          <Calendar size={12} />
+                          {st.startDate} ถึง {st.endDate}
+                        </span>
+                        {st.penaltyStreak ? (
+                          <span className="px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 font-bold flex items-center gap-1">
+                            <ShieldAlert size={12} />
+                            สตรีคเสียหายหากไม่สำเร็จ
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold">
+                            ไม่กระทบสตรีค
+                          </span>
+                        )}
+                      </div>
+
+                      {st.submissionComment && (
+                        <div className="p-2 rounded-xl bg-[var(--color-surface-2)] text-xs text-[var(--color-text)]">
+                          <span className="font-bold text-[var(--color-text-muted)]">บันทึกการส่งมอบ: </span>
+                          {st.submissionComment}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-[var(--color-border)] flex items-center justify-between">
+                      <span className="text-[11px] text-[var(--color-text-muted)]">
+                        มอบหมายโดย: {st.issuedByUserName}
+                      </span>
+                      {st.status === "pending" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSubmittingSpecialTask(st);
+                            setSubmissionComment("");
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                        >
+                          <Send size={13} />
+                          <span>ส่งมอบงานภารกิจ</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
+
+      {/* Modals for Joint Tasks & Special Tasks */}
+      <JointTaskDetailsModal
+        isOpen={isJointModalOpen}
+        onClose={() => setIsJointModalOpen(false)}
+        branchId={branchId || ""}
+        dateStr={new Date().toISOString().split("T")[0]}
+        shift={session.shift}
+      />
+
+      {submittingSpecialTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+              <h3 className="text-base font-extrabold text-[var(--color-text)] flex items-center gap-2">
+                <Sparkles size={18} className="text-amber-500" />
+                <span>ส่งมอบภารกิจพิเศษ</span>
+              </h3>
+              <button
+                onClick={() => setSubmittingSpecialTask(null)}
+                className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitSpecialTask} className="space-y-3">
+              <div>
+                <p className="text-xs text-[var(--color-text-muted)]">ชื่อภารกิจ:</p>
+                <p className="text-sm font-bold text-[var(--color-text)]">{submittingSpecialTask.title}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[var(--color-text)] mb-1">
+                  หมายเหตุ / บันทึกผลการดำเนินงาน (ไม่บังคับ)
+                </label>
+                <textarea
+                  rows={3}
+                  value={submissionComment}
+                  onChange={(e) => setSubmissionComment(e.target.value)}
+                  placeholder="เช่น ทำความสะอาดและจัดเรียงสินค้าเสร็จสิ้นตามมาตรฐานแล้ว..."
+                  className="w-full px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-xs text-[var(--color-text)]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+                <button
+                  type="button"
+                  onClick={() => setSubmittingSpecialTask(null)}
+                  className="px-3.5 py-2 rounded-xl border border-[var(--color-border)] text-xs font-bold text-[var(--color-text)] cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingSpecial}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  <Send size={13} />
+                  <span>{isSubmittingSpecial ? "กำลังส่ง..." : "ยืนยันส่งมอบ"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Sticky Bottom Ergonomic Action Dock (Floor Staff Thumb Zone) */}
       <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--color-surface)]/95 backdrop-blur-md border-t border-[var(--color-border)] p-2.5 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-md">

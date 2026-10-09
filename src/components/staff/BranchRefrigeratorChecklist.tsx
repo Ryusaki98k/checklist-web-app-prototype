@@ -50,10 +50,13 @@ export function BranchRefrigeratorChecklist({
   const [tempValue, setTempValue] = useState<number>(4);
   const [isOkayValue, setIsOkayValue] = useState<boolean>(true);
   const [commentValue, setCommentValue] = useState<string>("");
+  const [activeShift, setActiveShift] = useState<"morning" | "afternoon">(() => {
+    return shift === "afternoon" ? "afternoon" : "morning";
+  });
 
   const loadTasks = useCallback(async (isSilent = false) => {
     try {
-      const res = await getBranchRefrigeratorTasksAction({ userId });
+      const res = await getBranchRefrigeratorTasksAction({ userId, shift: activeShift });
       if (res.success && res.data) {
         setTasks((prev) => {
           const inFlight = savingTaskIdsRef.current;
@@ -77,7 +80,7 @@ export function BranchRefrigeratorChecklist({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userId]);
+  }, [userId, activeShift]);
 
   useEffect(() => {
     void loadTasks(true);
@@ -156,6 +159,10 @@ export function BranchRefrigeratorChecklist({
         }));
 
         const res = await batchUpdateRefrigeratorTasksAction(payload);
+
+        if (res.conflicts && res.conflicts.length > 0) {
+          showToast("error", res.conflicts[0].message);
+        }
 
         if (res.success && res.data) {
           const returnedMap = new Map(res.data.map((d) => [d.taskId, d]));
@@ -314,7 +321,7 @@ export function BranchRefrigeratorChecklist({
       isOkay,
       comment: comment || undefined,
       shiftSessionId,
-      shift,
+      shift: activeShift,
       snapshot: taskSnapshot,
     });
   }
@@ -424,9 +431,35 @@ export function BranchRefrigeratorChecklist({
           </div>
         </div>
 
+        {/* Shift selector: Morning vs Afternoon */}
+        <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl mb-3">
+          <button
+            type="button"
+            onClick={() => setActiveShift("morning")}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeShift === "morning"
+                ? "bg-sky-600 text-white shadow-xs"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            รอบเช้า (Morning)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveShift("afternoon")}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeShift === "afternoon"
+                ? "bg-sky-600 text-white shadow-xs"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            รอบบ่าย (Afternoon)
+          </button>
+        </div>
+
         {/* Progress bar */}
         <div className="flex items-center justify-between text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">
-          <span>ตรวจเช็คความเย็นวันนี้</span>
+          <span>ตรวจเช็คความเย็นรอบ{activeShift === "morning" ? "เช้า" : "บ่าย"}</span>
           <span className="font-mono font-bold text-[var(--color-text)]">
             {done}/{total} ตู้ ({progress}%)
           </span>

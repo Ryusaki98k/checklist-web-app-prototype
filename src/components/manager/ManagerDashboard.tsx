@@ -50,8 +50,22 @@ import {
   Snowflake,
   Calendar,
   UserPen,
+  Flame,
+  Send,
+  Sliders,
+  UserCheck,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  getJointTaskDaySummaryAction,
+  approveJointTaskDayAction,
+} from "../../actions/jointTask";
+import {
+  getSpecialTasksAction,
+  approveSpecialTaskAction,
+} from "../../actions/specialTask";
+import { SpecialTaskItem } from "../../types";
 
 export function isSpecialClosingTask(item: ChecklistItem): boolean {
   return Boolean(item.forManagers || item.isSpecial || item.zeroPoints);
@@ -99,6 +113,115 @@ export function ManagerDashboard({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+
+  // Sub-tabs inside Approvals: daily | joint | special
+  const [approvalSubTab, setApprovalSubTab] = useState<"daily" | "joint" | "special">("daily");
+
+  // Joint tasks approval state
+  const todayDateStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const [jointApproveDate, setJointApproveDate] = useState<string>(todayDateStr);
+  const [jointApproveShift, setJointApproveShift] = useState<"morning" | "afternoon">("morning");
+  const [jointSummary, setJointSummary] = useState<any>(null);
+  const [isLoadingJointSummary, setIsLoadingJointSummary] = useState(false);
+  const [isApprovingJoint, setIsApprovingJoint] = useState(false);
+
+  // Special tasks approval state
+  const [specialTasksToReview, setSpecialTasksToReview] = useState<SpecialTaskItem[]>([]);
+  const [isLoadingSpecialReview, setIsLoadingSpecialReview] = useState(false);
+  const [isReviewingSpecial, setIsReviewingSpecial] = useState(false);
+
+  const loadJointSummary = useCallback(async () => {
+    if (!user.branchId) return;
+    setIsLoadingJointSummary(true);
+    try {
+      const res = await getJointTaskDaySummaryAction({
+        branchId: user.branchId,
+        dateStr: jointApproveDate,
+        shift: jointApproveShift,
+      });
+      if (res.success && res.summary) {
+        setJointSummary(res.summary);
+      } else {
+        setJointSummary(null);
+      }
+    } catch {
+      setJointSummary(null);
+    } finally {
+      setIsLoadingJointSummary(false);
+    }
+  }, [user.branchId, jointApproveDate, jointApproveShift]);
+
+  const loadSpecialTasksToReview = useCallback(async () => {
+    if (!user.branchId) return;
+    setIsLoadingSpecialReview(true);
+    try {
+      const res = await getSpecialTasksAction({ branchId: user.branchId });
+      if (res.success && res.tasks) {
+        setSpecialTasksToReview(res.tasks);
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setIsLoadingSpecialReview(false);
+    }
+  }, [user.branchId]);
+
+  useEffect(() => {
+    if (activeTab === "approvals") {
+      if (approvalSubTab === "joint") {
+        void loadJointSummary();
+      } else if (approvalSubTab === "special") {
+        void loadSpecialTasksToReview();
+      }
+    }
+  }, [activeTab, approvalSubTab, loadJointSummary, loadSpecialTasksToReview]);
+
+  const handleApproveJointDay = async () => {
+    if (!user.branchId) return;
+    setIsApprovingJoint(true);
+    try {
+      const res = await approveJointTaskDayAction({
+        branchId: user.branchId,
+        dateStr: jointApproveDate,
+        shift: jointApproveShift,
+        role: user.role,
+      });
+      if (res.success) {
+        setActionFeedback("บันทึกการอนุมัติงานส่วนกลางประจำวันสำเร็จ");
+        void loadJointSummary();
+      } else {
+        setActionFeedback(`เกิดข้อผิดพลาด: ${res.error || "ไม่สามารถอนุมัติได้"}`);
+      }
+    } catch (err: any) {
+      setActionFeedback(`การเชื่อมต่อขัดข้อง: ${err?.message}`);
+    } finally {
+      setIsApprovingJoint(false);
+    }
+  };
+
+  const handleReviewSpecialTask = async (specialTaskId: string, isApproved: boolean) => {
+    setIsReviewingSpecial(true);
+    try {
+      const declineReason = !isApproved ? prompt("กรุณาระบุเหตุผลที่ไม่อนุมัติ (ไม่บังคับ):") || undefined : undefined;
+      const res = await approveSpecialTaskAction({
+        specialTaskId,
+        reviewerUserId: user.id,
+        reviewerRole: user.role,
+        isApproved,
+        declineReason,
+      });
+      if (res.success) {
+        setActionFeedback(isApproved ? "อนุมัติภารกิจพิเศษและมอบคะแนนเรียบร้อยแล้ว!" : "ปฏิเสธภารกิจพิเศษเรียบร้อยแล้ว");
+        void loadSpecialTasksToReview();
+      } else {
+        setActionFeedback(`เกิดข้อผิดพลาด: ${res.error || "ไม่สามารถดำเนินการได้"}`);
+      }
+    } catch (err: any) {
+      setActionFeedback(`การเชื่อมต่อขัดข้อง: ${err?.message}`);
+    } finally {
+      setIsReviewingSpecial(false);
+    }
+  };
 
   // Navbar refresh controls
   const [isNavbarRefreshing, setIsNavbarRefreshing] = useState(false);
@@ -1139,6 +1262,26 @@ export function ManagerDashboard({
           </section>
         )}
 
+        {/* ─── Checklist Hub Link Banner ──────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent border border-amber-300/40 dark:border-amber-700/40 p-3 sm:p-4 rounded-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-900 dark:text-amber-200 flex items-center justify-center font-bold">
+              <Sliders size={20} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[var(--color-text)]">ระบบศูนย์จัดการเช็คลิสต์ 3 ประเภท (Checklist Hub)</h3>
+              <p className="text-xs text-[var(--color-text-muted)]">กำหนดงานประจำวัน (Daily) • งานส่วนกลางแบ่งกะตู้แช่ (Joint) • ภารกิจพิเศษ (Special)</p>
+            </div>
+          </div>
+          <Link
+            href="/manager/checklists"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-amber-950 transition-all shadow-sm shrink-0"
+          >
+            <span>เข้าสู่ศูนย์จัดการเช็คลิสต์</span>
+            <ChevronRight size={15} />
+          </Link>
+        </div>
+
         {/* ─── Navigation Tabs ──────────────────────────────────────────────── */}
         <div className="bg-[var(--color-surface-2)] p-1.5 rounded-2xl border border-[var(--color-border)] shadow-2xs">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
@@ -1623,44 +1766,105 @@ export function ManagerDashboard({
         ═══════════════════════════════════════════════════════════════════════ */}
         {activeTab === "approvals" && (
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-6 shadow-sm space-y-5 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] flex items-center gap-2">
-                  <ClipboardCheck size={20} className="text-amber-600 shrink-0" />
-                  <span>คิวรับรองกะงานพนักงาน ({sessions.length})</span>
-                </h2>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  {isAssistant
-                    ? "ผู้ช่วยผู้จัดการร้านลงนามรับรองเบื้องต้น (Assistant Sign-off) ก่อนส่งมอบให้ผู้จัดการร้าน"
-                    : "ผู้จัดการร้านตรวจสอบและอนุมัติขั้นสุดท้าย (Manager Final Approval)"}
-                </p>
-              </div>
+            {/* ─── 3 Sub-tabs inside Approvals ─────────────────────────── */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] pb-3">
+              <button
+                type="button"
+                onClick={() => setApprovalSubTab("daily")}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  approvalSubTab === "daily"
+                    ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
+                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                }`}
+              >
+                <UserCheck size={16} />
+                <span>งานประจำวันรายบุคคล (Daily Sessions)</span>
+                {pendingApprovalsCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-500 text-white font-black animate-pulse">
+                    {pendingApprovalsCount}
+                  </span>
+                )}
+              </button>
 
-              {/* Status Filter */}
-              <div className="inline-flex items-center bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] self-start sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => setShiftQueueStatusFilter("all")}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${shiftQueueStatusFilter === "all" ? "bg-[var(--color-brown)] text-amber-100 font-bold" : "text-[var(--color-text-muted)]"}`}
-                >
-                  ทั้งหมด
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShiftQueueStatusFilter("pending")}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${shiftQueueStatusFilter === "pending" ? "bg-amber-400 text-amber-950 font-bold" : "text-[var(--color-text-muted)]"}`}
-                >
-                  รอรับรอง ({pendingApprovalsCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShiftQueueStatusFilter("approved")}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${shiftQueueStatusFilter === "approved" ? "bg-[var(--color-brown)] text-amber-100 font-bold" : "text-[var(--color-text-muted)]"}`}
-                >
-                  รับรองแล้ว
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setApprovalSubTab("joint");
+                  void loadJointSummary();
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  approvalSubTab === "joint"
+                    ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
+                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                }`}
+              >
+                <Users size={16} />
+                <span>งานส่วนกลางประจำวัน (Joint Tasks)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setApprovalSubTab("special");
+                  void loadSpecialTasksToReview();
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  approvalSubTab === "special"
+                    ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
+                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                }`}
+              >
+                <Sparkles size={16} />
+                <span>ภารกิจพิเศษ (Special Tasks)</span>
+                {specialTasksToReview.filter((t) => t.status === "submitted").length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-amber-950 font-black animate-pulse">
+                    {specialTasksToReview.filter((t) => t.status === "submitted").length}
+                  </span>
+                )}
+              </button>
             </div>
+
+            {/* ─── SUB-TAB 1: DAILY SESSIONS APPROVAL ──────────────────── */}
+            {approvalSubTab === "daily" && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-[var(--color-text)] flex items-center gap-2">
+                      <ClipboardCheck size={20} className="text-amber-600 shrink-0" />
+                      <span>คิวรับรองกะงานพนักงาน ({sessions.length})</span>
+                    </h2>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                      {isAssistant
+                        ? "ผู้ช่วยผู้จัดการร้านลงนามรับรองเบื้องต้น (Assistant Sign-off) ก่อนส่งมอบให้ผู้จัดการร้าน"
+                        : "ผู้จัดการร้านตรวจสอบและอนุมัติขั้นสุดท้าย (Manager Final Approval)"}
+                    </p>
+                  </div>
+
+                  {/* Status Filter */}
+                  <div className="inline-flex items-center bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setShiftQueueStatusFilter("all")}
+                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${shiftQueueStatusFilter === "all" ? "bg-[var(--color-brown)] text-amber-100 font-bold" : "text-[var(--color-text-muted)]"}`}
+                    >
+                      ทั้งหมด
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShiftQueueStatusFilter("pending")}
+                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${shiftQueueStatusFilter === "pending" ? "bg-amber-400 text-amber-950 font-bold" : "text-[var(--color-text-muted)]"}`}
+                    >
+                      รอรับรอง ({pendingApprovalsCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShiftQueueStatusFilter("approved")}
+                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${shiftQueueStatusFilter === "approved" ? "bg-[var(--color-brown)] text-amber-100 font-bold" : "text-[var(--color-text-muted)]"}`}
+                    >
+                      รับรองแล้ว
+                    </button>
+                  </div>
+                </div>
 
             {/* List of Sessions */}
             {sessions.length === 0 ? (
@@ -1776,6 +1980,350 @@ export function ManagerDashboard({
                       </div>
                     );
                   })}
+              </div>
+            )}
+            </div>
+            )}
+
+            {/* ─── SUB-TAB 2: JOINT TASKS APPROVAL ──────────────────── */}
+            {approvalSubTab === "joint" && (
+              <div className="space-y-4">
+                {/* Controls: Date & Shift */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--color-surface-2)] p-3 rounded-xl border border-[var(--color-border)]">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-semibold text-[var(--color-text-muted)] flex items-center gap-1.5">
+                      <Calendar size={14} />
+                      <span>วันที่:</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={jointApproveDate}
+                      onChange={(e) => setJointApproveDate(e.target.value)}
+                      className="px-2.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-[var(--color-text-muted)]">รอบกะ:</span>
+                    <div className="inline-flex items-center bg-[var(--color-surface)] p-0.5 rounded-lg border border-[var(--color-border)]">
+                      <button
+                        type="button"
+                        onClick={() => setJointApproveShift("morning")}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                          jointApproveShift === "morning"
+                            ? "bg-amber-400 text-amber-950 shadow-2xs"
+                            : "text-[var(--color-text-muted)]"
+                        }`}
+                      >
+                        ☀️ รอบเช้า (Morning)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setJointApproveShift("afternoon")}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                          jointApproveShift === "afternoon"
+                            ? "bg-amber-400 text-amber-950 shadow-2xs"
+                            : "text-[var(--color-text-muted)]"
+                        }`}
+                      >
+                        📦 รอบบ่าย (Afternoon)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {isLoadingJointSummary ? (
+                  <div className="py-12 text-center text-[var(--color-text-muted)] text-xs">
+                    <span className="animate-spin inline-block mr-2">⏳</span> กำลังโหลดข้อมูลงานส่วนกลาง...
+                  </div>
+                ) : !jointSummary ? (
+                  <div className="py-12 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-2)]/40 p-6">
+                    ไม่พบข้อมูลงานส่วนกลางในวันที่เลือก
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Progress & Stat Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-[var(--color-surface-2)] p-3.5 rounded-xl border border-[var(--color-border)]">
+                        <span className="text-xs text-[var(--color-text-muted)] font-semibold">ความคืบหน้างานส่วนกลาง</span>
+                        <div className="text-xl font-black text-amber-600 mt-1">
+                          {jointSummary.completedCount} / {jointSummary.totalTasks} รายการ
+                        </div>
+                        <div className="w-full bg-[var(--color-surface)] h-2 rounded-full overflow-hidden mt-2 border border-[var(--color-border)]">
+                          <div
+                            className="bg-emerald-500 h-full transition-all duration-300"
+                            style={{ width: `${jointSummary.progress}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-[var(--color-surface-2)] p-3.5 rounded-xl border border-[var(--color-border)]">
+                        <span className="text-xs text-[var(--color-text-muted)] font-semibold">พนักงานเข้ากะตามตาราง</span>
+                        <div className="text-sm font-bold text-[var(--color-text)] mt-1 flex flex-wrap gap-1">
+                          {jointSummary.onDutyStaff.length === 0 ? (
+                            <span className="text-xs text-[var(--color-text-muted)]">ไม่มีข้อมูลกะ</span>
+                          ) : (
+                            jointSummary.onDutyStaff.map((staff: any) => (
+                              <span
+                                key={staff.id}
+                                className="px-2 py-0.5 rounded-md bg-[var(--color-surface)] text-[11px] border border-[var(--color-border)]"
+                              >
+                                {staff.name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="bg-[var(--color-surface-2)] p-3.5 rounded-xl border border-[var(--color-border)]">
+                        <span className="text-xs text-[var(--color-text-muted)] font-semibold">ผู้ร่วมบันทึกผลจริง (Active)</span>
+                        <div className="text-sm font-bold text-[var(--color-text)] mt-1 flex flex-wrap gap-1">
+                          {jointSummary.activeParticipants.length === 0 ? (
+                            <span className="text-xs text-[var(--color-text-muted)]">ยังไม่มีผู้บันทึก</span>
+                          ) : (
+                            jointSummary.activeParticipants.map((p: any) => (
+                              <span
+                                key={p.userId}
+                                className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-[11px] border border-emerald-300"
+                              >
+                                {p.userName} ({p.count} งาน)
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Approval Status Banner & Action */}
+                    <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-[var(--color-text)]">สถานะการรับรอง:</span>
+                          {jointSummary.approval?.managerApproved ? (
+                            <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              ✓ ผู้จัดการอนุมัติครบถ้วน
+                            </span>
+                          ) : jointSummary.approval?.assistantApproved ? (
+                            <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                              ✓ ผู้ช่วยฯ รับรองแล้ว (รอผู้จัดการ)
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-neutral-200 text-neutral-800">
+                              รอดำเนินการรับรอง
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          {jointSummary.approval?.managerApproved
+                            ? `ลงนามโดยผู้จัดการเมื่อ ${new Date(jointSummary.approval.managerApprovedAt).toLocaleTimeString("th-TH")}`
+                            : jointSummary.approval?.assistantApproved
+                            ? `ผู้ช่วยฯ ลงนามเมื่อ ${new Date(jointSummary.approval.assistantApprovedAt).toLocaleTimeString("th-TH")}`
+                            : "งานส่วนกลางได้รับการบันทึกร่วมกัน สามารถลงนามเพื่อยืนยันความถูกต้อง"}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleApproveJointDay}
+                        disabled={
+                          isApprovingJoint ||
+                          (isAssistant && jointSummary.approval?.assistantApproved) ||
+                          (isManager && jointSummary.approval?.managerApproved)
+                        }
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 ${
+                          (isManager && jointSummary.approval?.managerApproved) ||
+                          (isAssistant && jointSummary.approval?.assistantApproved)
+                            ? "bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-default"
+                            : "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
+                        }`}
+                      >
+                        {isApprovingJoint ? (
+                          <span>กำลังบันทึก...</span>
+                        ) : (isManager && jointSummary.approval?.managerApproved) ||
+                          (isAssistant && jointSummary.approval?.assistantApproved) ? (
+                          <span>✓ รับรองเรียบร้อยแล้ว</span>
+                        ) : (
+                          <span>{isManager ? "อนุมัติงานส่วนกลาง (ผู้จัดการ)" : "ลงนามรับรองงานส่วนกลาง (ผู้ช่วยฯ)"}</span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Checked Items List */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                        รายละเอียดรายการที่ตรวจแล้ว ({jointSummary.items.filter((i: any) => i.isCompleted).length} / {jointSummary.items.length} รายการ)
+                      </h4>
+                      <div className="space-y-2 max-h-72 overflow-y-auto">
+                        {jointSummary.items.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2 h-2 rounded-full ${item.isCompleted ? "bg-emerald-500" : "bg-neutral-300"}`} />
+                              <span className="font-semibold text-[var(--color-text)]">{item.name}</span>
+                            </div>
+                            {item.isCompleted ? (
+                              <span className="text-[11px] text-[var(--color-text-muted)]">
+                                ตรวจโดย <strong className="text-[var(--color-text)]">{item.checkedByName || "พนักงาน"}</strong> {item.checkedAt ? `(${new Date(item.checkedAt).toLocaleTimeString("th-TH")})` : ""}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-amber-600 font-medium">ยังไม่ตรวจ</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── SUB-TAB 3: SPECIAL TASKS APPROVAL ────────────────── */}
+            {approvalSubTab === "special" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-text)]">รายการภารกิจพิเศษที่รอตรวจสอบ</h3>
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      ภารกิจพิเศษจะไม่ถูกลบโดยรอบ 14 วัน และสามารถตรวจสอบรับรองได้ตลอดเวลา
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadSpecialTasksToReview()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--color-surface-2)] text-[var(--color-text)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] cursor-pointer"
+                  >
+                    รีเฟรช
+                  </button>
+                </div>
+
+                {isLoadingSpecialReview ? (
+                  <div className="py-12 text-center text-[var(--color-text-muted)] text-xs">
+                    <span className="animate-spin inline-block mr-2">⏳</span> กำลังโหลดภารกิจพิเศษ...
+                  </div>
+                ) : specialTasksToReview.length === 0 ? (
+                  <div className="py-12 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-2)]/40 p-6">
+                    ไม่มีภารกิจพิเศษในสาขานี้
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {specialTasksToReview.map((task) => {
+                      const isSubmitted = task.status === "submitted";
+                      const isApproved = task.status === "approved";
+                      const isDeclined = task.status === "declined";
+
+                      return (
+                        <div
+                          key={task.id}
+                          className={`p-4 rounded-xl border transition-all ${
+                            isSubmitted
+                              ? "bg-amber-50/40 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800"
+                              : isApproved
+                              ? "bg-emerald-50/20 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-900"
+                              : "bg-[var(--color-surface)] border-[var(--color-border)]"
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                            <div className="space-y-1.5">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-sm text-[var(--color-text)]">{task.title}</span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-950">
+                                  +{task.pointsReward} คะแนน
+                                </span>
+                                {task.penaltyStreak && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                                    <Flame size={11} className="text-rose-600" />
+                                    กระทบสตรีคหากไม่เสร็จ
+                                  </span>
+                                )}
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    isSubmitted
+                                      ? "bg-amber-400 text-amber-950 animate-pulse"
+                                      : isApproved
+                                      ? "bg-emerald-200 text-emerald-900"
+                                      : isDeclined
+                                      ? "bg-rose-200 text-rose-900"
+                                      : "bg-neutral-200 text-neutral-800"
+                                  }`}
+                                >
+                                  {isSubmitted ? "รอตรวจรับรอง" : isApproved ? "อนุมัติแล้ว" : isDeclined ? "ปฏิเสธ" : "กำลังดำเนินการ"}
+                                </span>
+                              </div>
+
+                              {task.description && (
+                                <p className="text-xs text-[var(--color-text-muted)]">{task.description}</p>
+                              )}
+
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--color-text-muted)] pt-1">
+                                <span>
+                                  ช่วงเวลา: {task.startDate} ถึง {task.endDate}
+                                </span>
+                                <span>•</span>
+                                <span>
+                                  ผู้รับผิดชอบ: {task.assignedRole ? `บทบาท ${task.assignedRole}` : task.assignedUserName ? task.assignedUserName : task.targetType === "group" ? "กลุ่มพนักงาน" : "พนักงานที่ระบุ"}
+                                </span>
+                                {task.submittedByUserName && (
+                                  <>
+                                    <span>•</span>
+                                    <span>ส่งโดย: {task.submittedByUserName}</span>
+                                  </>
+                                )}
+                              </div>
+
+                              {/* Submission details if submitted */}
+                              {task.submissionComment && (
+                                <div className="mt-2 p-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs space-y-1">
+                                  <span className="font-bold text-[var(--color-text)]">หมายเหตุการส่งงาน:</span>
+                                  <p className="text-[var(--color-text-muted)]">{task.submissionComment}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Approval buttons */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isSubmitted ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleReviewSpecialTask(task.id, true)}
+                                    disabled={isReviewingSpecial}
+                                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <CheckCheck size={14} />
+                                    <span>อนุมัติ (+{task.pointsReward} แต้ม)</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleReviewSpecialTask(task.id, false)}
+                                    disabled={isReviewingSpecial}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 transition-all flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <XCircle size={14} />
+                                    <span>ปฏิเสธ</span>
+                                  </button>
+                                </>
+                              ) : isApproved ? (
+                                <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                                  <CheckCircle2 size={14} />
+                                  อนุมัติสำเร็จ
+                                </span>
+                              ) : isDeclined ? (
+                                <span className="text-xs font-bold text-rose-600 flex items-center gap-1">
+                                  <XCircle size={14} />
+                                  ไม่อนุมัติ
+                                </span>
+                              ) : (
+                                <span className="text-xs text-[var(--color-text-muted)]">ยังไม่ส่งงาน</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>

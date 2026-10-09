@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgSchema, timestamp, time, uuid, text, index, primaryKey } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgSchema, timestamp, time, uuid, text, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 
 export const checklistSchema = pgSchema("checklist_web_app");
 
@@ -54,6 +54,7 @@ export const users = checklistSchema.table.withRLS("users", {
 
 export const tasks = checklistSchema.table.withRLS("tasks", {
     id: uuid("id").primaryKey().defaultRandom(),
+    branch_id: uuid("branch_id").references(() => branches.id, { onDelete: 'cascade' }),
     shift: shiftEnum("shift").notNull(),
     name: text("name").notNull(),
     task_role: taskRoleEnum("task_role").notNull(),
@@ -63,10 +64,14 @@ export const tasks = checklistSchema.table.withRLS("tasks", {
 
     disabled: boolean("disabled").notNull().default(false),
     for_managers: boolean("for_managers").notNull().default(false),
+    is_joint: boolean("is_joint").notNull().default(false),
+    selectable_roles: jsonb("selectable_roles").$type<string[]>().default([]),
     category: text("category"),
 }, (table) => [
     index("idx_tasks_role_shift").on(table.task_role, table.shift),
     index("idx_tasks_for_managers").on(table.for_managers),
+    index("idx_tasks_branch_id").on(table.branch_id),
+    index("idx_tasks_is_joint").on(table.is_joint),
 ]);
 
 export const branchTasks = checklistSchema.table.withRLS("branch_tasks", {
@@ -147,7 +152,58 @@ export const refrigeratorTasks = checklistSchema.table.withRLS("refrigerator_tas
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
     index("idx_ref_tasks_branch_date").on(table.branch_id, table.task_date),
+    index("idx_ref_tasks_branch_date_shift").on(table.branch_id, table.task_date, table.shift),
     index("idx_ref_tasks_refrigerator").on(table.refrigerator_id),
+]);
+
+export const jointTaskWork = checklistSchema.table.withRLS("joint_task_work", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    task_id: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    branch_id: uuid("branch_id").notNull().references(() => branches.id, { onDelete: 'cascade' }),
+    task_date: text("task_date").notNull(),
+    shift: shiftEnum("shift"),
+    completed_by: uuid("completed_by").references(() => users.id, { onDelete: 'set null' }),
+    completed_at: timestamp("completed_at", { withTimezone: true }),
+    comment: text("comment"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+    uniqueIndex("uq_joint_task_work_task_date").on(table.task_id, table.branch_id, table.task_date),
+    index("idx_joint_task_work_branch_date").on(table.branch_id, table.task_date),
+    index("idx_joint_task_work_task_date").on(table.task_id, table.task_date),
+    index("idx_joint_task_work_branch_date_shift").on(table.branch_id, table.task_date, table.shift),
+]);
+
+export const specialTasks = checklistSchema.table.withRLS("special_tasks", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    branch_id: uuid("branch_id").notNull().references(() => branches.id, { onDelete: 'cascade' }),
+    title: text("title").notNull(),
+    description: text("description"),
+    issued_by: uuid("issued_by").notNull().references(() => users.id, { onDelete: 'set null' }),
+    target_type: text("target_type").notNull(), // 'user' | 'role' | 'group'
+    assigned_user_id: uuid("assigned_user_id").references(() => users.id, { onDelete: 'set null' }),
+    assigned_role: text("assigned_role"), // 'cashier' | 'stock' | 'manager_assistant'
+    assigned_user_ids: jsonb("assigned_user_ids").$type<string[]>().default([]),
+    start_date: text("start_date").notNull(), // YYYY-MM-DD
+    end_date: text("end_date").notNull(),     // YYYY-MM-DD
+    points_reward: integer("points_reward").notNull().default(10),
+    penalty_streak: boolean("penalty_streak").notNull().default(false), // true = flawed streak if unfinished
+    status: text("status").notNull().default("pending"), // 'pending' | 'submitted' | 'approved' | 'declined'
+    submitted_by: uuid("submitted_by").references(() => users.id, { onDelete: 'set null' }),
+    submitted_at: timestamp("submitted_at", { withTimezone: true }),
+    submission_comment: text("submission_comment"),
+    participated_user_ids: jsonb("participated_user_ids").$type<string[]>().default([]),
+    assistant_approved_by: uuid("assistant_approved_by").references(() => users.id, { onDelete: 'set null' }),
+    assistant_approved_at: timestamp("assistant_approved_at", { withTimezone: true }),
+    manager_approved_by: uuid("manager_approved_by").references(() => users.id, { onDelete: 'set null' }),
+    manager_approved_at: timestamp("manager_approved_at", { withTimezone: true }),
+    decline_reason: text("decline_reason"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (table) => [
+    index("idx_special_tasks_branch").on(table.branch_id),
+    index("idx_special_tasks_status").on(table.status),
+    index("idx_special_tasks_assigned_user").on(table.assigned_user_id),
+    index("idx_special_tasks_dates").on(table.branch_id, table.start_date, table.end_date),
 ]);
 
 export const notifications = checklistSchema.table.withRLS("notifications", {

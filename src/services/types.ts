@@ -1,4 +1,4 @@
-import { Role, ManagerType, ExecutiveType, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, BranchLeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo } from "../types";
+import { Role, ManagerType, ExecutiveType, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, BranchLeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo, JointTaskItem, SpecialTaskItem, BranchDailyTask } from "../types";
 
 export interface IAuthService {
   login(username: string, password: string, requestedRole?: Role): Promise<{ success: boolean; user?: User; error?: string }>;
@@ -247,6 +247,52 @@ export interface IChecklistService {
     };
     error?: string;
   }>;
+
+  getBranchDailyTasks(branchId?: string): Promise<{ success: boolean; tasks?: BranchDailyTask[]; error?: string }>;
+  createBranchDailyTask(params: {
+    branchId?: string | null;
+    name: string;
+    taskRole: "cashier" | "stock" | "manager_assistant";
+    shift: ShiftType;
+    startTime: string;
+    endTime: string;
+    disabled?: boolean;
+    forManagers?: boolean;
+    isJoint?: boolean;
+    selectableRoles?: string[];
+    category?: string | null;
+  }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }>;
+  updateBranchDailyTask(params: {
+    id: string;
+    branchId?: string | null;
+    name?: string;
+    taskRole?: "cashier" | "stock" | "manager_assistant";
+    shift?: ShiftType;
+    startTime?: string;
+    endTime?: string;
+    disabled?: boolean;
+    forManagers?: boolean;
+    isJoint?: boolean;
+    selectableRoles?: string[];
+    category?: string | null;
+  }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }>;
+  deleteBranchDailyTask(taskId: string, branchId?: string): Promise<{ success: boolean; error?: string }>;
+
+  getBranchJointTasks(params: {
+    branchId: string;
+    dateStr?: string;
+    shift?: ShiftType;
+  }): Promise<{ success: boolean; data?: JointTaskItem[]; error?: string }>;
+  toggleJointTaskItem(params: {
+    jointWorkId?: string;
+    taskId: string;
+    branchId: string;
+    dateStr: string;
+    shift?: ShiftType;
+    userId: string;
+    completed: boolean;
+    comment?: string;
+  }): Promise<{ success: boolean; data?: JointTaskItem; conflict?: boolean; message?: string; error?: string }>;
 }
 
 export interface BranchEmployeeStatus {
@@ -447,6 +493,84 @@ export interface IManagerService {
     branchId: string;
     targetUserId: string;
   }): Promise<{ success: boolean; error?: string }>;
+
+  getSpecialTasks(params: {
+    branchId?: string;
+    userId?: string;
+    role?: string;
+  }): Promise<{ success: boolean; tasks?: SpecialTaskItem[]; error?: string }>;
+  createSpecialTask(params: {
+    branchId: string;
+    title: string;
+    description?: string;
+    issuedByUserId: string;
+    targetType: "user" | "role" | "group";
+    assignedUserId?: string;
+    assignedRole?: string;
+    assignedUserIds?: string[];
+    startDate: string;
+    endDate: string;
+    pointsReward: number;
+    penaltyStreak: boolean;
+  }): Promise<{ success: boolean; task?: SpecialTaskItem; error?: string }>;
+  updateSpecialTask(params: {
+    specialTaskId: string;
+    title?: string;
+    description?: string;
+    assignedUserId?: string;
+    assignedRole?: string;
+    assignedUserIds?: string[];
+    startDate?: string;
+    endDate?: string;
+    pointsReward?: number;
+    penaltyStreak?: boolean;
+  }): Promise<{ success: boolean; task?: SpecialTaskItem; error?: string }>;
+  duplicateSpecialTask(params: {
+    specialTaskId: string;
+    issuedByUserId: string;
+    branchId?: string;
+    newStartDate?: string;
+    newEndDate?: string;
+  }): Promise<{ success: boolean; task?: SpecialTaskItem; error?: string }>;
+  deleteSpecialTask(specialTaskId: string): Promise<{ success: boolean; error?: string }>;
+  submitSpecialTask(params: {
+    specialTaskId: string;
+    userId: string;
+    comment?: string;
+    participatedUserIds?: string[];
+  }): Promise<{ success: boolean; error?: string }>;
+  approveSpecialTask(params: {
+    specialTaskId: string;
+    reviewerUserId: string;
+    reviewerRole: Role;
+    isApproved: boolean;
+    declineReason?: string;
+  }): Promise<{ success: boolean; error?: string }>;
+  getJointTaskDaySummary(params: {
+    branchId: string;
+    dateStr: string;
+    shift?: ShiftType;
+  }): Promise<{
+    success: boolean;
+    summary?: {
+      date: string;
+      shift?: ShiftType;
+      branchName?: string;
+      onDutyStaff: Array<{ id: string; name: string; position?: string; role: Role }>;
+      participants: Array<{ id: string; name: string; completedCount: number }>;
+      items: JointTaskItem[];
+      refrigerators: RefrigeratorTaskItem[];
+      assistantApproved: boolean;
+      managerApproved: boolean;
+    };
+    error?: string;
+  }>;
+  approveJointTaskDay(params: {
+    branchId: string;
+    dateStr: string;
+    shift?: ShiftType;
+    role: Role;
+  }): Promise<{ success: boolean; error?: string }>;
 }
 
 export interface BranchEmployeeStatusItem {
@@ -563,6 +687,7 @@ export interface RefrigeratorTaskItem {
   targetTemperature?: number;
   disableCheck?: boolean;
   taskDate: string;
+  shift?: ShiftType | null;
   completed: boolean;
   completedAt?: string | null;
   completedByUserId?: string | null;
@@ -611,6 +736,7 @@ export interface IRefrigeratorService {
     userId?: string;
     branchId?: string;
     dateStr?: string;
+    shift?: ShiftType;
   }): Promise<{
     success: boolean;
     data?: RefrigeratorTaskItem[];
@@ -627,7 +753,7 @@ export interface IRefrigeratorService {
     comment?: string;
     shiftSessionId?: string;
     shift?: ShiftType;
-  }): Promise<{ success: boolean; data?: RefrigeratorTaskItem; error?: string }>;
+  }): Promise<{ success: boolean; data?: RefrigeratorTaskItem; conflict?: boolean; message?: string; error?: string }>;
   batchUpdateRefrigeratorTasks(items: Array<{
     taskId: string;
     userId: string;
@@ -637,7 +763,7 @@ export interface IRefrigeratorService {
     comment?: string;
     shiftSessionId?: string;
     shift?: ShiftType;
-  }>): Promise<{ success: boolean; data?: RefrigeratorTaskItem[]; error?: string }>;
+  }>): Promise<{ success: boolean; data?: RefrigeratorTaskItem[]; conflicts?: Array<{ taskId: string; message: string }>; error?: string }>;
   processDailyRefrigeratorTasks(params?: {
     targetDate?: string;
     yesterdayDate?: string;

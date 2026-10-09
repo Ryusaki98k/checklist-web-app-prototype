@@ -94,6 +94,7 @@ export async function getBranchRefrigeratorTasksAction(params: {
   userId?: string;
   branchId?: string;
   dateStr?: string;
+  shift?: ShiftType;
 }) {
   const services = getServices();
   return await services.refrigerator.getBranchRefrigeratorTasks(params);

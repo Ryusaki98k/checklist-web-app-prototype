@@ -64,3 +64,59 @@ export async function toggleTaskDisabledAction(
     }
 }
 
+import { getServices } from "../services/container";
+import { ShiftType, BranchDailyTask } from "../types";
+
+export async function getBranchDailyTasksAction(branchId?: string): Promise<{
+    success: boolean;
+    tasks?: BranchDailyTask[];
+    error?: string;
+}> {
+    const services = getServices();
+    return await services.checklist.getBranchDailyTasks(branchId);
+}
+
+export async function createBranchDailyTaskAction(params: {
+    branchId?: string | null;
+    name: string;
+    taskRole: "cashier" | "stock" | "manager_assistant";
+    shift: ShiftType;
+    startTime: string;
+    endTime: string;
+    disabled?: boolean;
+    forManagers?: boolean;
+    isJoint?: boolean;
+    selectableRoles?: string[];
+    category?: string | null;
+}): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
+    const services = getServices();
+    return await services.checklist.createBranchDailyTask(params);
+}
+
+export async function updateBranchDailyTaskAction(params: {
+    id: string;
+    branchId?: string | null;
+    name?: string;
+    taskRole?: "cashier" | "stock" | "manager_assistant";
+    shift?: ShiftType;
+    startTime?: string;
+    endTime?: string;
+    disabled?: boolean;
+    forManagers?: boolean;
+    isJoint?: boolean;
+    selectableRoles?: string[];
+    category?: string | null;
+}): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
+    const services = getServices();
+    return await services.checklist.updateBranchDailyTask(params);
+}
+
+export async function deleteBranchDailyTaskAction(
+    taskId: string,
+    branchId?: string
+): Promise<{ success: boolean; error?: string }> {
+    const services = getServices();
+    return await services.checklist.deleteBranchDailyTask(taskId, branchId);
+}
+
+
