@@ -2,10 +2,14 @@ import { BrandLogo } from "../components/common/BrandLogo";
 import { ThemeToggle } from "../components/common/ThemeToggle";
 import { PortalDocsSection } from "../components/common/PortalDocsSection";
 import { PortalMainSection } from "../components/common/PortalMainSection";
+import { DatabaseEnvironmentBadge } from "../components/common/DatabaseEnvironmentBadge";
+import { getDatabaseSchema, isPreviewMode } from "../db/config";
 import { parseMarkdownFile } from "../utils/markdown";
 
 export default function PortalPage() {
   const guideData = parseMarkdownFile("GUIDE.md");
+  const activeSchema = getDatabaseSchema();
+  const isPreview = isPreviewMode();
 
   return (
     <main className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)] flex flex-col justify-between px-4 py-6 sm:py-10 font-sans relative">
@@ -31,7 +35,12 @@ export default function PortalPage() {
         <PortalDocsSection guideData={guideData} />
       </div>
 
-      <footer className="mt-12 pb-8 text-center text-xs text-[var(--color-text-muted)] space-y-1.5 max-w-xl mx-auto px-4">
+      <footer className="mt-12 pb-8 text-center text-xs text-[var(--color-text-muted)] space-y-2.5 max-w-xl mx-auto px-4 flex flex-col items-center">
+        {/* Database Environment & Schema Indicator */}
+        <div className="flex justify-center">
+          <DatabaseEnvironmentBadge schema={activeSchema} isPreview={isPreview} />
+        </div>
+
         <p className="font-semibold text-[var(--color-text)]">
           Eater Egg Fresh Mart • Operations, SOP & Audit Portal
         </p>
