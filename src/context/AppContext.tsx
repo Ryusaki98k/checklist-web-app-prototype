@@ -255,24 +255,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(checkDateRollover, 30000);
 
     // Check Supabase Auth state for OAuth logins
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) {
-        // Only sync if user was already stored or if we have an active auth code/token callback in the URL
-        const hasAuthCallback =
-          typeof window !== "undefined" &&
-          (window.location.search.includes("code=") ||
-            window.location.hash.includes("access_token=") ||
-            window.location.pathname.startsWith("/auth/callback"));
+    try {
+      const supabase = createClient();
+      supabase.auth.getUser().then(({ data }) => {
+        if (data?.user) {
+          // Only sync if user was already stored or if we have an active auth code/token callback in the URL
+          const hasAuthCallback =
+            typeof window !== "undefined" &&
+            (window.location.search.includes("code=") ||
+              window.location.hash.includes("access_token=") ||
+              window.location.pathname.startsWith("/auth/callback"));
 
-        if (!storedUser && !hasAuthCallback) {
-          // Stale auth session without active user - sign out cleanly to prevent phantom logins
-          void supabase.auth.signOut();
-          return;
-        }
+          if (!storedUser && !hasAuthCallback) {
+            // Stale auth session without active user - sign out cleanly to prevent phantom logins
+            void supabase.auth.signOut();
+            return;
+          }
 
-        const authUser = data.user;
-        const username =
+          const authUser = data.user;
+          const username =
           authUser.user_metadata?.user_name ||
           authUser.email?.split("@")[0]?.toLowerCase() ||
           `user_${authUser.id.substring(0, 6)}`;
@@ -293,9 +294,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         }).catch(console.error);
       }
+    }).catch((err) => {
+      console.warn("Supabase auth check failed:", err);
     });
+  } catch (err) {
+    console.warn("Supabase client initialization skipped:", err);
+  }
 
-    setIsReady(true);
+  setIsReady(true);
 
     return () => {
       window.removeEventListener("focus", onActivity);
