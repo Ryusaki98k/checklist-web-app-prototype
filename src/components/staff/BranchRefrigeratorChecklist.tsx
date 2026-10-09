@@ -81,10 +81,10 @@ export function BranchRefrigeratorChecklist({
 
   useEffect(() => {
     void loadTasks(true);
-    // Poll every 8s for live shared updates across stock employees
+    // Poll every 10s for live shared updates across stock employees
     const interval = setInterval(() => {
       void loadTasks(true);
-    }, 8000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [loadTasks]);
 

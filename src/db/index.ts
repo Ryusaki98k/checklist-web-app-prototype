@@ -11,13 +11,21 @@ if (!connectionString) {
 declare global {
   // eslint-disable-next-line no-var
   var _postgresClient: ReturnType<typeof postgres> | undefined;
+  // eslint-disable-next-line no-var
+  var _drizzleDb: ReturnType<typeof drizzle> | undefined;
 }
 
-const client = globalThis._postgresClient ?? postgres(connectionString, { prepare: false });
+const client =
+  globalThis._postgresClient ??
+  postgres(connectionString, {
+    prepare: false,
+    max: 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
 
-if (process.env.NODE_ENV !== 'production') {
-  globalThis._postgresClient = client;
-}
+globalThis._postgresClient = client;
 
-export const db = drizzle({ client });
+export const db = globalThis._drizzleDb ?? drizzle({ client });
+globalThis._drizzleDb = db;
 export * from './schema';

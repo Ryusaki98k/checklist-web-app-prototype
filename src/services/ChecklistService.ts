@@ -97,8 +97,10 @@ export class ChecklistService implements IChecklistService {
           managerType: users.manager_type,
           executiveType: users.executive_type,
           isAdmin: users.is_admin,
+          branchName: branches.name,
         })
         .from(users)
+        .leftJoin(branches, eq(branches.id, users.branch_id))
         .where(eq(users.id, validUserId))
         .limit(1);
 
@@ -117,9 +119,6 @@ export class ChecklistService implements IChecklistService {
         };
       }
 
-      let branchId: string = "";
-      let branchNameForSession: string = "";
-
       if (!currentUserRecord?.branchId) {
         return {
           success: false,
@@ -127,48 +126,59 @@ export class ChecklistService implements IChecklistService {
         };
       }
 
-      const [b] = await this.db
-        .select({ id: branches.id, name: branches.name })
-        .from(branches)
-        .where(eq(branches.id, currentUserRecord.branchId))
-        .limit(1);
-
-      if (!b) {
+      if (!currentUserRecord?.branchName) {
         return {
           success: false,
           error: "ไม่พบข้อมูลสาขาที่สังกัดอยู่ในระบบ กรุณาติดต่อผู้จัดการหรือผู้ดูแลระบบ",
         };
       }
 
-      branchId = b.id;
-      branchNameForSession = b.name;
+      const branchId: string = currentUserRecord.branchId;
+      const branchNameForSession: string = currentUserRecord.branchName;
 
       const allowedShifts: ("morning" | "afternoon" | "night" | "morning_afternoon")[] =
         dbShift === "morning_afternoon"
           ? ["morning", "afternoon", "night", "morning_afternoon"]
           : [dbShift, "morning_afternoon"];
 
-      let dbTasks = await this.db
-        .select()
-        .from(tasks)
-        .where(
-          and(
-            eq(tasks.task_role, taskRole),
-            inArray(tasks.shift, allowedShifts),
-            eq(tasks.disabled, false)
+      const [rawTasks, [existingSession]] = await Promise.all([
+        this.db
+          .select()
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.task_role, taskRole),
+              inArray(tasks.shift, allowedShifts),
+              eq(tasks.disabled, false)
+            )
           )
-        )
-        .orderBy(asc(tasks.start));
+          .orderBy(asc(tasks.start)),
+        this.db
+          .select()
+          .from(shiftSession)
+          .where(
+            and(
+              eq(shiftSession.task_role, taskRole),
+              eq(shiftSession.shift, dbShift),
+              gte(shiftSession.start, startOfDay),
+              lte(shiftSession.start, endOfDay),
+              eq(shiftSession.branch, branchId),
+              eq(shiftSession.user, validUserId)
+            )
+          )
+          .orderBy(desc(shiftSession.start))
+          .limit(1),
+      ]);
+
+      let dbTasks = rawTasks;
 
       // Manager role policy: Managers do NOT do regular assistant manager tasks,
       // ONLY the for_managers tasks (closing/night safety items).
       const isManager =
-        (currentUserRecord?.role === "manager" ||
-          ((position.includes("ผู้จัดการ") || position.includes("manager")) &&
-            !position.includes("ผู้ช่วย") &&
-            !position.includes("assistant"))) &&
-        currentUserRecord?.role !== "general_manager" &&
-        currentUserRecord?.role !== "committee" &&
+        ((position.includes("ผู้จัดการ") || position.includes("manager")) &&
+          !position.includes("ผู้ช่วย") &&
+          !position.includes("assistant")) &&
+        currentUserRecord?.executiveType === "none" &&
         !position.includes("ผู้จัดการทั่วไป") &&
         !position.toLowerCase().includes("general manager") &&
         !position.includes("กรรมการ");
@@ -177,24 +187,18 @@ export class ChecklistService implements IChecklistService {
         dbTasks = dbTasks.filter((t: any) => t.for_managers || t.shift === "night");
       }
 
-      const [existingSession] = await this.db
-        .select()
-        .from(shiftSession)
-        .where(
-          and(
-            eq(shiftSession.task_role, taskRole),
-            eq(shiftSession.shift, dbShift),
-            gte(shiftSession.start, startOfDay),
-            lte(shiftSession.start, endOfDay),
-            eq(shiftSession.branch, branchId),
-            eq(shiftSession.user, validUserId)
-          )
-        )
-        .orderBy(desc(shiftSession.start))
-        .limit(1);
-
       let activeDbSession = existingSession;
       let workRows: any[] = [];
+      const specialTaskIds = dbTasks.filter((t: any) => t.for_managers || t.shift === "night").map((t: any) => t.id);
+      const branchClosingMap = new Map<
+        string,
+        {
+          completedAt: string;
+          completedBy: string | null;
+          completedByName: string | null;
+          comment: string | null;
+        }
+      >();
 
       if (!activeDbSession) {
         // Auto-close any unended shift sessions from previous days for this user
@@ -245,10 +249,57 @@ export class ChecklistService implements IChecklistService {
           });
         }
       } else {
-        workRows = await this.db
-          .select()
-          .from(taskWork)
-          .where(eq(taskWork.shift_session, activeDbSession.id));
+        const [fetchedWorks, closingRows] = await Promise.all([
+          this.db
+            .select()
+            .from(taskWork)
+            .where(eq(taskWork.shift_session, activeDbSession.id)),
+          specialTaskIds.length > 0 && branchId
+            ? this.db
+                .select({
+                  taskId: taskWork.task,
+                  completedAt: taskWork.timestamp,
+                  completedBy: taskWork.completed_by,
+                  comment: taskWork.comment,
+                  userName: users.name,
+                  managerType: users.manager_type,
+                })
+                .from(taskWork)
+                .leftJoin(users, eq(users.id, taskWork.completed_by))
+                .where(
+                  and(
+                    eq(taskWork.branch_id, branchId),
+                    eq(taskWork.task_date, dateStr),
+                    inArray(taskWork.task, specialTaskIds),
+                    sql`${taskWork.timestamp} IS NOT NULL`
+                  )
+                )
+                .catch((closingErr: any) => {
+                  console.error("Failed to query shared store closing tasks in batch:", closingErr);
+                  return [];
+                })
+            : Promise.resolve([]),
+        ]);
+        workRows = fetchedWorks;
+
+        for (const row of closingRows) {
+          if (row.completedAt) {
+            const roleTitle =
+              row.managerType === "store"
+                ? "ผู้จัดการร้าน"
+                : row.managerType === "assistant"
+                ? "ผู้ช่วยผู้จัดการร้าน"
+                : "";
+            const posSuffix = roleTitle ? ` (${roleTitle})` : "";
+            const completedByName = row.userName ? `${row.userName}${posSuffix}` : null;
+            branchClosingMap.set(row.taskId, {
+              completedAt: new Date(row.completedAt).toISOString(),
+              completedBy: row.completedBy ?? null,
+              completedByName,
+              comment: row.comment ?? null,
+            });
+          }
+        }
 
         const existingTaskIds = new Set(workRows.map((w: any) => w.task));
         const missingTasks = dbTasks.filter((t: any) => !existingTaskIds.has(t.id));
@@ -306,19 +357,8 @@ export class ChecklistService implements IChecklistService {
         }
       }
 
-      // Query shared store closing / manager tasks for this branch today from taskWork directly from DB attributes
-      const specialTaskIds = dbTasks.filter((t: any) => t.for_managers || t.shift === "night").map((t: any) => t.id);
-      const branchClosingMap = new Map<
-        string,
-        {
-          completedAt: string;
-          completedBy: string | null;
-          completedByName: string | null;
-          comment: string | null;
-        }
-      >();
-
-      if (specialTaskIds.length > 0 && branchId) {
+      // Query shared store closing tasks for new session if not already populated
+      if (branchClosingMap.size === 0 && specialTaskIds.length > 0 && branchId) {
         try {
           const closingRows = await this.db
             .select({
@@ -1048,7 +1088,11 @@ export class ChecklistService implements IChecklistService {
       }
 
       const todaySessions = await this.db
-        .select()
+        .select({
+          id: shiftSession.id,
+          shift: shiftSession.shift,
+          end: shiftSession.end,
+        })
         .from(shiftSession)
         .where(and(...whereConditions))
         .orderBy(desc(shiftSession.start));
@@ -1071,7 +1115,11 @@ export class ChecklistService implements IChecklistService {
       let allWorks: any[] = [];
       if (sessionIds.length > 0) {
         allWorks = await this.db
-          .select()
+          .select({
+            id: taskWork.id,
+            shift_session: taskWork.shift_session,
+            timestamp: taskWork.timestamp,
+          })
           .from(taskWork)
           .where(inArray(taskWork.shift_session, sessionIds));
       }

@@ -91,23 +91,24 @@ export class ManagerService implements IManagerService {
       const today = filterDate ? new Date(filterDate) : new Date();
       const { startOfDay, endOfDay } = getThaiStartAndEndOfDay(today);
 
-      const dbSessions = await this.db
-        .select()
-        .from(shiftSession)
-        .where(and(gte(shiftSession.start, startOfDay), lte(shiftSession.start, endOfDay)))
-        .orderBy(desc(shiftSession.start));
-
-      const [assistantLoggedIn] = await this.db
-        .select({ id: users.id })
-        .from(users)
-        .where(
-          and(
-            eq(users.manager_type, "assistant"),
-            gte(users.last_login, startOfDay),
-            lte(users.last_login, endOfDay)
+      const [dbSessions, [assistantLoggedIn]] = await Promise.all([
+        this.db
+          .select()
+          .from(shiftSession)
+          .where(and(gte(shiftSession.start, startOfDay), lte(shiftSession.start, endOfDay)))
+          .orderBy(desc(shiftSession.start)),
+        this.db
+          .select({ id: users.id })
+          .from(users)
+          .where(
+            and(
+              eq(users.manager_type, "assistant"),
+              gte(users.last_login, startOfDay),
+              lte(users.last_login, endOfDay)
+            )
           )
-        )
-        .limit(1);
+          .limit(1),
+      ]);
 
       const hasAssistantLoggedInToday = !!assistantLoggedIn;
 
@@ -117,30 +118,27 @@ export class ManagerService implements IManagerService {
 
       const sessionIds = dbSessions.map((s: any) => s.id) as string[];
       const userIds = Array.from(new Set(dbSessions.map((s: any) => s.user))) as string[];
+      const branchIds = Array.from(new Set(dbSessions.map((s: any) => s.branch).filter(Boolean))) as string[];
 
-      const dbUsers =
+      const [dbUsers, dbWorks, dbBranches] = await Promise.all([
         userIds.length > 0
-          ? await this.db.select().from(users).where(inArray(users.id, userIds))
-          : [];
-
-      const dbWorks =
+          ? this.db.select().from(users).where(inArray(users.id, userIds))
+          : Promise.resolve([]),
         sessionIds.length > 0
-          ? await this.db
+          ? this.db
               .select()
               .from(taskWork)
               .where(inArray(taskWork.shift_session, sessionIds))
-          : [];
+          : Promise.resolve([]),
+        branchIds.length > 0
+          ? this.db.select({ id: branches.id, name: branches.name }).from(branches).where(inArray(branches.id, branchIds))
+          : Promise.resolve([]),
+      ]);
 
       const taskIds = Array.from(new Set(dbWorks.map((w: any) => w.task))) as string[];
       const allTasks =
         taskIds.length > 0
           ? await this.db.select().from(tasks).where(inArray(tasks.id, taskIds))
-          : [];
-
-      const branchIds = Array.from(new Set(dbSessions.map((s: any) => s.branch).filter(Boolean))) as string[];
-      const dbBranches =
-        branchIds.length > 0
-          ? await this.db.select({ id: branches.id, name: branches.name }).from(branches).where(inArray(branches.id, branchIds))
           : [];
 
       const summaries: ManagerShiftSummary[] = dbSessions.map((sess: any) => {

@@ -172,7 +172,7 @@ export function ChecklistPage({
     },
   });
 
-  // Background sync every 8 seconds to reflect tasks added/disabled by manager live
+  // Background sync every 10 seconds to reflect tasks added/disabled by manager live
   useEffect(() => {
     let isMounted = true;
 
@@ -226,7 +226,7 @@ export function ChecklistPage({
     window.addEventListener("app:date-rollover", handleDateRollover);
     window.addEventListener("focus", handleDateRollover);
 
-    const interval = setInterval(syncTasksFromDb, 8000);
+    const interval = setInterval(syncTasksFromDb, 10000);
     return () => {
       isMounted = false;
       clearInterval(interval);

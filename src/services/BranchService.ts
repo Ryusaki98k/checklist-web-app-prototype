@@ -365,19 +365,34 @@ export class BranchService implements IBranchService {
       const targetDate = dateStr ? new Date(dateStr) : new Date();
       const { startOfDay, endOfDay, dateStr: activeDateStr } = getThaiStartAndEndOfDay(targetDate);
 
-      // 1. Fetch core entities
-      const allBranches = await this.db.select().from(branches);
-      const allUsers = await this.db.select().from(users);
-
-      // 2. Fetch today's shift sessions
-      const todaySessions = await this.db
-        .select()
-        .from(shiftSession)
-        .where(and(gte(shiftSession.start, startOfDay), lte(shiftSession.start, endOfDay)));
+      // 1. Fetch core entities and today's operational data concurrently in parallel
+      const [allBranches, allUsers, todaySessions, allFridges, todayRefTasks, todayLeaves] = await Promise.all([
+        this.db.select().from(branches),
+        this.db.select().from(users),
+        this.db
+          .select()
+          .from(shiftSession)
+          .where(and(gte(shiftSession.start, startOfDay), lte(shiftSession.start, endOfDay))),
+        this.db.select().from(refrigerators),
+        this.db
+          .select()
+          .from(refrigeratorTasks)
+          .where(eq(refrigeratorTasks.task_date, activeDateStr)),
+        this.db
+          .select()
+          .from(employeeLeaves)
+          .where(
+            and(
+              lte(employeeLeaves.start_date, activeDateStr),
+              gte(employeeLeaves.end_date, activeDateStr),
+              eq(employeeLeaves.status, "approved")
+            )
+          ),
+      ]);
 
       const sessionIds = todaySessions.map((s: any) => s.id);
 
-      // 3. Fetch taskWorks for today's sessions
+      // 2. Fetch taskWorks for today's sessions if any exist
       let todayWorks: any[] = [];
       if (sessionIds.length > 0) {
         todayWorks = await this.db
@@ -385,25 +400,6 @@ export class BranchService implements IBranchService {
           .from(taskWork)
           .where(inArray(taskWork.shift_session, sessionIds));
       }
-
-      // 4. Fetch refrigerators and refrigeratorTasks
-      const allFridges = await this.db.select().from(refrigerators);
-      const todayRefTasks = await this.db
-        .select()
-        .from(refrigeratorTasks)
-        .where(eq(refrigeratorTasks.task_date, activeDateStr));
-
-      // 5. Fetch approved leaves for today
-      const todayLeaves = await this.db
-        .select()
-        .from(employeeLeaves)
-        .where(
-          and(
-            lte(employeeLeaves.start_date, activeDateStr),
-            gte(employeeLeaves.end_date, activeDateStr),
-            eq(employeeLeaves.status, "approved")
-          )
-        );
 
       // Helper for task role title
       const getPositionTitle = (role?: string | null, taskRole?: string | null) => {

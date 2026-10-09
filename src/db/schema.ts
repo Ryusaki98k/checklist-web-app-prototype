@@ -101,6 +101,7 @@ export const shiftSession = checklistSchema.table.withRLS("shift_session", {
 }, (table) => [
     index("idx_shift_session_user_start").on(table.user, table.start),
     index("idx_shift_session_branch_start").on(table.branch, table.start),
+    index("idx_shift_session_branch_shift_start").on(table.branch, table.shift, table.start),
 ]);
 
 export const taskWork = checklistSchema.table.withRLS("task_work", {
@@ -117,6 +118,7 @@ export const taskWork = checklistSchema.table.withRLS("task_work", {
     index("idx_task_work_session").on(table.shift_session),
     index("idx_task_work_task").on(table.task),
     index("idx_task_work_branch_date").on(table.branch_id, table.task_date),
+    index("idx_task_work_session_task").on(table.shift_session, table.task),
 ]);
 
 export const refrigerators = checklistSchema.table.withRLS("refrigerators", {
