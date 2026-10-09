@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { User, Role } from "../../types";
+import { User } from "../../types";
 import {
   getUnassignedUsersAction,
   addEmployeeToBranchAction,
@@ -12,13 +12,10 @@ import {
   Users,
   Search,
   Check,
-  Briefcase,
   Store,
-  ShieldCheck,
   AlertCircle,
   X,
   RotateCw,
-  Sparkles,
   UserCheck,
 } from "lucide-react";
 import { UserAvatar } from "../common/UserAvatar";
@@ -50,7 +47,6 @@ export function AddStaffToBranchModal({
 
   // Assignment configuration
   const [selectedRole, setSelectedRole] = useState<"employee" | "manager_assistant">("employee");
-  const [customPosition, setCustomPosition] = useState<string>("แคชเชียร์");
 
   // New staff form state
   const [newStaffForm, setNewStaffForm] = useState({
@@ -58,7 +54,6 @@ export function AddStaffToBranchModal({
     username: "",
     password: "123",
     role: "employee" as "employee" | "manager_assistant",
-    position: "แคชเชียร์",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,7 +114,6 @@ export function AddStaffToBranchModal({
         branchId,
         userId: selectedUserId,
         role: selectedRole,
-        position: customPosition,
       });
 
       if (res.success) {
@@ -137,7 +131,7 @@ export function AddStaffToBranchModal({
   }
 
   async function handleCreateNewStaff() {
-    const { name, username, password, role, position } = newStaffForm;
+    const { name, username, password, role } = newStaffForm;
     if (!name.trim() || !username.trim()) {
       setErrorMsg("กรุณากรอกชื่อ-นามสกุล และชื่อผู้ใช้ให้ครบถ้วน");
       return;
@@ -154,10 +148,8 @@ export function AddStaffToBranchModal({
           username: username.trim().toLowerCase(),
           password: password.trim() || "123",
           role,
-          position: position || undefined,
         },
         role,
-        position,
       });
 
       if (res.success) {
@@ -337,44 +329,21 @@ export function AddStaffToBranchModal({
             {/* Assignment settings for selected user */}
             {selectedUserId && (
               <div className="pt-3 border-t border-[var(--color-border)] space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-                      บทบาทในสาขา
-                    </label>
-                    <select
-                      value={selectedRole}
-                      onChange={(e) => {
-                        const r = e.target.value as "employee" | "manager_assistant";
-                        setSelectedRole(r);
-                        if (r === "manager_assistant") {
-                          setCustomPosition("ผู้ช่วยผู้จัดการร้าน");
-                        } else if (customPosition === "ผู้ช่วยผู้จัดการร้าน") {
-                          setCustomPosition("แคชเชียร์");
-                        }
-                      }}
-                      className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
-                    >
-                      <option value="employee">พนักงานประจำสาขา (Floor Staff)</option>
-                      <option value="manager_assistant">ผู้ช่วยผู้จัดการร้าน (Assistant Manager)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-                      ตำแหน่งงานที่มอบหมาย
-                    </label>
-                    <select
-                      value={customPosition}
-                      onChange={(e) => setCustomPosition(e.target.value)}
-                      className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
-                    >
-                      <option value="แคชเชียร์">แคชเชียร์</option>
-                      <option value="พนักงานสต็อก/จัดเรียง">พนักงานสต็อก/จัดเรียง</option>
-                      <option value="พนักงานทั่วไป">พนักงานทั่วไป</option>
-                      <option value="ผู้ช่วยผู้จัดการร้าน">ผู้ช่วยผู้จัดการร้าน</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
+                    บทบาทในสาขา
+                  </label>
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => {
+                      const r = e.target.value as "employee" | "manager_assistant";
+                      setSelectedRole(r);
+                    }}
+                    className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
+                  >
+                    <option value="employee">พนักงานประจำสาขา (Floor Staff)</option>
+                    <option value="manager_assistant">ผู้ช่วยผู้จัดการร้าน (Assistant Manager)</option>
+                  </select>
                 </div>
               </div>
             )}
@@ -464,43 +433,24 @@ export function AddStaffToBranchModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-                  บทบาทในสาขา
-                </label>
-                <select
-                  value={newStaffForm.role}
-                  onChange={(e) => {
-                    const r = e.target.value as "employee" | "manager_assistant";
-                    setNewStaffForm({
-                      ...newStaffForm,
-                      role: r,
-                      position: r === "manager_assistant" ? "ผู้ช่วยผู้จัดการร้าน" : newStaffForm.position === "ผู้ช่วยผู้จัดการร้าน" ? "แคชเชียร์" : newStaffForm.position,
-                    });
-                  }}
-                  className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
-                >
-                  <option value="employee">พนักงานประจำสาขา (Floor Staff)</option>
-                  <option value="manager_assistant">ผู้ช่วยผู้จัดการร้าน (Assistant Manager)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
-                  ตำแหน่งหน้าที่
-                </label>
-                <select
-                  value={newStaffForm.position}
-                  onChange={(e) => setNewStaffForm({ ...newStaffForm, position: e.target.value })}
-                  className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
-                >
-                  <option value="แคชเชียร์">แคชเชียร์</option>
-                  <option value="พนักงานสต็อก/จัดเรียง">พนักงานสต็อก/จัดเรียง</option>
-                  <option value="พนักงานทั่วไป">พนักงานทั่วไป</option>
-                  <option value="ผู้ช่วยผู้จัดการร้าน">ผู้ช่วยผู้จัดการร้าน</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs font-semibold text-[var(--color-text-muted)] mb-1">
+                บทบาทในสาขา
+              </label>
+              <select
+                value={newStaffForm.role}
+                onChange={(e) => {
+                  const r = e.target.value as "employee" | "manager_assistant";
+                  setNewStaffForm({
+                    ...newStaffForm,
+                    role: r,
+                  });
+                }}
+                className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs font-semibold text-[var(--color-text)] focus:outline-2 focus:outline-amber-500 cursor-pointer"
+              >
+                <option value="employee">พนักงานประจำสาขา (Floor Staff)</option>
+                <option value="manager_assistant">ผู้ช่วยผู้จัดการร้าน (Assistant Manager)</option>
+              </select>
             </div>
 
             <div className="flex gap-2 pt-2">

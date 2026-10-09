@@ -25,7 +25,7 @@ import {
 } from "../actions/checklist";
 import { getUserByIdAction, syncOAuthUserAction } from "../actions/auth";
 import { getBranchesAction } from "../actions/branch";
-import { createClient } from "../db/supabase/client";
+import { createClient, isSupabaseConfigured } from "../db/supabase/client";
 import { secureGetItem, secureRemoveItem } from "../utils/crypto";
 import { invalidateBranchCache } from "../utils/cache";
 import { useLoading } from "./LoadingContext";
@@ -255,51 +255,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(checkDateRollover, 30000);
 
     // Check Supabase Auth state for OAuth logins
-    try {
-      const supabase = createClient();
-      supabase.auth.getUser().then(({ data }) => {
-        if (data?.user) {
-          // Only sync if user was already stored or if we have an active auth code/token callback in the URL
-          const hasAuthCallback =
-            typeof window !== "undefined" &&
-            (window.location.search.includes("code=") ||
-              window.location.hash.includes("access_token=") ||
-              window.location.pathname.startsWith("/auth/callback"));
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createClient();
+        supabase.auth.getUser().then(({ data }) => {
+          if (data?.user) {
+            // Only sync if user was already stored or if we have an active auth code/token callback in the URL
+            const hasAuthCallback =
+              typeof window !== "undefined" &&
+              (window.location.search.includes("code=") ||
+                window.location.hash.includes("access_token=") ||
+                window.location.pathname.startsWith("/auth/callback"));
 
-          if (!storedUser && !hasAuthCallback) {
-            // Stale auth session without active user - sign out cleanly to prevent phantom logins
-            void supabase.auth.signOut();
-            return;
+            if (!storedUser && !hasAuthCallback) {
+              // Stale auth session without active user - sign out cleanly to prevent phantom logins
+              void supabase.auth.signOut();
+              return;
+            }
+
+            const authUser = data.user;
+            const username =
+              authUser.user_metadata?.user_name ||
+              authUser.email?.split("@")[0]?.toLowerCase() ||
+              `user_${authUser.id.substring(0, 6)}`;
+
+            const name =
+              authUser.user_metadata?.full_name ||
+              authUser.user_metadata?.name ||
+              username;
+
+            syncOAuthUserAction({
+              id: authUser.id,
+              username,
+              name,
+            }).then((syncRes) => {
+              if (syncRes.success && syncRes.user) {
+                setCurrentUserState(syncRes.user);
+                saveCurrentUser(syncRes.user);
+              }
+            }).catch(console.error);
           }
-
-          const authUser = data.user;
-          const username =
-          authUser.user_metadata?.user_name ||
-          authUser.email?.split("@")[0]?.toLowerCase() ||
-          `user_${authUser.id.substring(0, 6)}`;
-
-        const name =
-          authUser.user_metadata?.full_name ||
-          authUser.user_metadata?.name ||
-          username;
-
-        syncOAuthUserAction({
-          id: authUser.id,
-          username,
-          name,
-        }).then((syncRes) => {
-          if (syncRes.success && syncRes.user) {
-            setCurrentUserState(syncRes.user);
-            saveCurrentUser(syncRes.user);
-          }
-        }).catch(console.error);
+        }).catch((err) => {
+          console.warn("Supabase auth check failed:", err);
+        });
+      } catch (err) {
+        console.warn("Supabase client initialization skipped:", err);
       }
-    }).catch((err) => {
-      console.warn("Supabase auth check failed:", err);
-    });
-  } catch (err) {
-    console.warn("Supabase client initialization skipped:", err);
-  }
+    }
 
   setIsReady(true);
 
@@ -346,33 +348,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // 3. Supabase Realtime subscription for external approvals/point awards
     let realtimeChannel: any = null;
-    try {
-      const supabase = createClient();
-      realtimeChannel = supabase
-        .channel(`user-scores-${currentUser.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "checklist_web_app",
-            table: "notifications",
-            filter: `recipient_id=eq.${currentUser.id}`,
-          },
-          (payload: any) => {
-            const type = payload?.new?.type;
-            if (type === "point_awarded" || type === "shift_approved") {
-              void refreshUserData();
-              window.dispatchEvent(
-                new CustomEvent("app:scores-updated", {
-                  detail: { userId: currentUser.id, shiftSessionId: payload?.new?.shift_session_id },
-                })
-              );
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createClient();
+        realtimeChannel = supabase
+          .channel(`user-scores-${currentUser.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "checklist_web_app",
+              table: "notifications",
+              filter: `recipient_id=eq.${currentUser.id}`,
+            },
+            (payload: any) => {
+              const type = payload?.new?.type;
+              if (type === "point_awarded" || type === "shift_approved") {
+                void refreshUserData();
+                window.dispatchEvent(
+                  new CustomEvent("app:scores-updated", {
+                    detail: { userId: currentUser.id, shiftSessionId: payload?.new?.shift_session_id },
+                  })
+                );
+              }
             }
-          }
-        )
-        .subscribe();
-    } catch (e) {
-      console.warn("Supabase realtime user score subscription unavailable:", e);
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn("Supabase realtime user score subscription unavailable:", e);
+      }
     }
 
     return () => {
@@ -382,7 +386,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           broadcastChannel.close();
         } catch (_) {}
       }
-      if (realtimeChannel) {
+      if (realtimeChannel && isSupabaseConfigured()) {
         try {
           const supabase = createClient();
           supabase.removeChannel(realtimeChannel);
@@ -619,11 +623,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     const targetUrl = typeof redirectTo === "string" ? redirectTo : "/";
 
-    try {
-      const supabase = createClient();
-      await supabase.auth.signOut({ scope: "local" });
-    } catch (err) {
-      console.warn("Supabase signOut error:", err);
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createClient();
+        await supabase.auth.signOut({ scope: "local" });
+      } catch (err) {
+        console.warn("Supabase signOut error:", err);
+      }
     }
 
     if (typeof window !== "undefined") {

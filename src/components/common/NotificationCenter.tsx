@@ -9,7 +9,7 @@ import {
   markAllNotificationsReadAction,
 } from "../../actions/notifications";
 import { useApp } from "../../context/AppContext";
-import { createClient } from "../../db/supabase/client";
+import { createClient, isSupabaseConfigured } from "../../db/supabase/client";
 import { broadcastScoresUpdated } from "../../utils/sessionApprovalBuffer";
 
 function formatNotificationDateTime(dateStr: string | Date | undefined): string {
@@ -102,39 +102,41 @@ export function NotificationCenter() {
 
     // Supabase Realtime Subscription for live instant updates
     let channel: any;
-    try {
-      const supabase = createClient();
-      channel = supabase
-        .channel("realtime-notifications")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "checklist_web_app",
-            table: "notifications",
-          },
-          (payload: any) => {
-            fetchNotifications();
-            if (payload?.new) {
-              const notifType = payload.new.type;
-              if (notifType === "point_awarded" || notifType === "shift_approved") {
-                broadcastScoresUpdated({
-                  userId: payload.new.recipient_id,
-                  shiftSessionId: payload.new.shift_session_id,
-                });
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createClient();
+        channel = supabase
+          .channel("realtime-notifications")
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "checklist_web_app",
+              table: "notifications",
+            },
+            (payload: any) => {
+              fetchNotifications();
+              if (payload?.new) {
+                const notifType = payload.new.type;
+                if (notifType === "point_awarded" || notifType === "shift_approved") {
+                  broadcastScoresUpdated({
+                    userId: payload.new.recipient_id,
+                    shiftSessionId: payload.new.shift_session_id,
+                  });
+                }
               }
             }
-          }
-        )
-        .subscribe();
-    } catch (e) {
-      console.warn("Supabase realtime subscription skipped or unavailable:", e);
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn("Supabase realtime subscription skipped or unavailable:", e);
+      }
     }
 
     const interval = setInterval(fetchNotifications, 15000); // 15s backup poll
     return () => {
       clearInterval(interval);
-      if (channel) {
+      if (channel && isSupabaseConfigured()) {
         try {
           const supabase = createClient();
           supabase.removeChannel(channel);
