@@ -23,6 +23,7 @@
 
 | เวอร์ชัน | วันที่อัปเดต | ไฮไลท์สำหรับสาขาและผู้บริหาร | ไฮไลท์ทางเทคนิคสำคัญ (Very Technical) |
 | :---: | :---: | :--- | :--- |
+| **v1.9.0** | 9 ต.ค. 2026 | ระบบรูปโปรไฟล์ผู้ใช้พร้อมตัวตัดรูปและขยายภาพ, ผู้จัดการดึงพนักงานเข้า/ปลดออกจากสาขา, กฎเหล็กตรวจตู้แช่ก่อนปิดกะสำหรับสต็อก, ยกเครื่องระบบเช็คลิสต์และงานร่วม, ปรับปรุงการอนุมัติแบบอนุโลมตามนโยบายความเสมอภาค, ปรับปรุงระบบบันทึกการลา, และรีเฟรชหน้าจออัตโนมัติเมื่อ Idle 1 นาที | User Profile Storage & Image Cropper (`ProfileImageCropperModal`, `EnlargeAvatarModal`), Branch Staff Assignment Hub (`AddStaffToBranchModal`), Joint Tasks Migration (`migrate_joint_tasks_refrigerators.ts`), Mandatory Refrigerator Checklist Enforcement, Point Scoring Engine Revamp & Lateness Presets, Equality-Policy Shift Approval Modal, 1-Minute Idle Auto-Reload (`AutoReloadWatcher`), Notifications & Point Transactions Cleanup Crons |
 | **v1.8.0** | 8 ต.ค. 2026 | ยืนยันตัวตนด้วย Username/Password 100%, แยกสิทธิ์ Executive/Manager ชัดเจน, ระบบ Loading และล็อกปุ่มระดับสากล, จำกัดอุณหภูมิตู้แช่ (-100°C ถึง 100°C) พร้อมส่งออก CSV/Excel, Cron รีเซ็ตแต้มรายเดือน, และแก้ไข UI Header ล้นจอ | Username-only Auth, Normalization Junction Tables (`branch_tasks`, `notification_reads`), Global Loading & Button Disabler (`LoadingContext`), Keepalive Beacon (`/api/checklist/batch-sync`), Monthly Score Reset Cron (`/api/cron/reset-scores`), Refrigerator Range Clamping, Responsive Header Breakpoints |
 | **v1.7.0** | 30 ก.ย. 2026 | ระบบบันทึกการลาพนักงาน (ลาป่วย/ลากิจ/อื่นๆ), ดุลยพินิจรักษาสตรีคหรือตัดสตรีค, ลีดเดอร์บอร์ดพนักงานแยกสาขา/ทุกสาขา | Employee Leave Management (`employee_leaves` & `leave_type` enum), Manager Streak Decision & Restoration, Attendance Alert Cron Exclusion, Employee Leaderboard Tab (`PointStreakBadge`), Next.js Proxy Architecture (`proxy.ts`) |
 | **v1.6.1** | 27 ก.ย. 2026 | ล้างแคชข้ามวันอัตโนมัติเมื่อคงการล็อกอินไว้, ดึงงานและกะใหม่ของวันนี้จากฐานข้อมูลเสมอ | Real-time Date-Rollover Detection, `isTodayThai` Validator, Bangkok Timezone Boundary Correction, Auto-Close Dangling Shifts |
@@ -32,6 +33,59 @@
 | **v1.3.0** | 23 ก.ย. 2026 | แดชบอร์ดตรวจสอบสาขา, ตรวจวัดอุณหภูมิตู้แช่, ปิดกะอัตโนมัติรอบดึก | Vercel Cron Serverless Handlers (UTC+7 aligned), Lateness Detection Algorithm |
 | **v1.2.0** | 21–22 ก.ย. 2026 | ระบบสะสมแต้ม, ลีดเดอร์บอร์ด, แจ้งเตือนกระดิ่งเด้งสดทันที | Refactor สู่ Service Layer & Dependency Injection Container, Supabase SSR Auth |
 | **v1.1.0** | 17–18 ก.ย. 2026 | โทนสีร้านอาหารสดใหม่ สบายตา รองรับโหมดมืด (Dark Mode) | Row-Level Security (RLS), ลบการส่ง `userId` จากฝั่งหน้าบ้าน, ตาราง `refrigerators` |
+
+---
+
+## [v1.9.0] — 9 ตุลาคม 2026
+
+### 🏪 สำหรับผู้ใช้งานและผู้บริหาร (Business & User Value)
+
+- **🖼️ ระบบรูปภาพโปรไฟล์ผู้ใช้และหน้าต่างขยายภาพขนาดใหญ่ (Profile Picture & Lightbox Zoom)**:
+  - รองรับการอัปโหลดรูปภาพโปรไฟล์พนักงานและผู้จัดการ พร้อมระบบครอบตัดรูป (Image Cropper) ใน `ProfileImageCropperModal` และจัดเก็บบนคลาวด์ Supabase Storage อย่างปลอดภัย
+  - แสดงรูปโปรไฟล์ในทุกจุดสำคัญของแอปพลิเคชัน: แถบนำทางส่วนบน (Navbar), แบบฟอร์มขอลา, ตารางคะแนนลีดเดอร์บอร์ด และหน้ารายละเอียดการทำงาน
+  - **หน้าต่างขยายดูภาพขนาดใหญ่ (`EnlargeAvatarModal`)**: เพิ่มรูปโปรไฟล์ที่มุมซ้ายสุดของการ์ดคิวงานผู้จัดการ (`ManagerDashboard`) และหน้าต่างรายละเอียดกะงาน (`SessionDetailModal`) โดยสามารถคลิกเพื่อขยายดูภาพและข้อมูลพนักงานแบบ Lightbox ได้อย่างชัดเจน โดยแยกส่วนอย่างปลอดภัยไม่รบกวนปุ่มแก้ไขโปรไฟล์ส่วนตัวของผู้จัดการ
+- **👥 ระบบจัดการพนักงานประจำสาขาโดยผู้จัดการร้าน (Branch Staff Management by Store Manager)**:
+  - ผู้จัดการร้านสามารถดึงพนักงานที่ยังไม่มีสังกัดสาขา (`unassigned`) เข้ามาเป็นพนักงานประจำสาขาตนเองได้โดยตรงผ่าน `AddStaffToBranchModal`
+  - สามารถปลดพนักงานออกจากสาขาพร้อมระบบยืนยันความปลอดภัย (`RemoveStaffConfirmModal`)
+  - พนักงานที่ยังไม่มีสาขาสังกัดจะถูกจำกัดไม่ให้ทำเช็คลิสต์หรือเปิดกะงาน และจะแสดงหน้าต่างแจ้งเตือนรอการจัดสรร (`/awaiting-assignment`) ป้องกันข้อผิดพลาดในการปฏิบัติงาน
+- **❄️ กฎเหล็กตรวจตู้แช่ก่อนปิดกะสำหรับพนักงานสต็อก (Mandatory Refrigerator Checklist)**:
+  - พนักงานตำแหน่งสต็อก/จัดเรียงสินค้าต้องทำการตรวจวัดและบันทึกอุณหภูมิตู้แช่ให้ครบทุกตู้ในสาขา จึงจะมีสิทธิ์กดปิดกะการทำงาน เพื่อรักษามาตรฐานห่วงโซ่ความเย็น (Cold Chain) 100%
+  - เพิ่มระบบแก้ไขและตั้งค่าตู้แช่หลายรายการพร้อมกัน (Batch/Bulk Refrigerator Editing) ใน `RefrigeratorConfigView` อำนวยความสะดวกให้ผู้จัดการสาขา
+- **📋 ยกเครื่องระบบเช็คลิสต์และงานร่วม (Checklist & Joint Tasks Overhaul)**:
+  - รวมโครงสร้างงานตรวจตู้แช่และงานตรวจปิดร้านรอบดึกของผู้จัดการเข้าเป็นระบบงานร่วม (Joint Tasks) เพื่อความกระชับและเป็นอันหนึ่งอันเดียวกัน
+  - สร้างศูนย์กลางจัดการเช็คลิสต์สาขาสำหรับผู้จัดการ (`/manager/checklists`, `ChecklistManagementHub`)
+  - นำฟิลด์ "ตำแหน่งงานที่มอบหมาย" ที่ซ้ำซ้อนออก คงไว้เฉพาะ "บทบาทในสาขา (Branch Role)" เพื่อลดความสับสนและทำให้ระบบตรงไปตรงมา
+- **⚖️ ยกระดับระบบคะแนนและการอนุมัติแบบอนุโลมตามนโยบายความเสมอภาค (Point Revamp & Protected Exception Approval)**:
+  - ปรับปรุงการคำนวณคะแนนใน `PointService` และเพิ่ม Preset ตัวเลือกเหตุผลการตรวจงานล่าช้าใน `LateReasonModal` ให้พนักงานเลือกได้สะดวกรวดเร็ว
+  - **ปรับปรุงปุ่ม "อนุมัติแบบอนุโลม" (ข้อยกเว้นพิเศษตามนโยบายความเสมอภาค - Equality Policy)** ใน `SessionDetailModal`: ปรับลดขนาดและจัดวางให้อยู่ด้านซ้าย พร้อมหน้าต่างยืนยันและข้อความแจ้งเตือนนโยบายความเสมอภาค เพื่อรักษามาตรฐานความเป็นธรรม ป้องกันการกดพลาด และจำกัดไว้เฉพาะกรณีจำเป็นจริง
+  - ปรับปรุงวิดเจ็ตและหน้าต่างป๊อปอัปสรุปผลลีดเดอร์บอร์ดประจำสัปดาห์ (`LeaderboardWidget` และ `WeeklyLeaderboardPopup`)
+- **📝 ปรับปรุงระบบบันทึกการลาพนักงาน (Employee Leave Refinement)**:
+  - ยกเลิกระบบโควตาการลาที่ซ้ำซ้อน
+  - รวมตัวเลือกการจ่ายเงิน (Paid/Unpaid) และผลกระทบต่อสตรีคเข้าด้วยกันในคลิกเดียว
+  - เพิ่มช่องค้นหาพนักงานพร้อมรูปภาพโปรไฟล์ในแบบฟอร์มการลา
+  - ปรับสิทธิ์ไม่ให้ฝ่ายบริหาร/กรรมการ (Executive/Committee) ยื่นบันทึกการลา เพื่อรักษาขอบเขตการกำกับดูแล
+- **⏱️ ระบบเบื้องหลังและการทำงานอัตโนมัติ (Maintenance, Cron & Auto-Reload)**:
+  - เพิ่ม `AutoReloadWatcher` ตรวจจับสถานะ Idle เมื่อไม่มีการใช้งานเกิน 1 นาที เพื่อรีเฟรชหน้าจออัตโนมัติ ป้องกันข้อมูลตกหล่นในเครื่องส่วนกลาง
+  - เพิ่ม Cron สำหรับล้างการแจ้งเตือนเก่าและบันทึกประวัติแต้มที่หมดอายุ พร้อมตั้งค่าเก็บบันทึกประวัติตู้แช่ย้อนหลัง 1 เดือน
+
+### ⚙️ ไฮไลท์ทางเทคนิคสำคัญ (Engineering & Architecture)
+
+- **User Profile Storage & Image Cropper**:
+  - สร้าง `ProfileImageCropperModal.tsx` รองรับการ Zoom, Pan, Crop รูปภาพด้วย Canvas API ก่อนแปลงเป็น Blob และอัปโหลดขึ้น Supabase Storage Bucket ผ่าน `profileStorage.ts`
+  - สร้าง `EnlargeAvatarModal.tsx` สำหรับแสดงผลรูปโปรไฟล์ขนาดใหญ่ พร้อมโฟกัสแทร็ป `useModalFocusTrap` และการจัดการ Error Fallback ที่เสถียร
+  - คอมโพเนนต์ `UserAvatar.tsx` รองรับขนาดตั้งแต่ `xs` ถึง `3xl`, การแสดงผลรูปภาพคู่กับป้ายสถานะบทบาท และ Initial อักษรย่อ
+- **Joint Tasks Migration & Checklist Hub**:
+  - เขียนและรันสคริปต์ไมเกรชัน `tools/migrate_joint_tasks_refrigerators.ts` โอนย้ายโครงสร้างตารางงานตู้แช่และงานปิดร้านเข้าสู่โมเดล Task และ Checklist แบบรวมศูนย์
+  - สร้าง `ChecklistManagementHub.tsx` และ Route `/manager/checklists` สำหรับควบคุมและบริหารรายการเช็คลิสต์แบบรวมศูนย์
+  - ปรับปรุง `taskChecklistBuffer.ts` และ Server-side checklist stack ให้ประมวลผลการบันทึกรายการแบบคู่ขนานได้อย่างรวดเร็วและปลอดภัย
+- **Branch Staff Assignment Flow**:
+  - สร้าง `AddStaffToBranchModal.tsx` และ `RemoveStaffConfirmModal.tsx` สำหรับ Store Manager ในการจัดการบุคลากรประจำสาขา
+  - อัปเดต `BranchService.ts` และ `ManagerService.ts` เพื่อรองรับการ Assign/Unassign พนักงานจากสาขา
+  - ระบบ Guard ใน Route `/awaiting-assignment` ป้องกันพนักงานที่ไม่มีสังกัดสาขาเข้าถึงการทำงานเช็คลิสต์
+- **Equality Policy Exception Flow**:
+  - ปรับปรุง UI State ใน `SessionDetailModal.tsx` แยก Flow การอนุมัติปกติและอนุโลมอย่างชัดเจน โดยใช้ `setShowExceptionConfirm` และปุ่มสไตล์ Subdued Secondary
+- **Idle Timeout Auto-Reload Watcher**:
+  - สร้าง `AutoReloadWatcher.tsx` ดักจับ User Interaction Event (mousemove, keydown, click, scroll) และสั่ง `router.refresh()` อัตโนมัติเมื่อไม่มีการใช้งานต่อเนื่องครบ 60 วินาที
 
 ---
 
