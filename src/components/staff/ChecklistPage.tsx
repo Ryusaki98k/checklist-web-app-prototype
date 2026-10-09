@@ -24,7 +24,8 @@ import {
   Calendar,
   Send,
   ShieldAlert,
-  X
+  X,
+  RefreshCw,
 } from "lucide-react";
 import { BranchRefrigeratorChecklist } from "./BranchRefrigeratorChecklist";
 import { JointTaskDetailsModal } from "./JointTaskDetailsModal";
@@ -129,6 +130,10 @@ export function ChecklistPage({
   const [items, setItems] = useState<ChecklistItem[]>(session.items || []);
   const [shiftCompleted, setShiftCompleted] = useState<boolean>(Boolean(session.completedAt));
   const [prevSession, setPrevSession] = useState(session);
+
+  // Main Tabs State (Optimized for Mobile & Desktop without remounts or refetches)
+  const [activeMainTab, setActiveMainTab] = useState<"shift" | "joint" | "special">("shift");
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
   // --- ROW 2: Joint Tasks State ---
   const [jointTasks, setJointTasks] = useState<JointTaskItem[]>([]);
@@ -377,6 +382,27 @@ export function ChecklistPage({
     };
   }, [reconcileChecklist, saveChecklistCache]);
 
+  const handleManualDbRefresh = useCallback(async () => {
+    if (isManualRefreshing || isPageBusy) return;
+    setIsManualRefreshing(true);
+    try {
+      await flushChecklistBuffer();
+      await Promise.all([
+        syncTasksRef.current ? syncTasksRef.current() : Promise.resolve(),
+        loadJointTasks(),
+        loadSpecialTasks(),
+      ]);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("app:refresh-refrigerators"));
+      }
+      showRowToast("success", "ซิงค์และอัปเดตข้อมูลล่าสุดจากฐานข้อมูลเรียบร้อยแล้ว");
+    } catch (err: any) {
+      showRowToast("error", err?.message || "การเชื่อมต่อขัดข้อง ไม่สามารถรีเฟรชได้");
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [isManualRefreshing, isPageBusy, flushChecklistBuffer, loadJointTasks, loadSpecialTasks]);
+
   const total = items.length;
   const done = items.filter((i) => i.completedAt).length;
   const progress = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -614,6 +640,21 @@ export function ChecklistPage({
             <RoleSwitcher />
             <NotificationCenter />
             <ThemeToggle />
+
+            {/* Manual DB Refresh Button */}
+            <button
+              type="button"
+              disabled={isPageBusy || isManualRefreshing}
+              onClick={handleManualDbRefresh}
+              aria-label="รีเฟรชข้อมูลล่าสุดจากฐานข้อมูล (Sync DB)"
+              title="รีเฟรชข้อมูลล่าสุดจากฐานข้อมูล (Sync DB)"
+              className="p-1.5 sm:p-2 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:text-amber-700 hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer min-w-[36px] min-h-[36px] inline-flex items-center justify-center relative group"
+            >
+              <RefreshCw
+                size={16}
+                className={isManualRefreshing ? "animate-spin text-amber-600 dark:text-amber-400" : "transition-transform group-hover:rotate-45"}
+              />
+            </button>
             
             {onOpenDashboard && (
               <button
@@ -713,12 +754,105 @@ export function ChecklistPage({
           </div>
         )}
 
-        {/* 3-Row Cooperative Checklist System */}
-        <div className="space-y-8">
+        {/* Main Tab Navigation for Mobile & Desktop */}
+        <div
+          role="tablist"
+          aria-label="หมวดหมู่งานเช็คลิสต์"
+          className="grid grid-cols-3 bg-[var(--color-surface)] p-1 sm:p-1.5 rounded-2xl border border-[var(--color-border)] shadow-xs gap-1 sm:gap-2 sticky top-2 z-30 backdrop-blur-md bg-[var(--color-surface)]/95"
+        >
+          {/* Tab 1: งานประจำกะ */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeMainTab === "shift"}
+            onClick={() => setActiveMainTab("shift")}
+            className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all cursor-pointer select-none text-center ${
+              activeMainTab === "shift"
+                ? "bg-amber-500 text-amber-950 font-black shadow-xs dark:bg-amber-400"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] font-bold"
+            }`}
+          >
+            <div className="flex items-center gap-1">
+              <CheckCircle2 size={15} className={activeMainTab === "shift" ? "text-amber-950" : "text-amber-600 dark:text-amber-400"} />
+              <span className="text-xs sm:text-sm truncate">งานประจำกะ</span>
+            </div>
+            <span
+              className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-mono font-extrabold ${
+                activeMainTab === "shift"
+                  ? "bg-amber-600/25 text-amber-950"
+                  : allDone
+                  ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+                  : "bg-[var(--color-surface-2)] text-[var(--color-text)] border border-[var(--color-border)]"
+              }`}
+            >
+              {done}/{total}
+            </span>
+          </button>
+
+          {/* Tab 2: งานส่วนกลาง */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeMainTab === "joint"}
+            onClick={() => setActiveMainTab("joint")}
+            className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all cursor-pointer select-none text-center ${
+              activeMainTab === "joint"
+                ? "bg-sky-600 text-white font-black shadow-xs dark:bg-sky-500"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] font-bold"
+            }`}
+          >
+            <div className="flex items-center gap-1">
+              <Users size={15} className={activeMainTab === "joint" ? "text-white" : "text-sky-600 dark:text-sky-400"} />
+              <span className="text-xs sm:text-sm truncate">งานส่วนกลาง</span>
+            </div>
+            <span
+              className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-bold ${
+                activeMainTab === "joint"
+                  ? "bg-white/20 text-white"
+                  : "bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200"
+              }`}
+            >
+              ตู้แช่ • {jointTasks.length}
+            </span>
+          </button>
+
+          {/* Tab 3: ภารกิจพิเศษ */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeMainTab === "special"}
+            onClick={() => setActiveMainTab("special")}
+            className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all cursor-pointer select-none text-center ${
+              activeMainTab === "special"
+                ? "bg-amber-600 text-white font-black shadow-xs dark:bg-amber-500"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] font-bold"
+            }`}
+          >
+            <div className="flex items-center gap-1">
+              <Sparkles size={15} className={activeMainTab === "special" ? "text-white" : "text-amber-600 dark:text-amber-400"} />
+              <span className="text-xs sm:text-sm truncate">ภารกิจพิเศษ</span>
+            </div>
+            <span
+              className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-bold ${
+                activeMainTab === "special"
+                  ? "bg-white/20 text-white"
+                  : specialTasks.length > 0
+                  ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
+                  : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"
+              }`}
+            >
+              {specialTasks.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Tab Contents Container - Components remain mounted in DOM to prevent extra DB refetches on tab switch */}
+        <div className="space-y-4">
           {/* ═══════════════════════════════════════════════════════════════════
-              ROW 1: งานประจำวันของฉัน (Daily Shift Tasks)
+              TAB 1: งานประจำวันของฉัน (Daily Shift Tasks)
           ═══════════════════════════════════════════════════════════════════ */}
-          <section className="space-y-4">
+          <div className={activeMainTab === "shift" ? "block space-y-4" : "hidden"}>
+            <section className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
               <div>
                 <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] flex items-center gap-2">
@@ -923,11 +1057,13 @@ export function ChecklistPage({
           )}
         </div>
       </section>
+    </div>
 
           {/* ═══════════════════════════════════════════════════════════════════
-              ROW 2: งานส่วนกลาง (Joint Tasks & Refrigerator Checks)
+              TAB 2: งานส่วนกลาง (Joint Tasks & Refrigerator Checks)
           ═══════════════════════════════════════════════════════════════════ */}
-          <section className="space-y-4 pt-6 border-t-2 border-[var(--color-border)]">
+          <div className={activeMainTab === "joint" ? "block space-y-4" : "hidden"}>
+            <section className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
               <div>
                 <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] flex items-center gap-2">
@@ -980,7 +1116,8 @@ export function ChecklistPage({
               </button>
             </div>
 
-            {jointSubTab === "refrigerators" ? (
+            {/* Always keep BranchRefrigeratorChecklist mounted so switching tabs never causes extra DB fetches */}
+            <div className={jointSubTab === "refrigerators" ? "block" : "hidden"}>
               <BranchRefrigeratorChecklist
                 userId={session.userId}
                 userName={session.userName}
@@ -988,8 +1125,9 @@ export function ChecklistPage({
                 shiftSessionId={session.id}
                 shift={session.shift}
               />
-            ) : (
-              <div className="space-y-2.5">
+            </div>
+
+            <div className={jointSubTab === "joint_tasks" ? "block space-y-2.5" : "hidden"}>
                 {jointTasks.length === 0 ? (
                   <div className="p-8 text-center bg-[var(--color-surface)] border border-dashed border-[var(--color-border)] rounded-2xl">
                     <Users size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
@@ -1042,13 +1180,14 @@ export function ChecklistPage({
                   ))
                 )}
               </div>
-            )}
           </section>
+        </div>
 
           {/* ═══════════════════════════════════════════════════════════════════
-              ROW 3: ภารกิจพิเศษ (Special Period Tasks)
+              TAB 3: ภารกิจพิเศษ (Special Period Tasks)
           ═══════════════════════════════════════════════════════════════════ */}
-          <section className="space-y-4 pt-6 border-t-2 border-[var(--color-border)]">
+          <div className={activeMainTab === "special" ? "block space-y-4" : "hidden"}>
+            <section className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
               <div>
                 <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] flex items-center gap-2">
@@ -1162,6 +1301,7 @@ export function ChecklistPage({
           </section>
         </div>
       </div>
+    </div>
 
       {/* Modals for Joint Tasks & Special Tasks */}
       <JointTaskDetailsModal

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 interface LoadingContextType {
@@ -11,7 +11,7 @@ interface LoadingContextType {
   setIsNavigating: (navigating: boolean) => void;
   startLoading: (message?: string, isTransition?: boolean) => void;
   stopLoading: () => void;
-  resetLoading: () => void;
+  resetLoading: (force?: boolean) => void;
   withLoading: <T>(action: () => Promise<T>, message?: string) => Promise<T>;
   navigate: (href: string, message?: string) => void;
 }
@@ -37,19 +37,31 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const resetLoading = useCallback(() => {
+  const resetLoading = useCallback((force = false) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
     setIsPageTransition(false);
     setIsNavigating(false);
-    // Only clear loading and DOM busy if there are no active async DB/API operations
-    if (activeCountRef.current === 0) {
+    // If forced or no active DB/API operations, clear loading and DOM busy immediately
+    if (force || activeCountRef.current <= 0) {
+      activeCountRef.current = 0;
       setIsLoading(false);
       clearDomBusy();
     }
   }, [clearDomBusy]);
+
+  // Handle browser bfcache (Back/Forward Cache) restores and page shows
+  useEffect(() => {
+    const handlePageShow = () => {
+      resetLoading(true);
+    };
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [resetLoading]);
 
   const startLoading = useCallback((message = "กำลังประมวลผล...", isTransition = false) => {
     setLoadingMessage(message);
@@ -65,7 +77,7 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
         if (activeCountRef.current === 0) {
           clearDomBusy();
         }
-      }, 12000);
+      }, 5000);
       return;
     }
 
@@ -112,7 +124,7 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
         if (activeCountRef.current === 0) {
           clearDomBusy();
         }
-      }, 12000);
+      }, 5000);
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("app:navigating", { detail: { href, message } }));

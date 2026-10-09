@@ -1,19 +1,31 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useSyncExternalStore } from "react";
 import { useLoading } from "../../context/LoadingContext";
 import { BrandLogo } from "./BrandLogo";
-import { Sparkles, Compass, ShieldCheck, Briefcase, Landmark, Users } from "lucide-react";
+import { Compass, ShieldCheck, Briefcase, Landmark, Users } from "lucide-react";
+
+const emptySubscribe = () => () => {};
 
 export function GlobalLoadingOverlay() {
-  const { isLoading, loadingMessage, isPageTransition, isNavigating } = useLoading();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const { isLoading, loadingMessage, isPageTransition, isNavigating, resetLoading } = useLoading();
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
 
   const isVisible = mounted && (isLoading || isPageTransition || isNavigating);
+
+  // Safety auto-dismiss: ensure the overlay never persists indefinitely
+  useEffect(() => {
+    if (!isVisible) return;
+    const safetyTimer = setTimeout(() => {
+      resetLoading(true);
+    }, 5000);
+    return () => clearTimeout(safetyTimer);
+  }, [isVisible, resetLoading]);
+
   if (!isVisible) return null;
 
   const isRoleSwitch =

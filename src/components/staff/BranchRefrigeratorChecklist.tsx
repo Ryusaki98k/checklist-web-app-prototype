@@ -88,7 +88,17 @@ export function BranchRefrigeratorChecklist({
     const interval = setInterval(() => {
       void loadTasks(true);
     }, 10000);
-    return () => clearInterval(interval);
+
+    const handleGlobalRefresh = () => {
+      setRefreshing(true);
+      void loadTasks(false);
+    };
+    window.addEventListener("app:refresh-refrigerators", handleGlobalRefresh);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("app:refresh-refrigerators", handleGlobalRefresh);
+    };
   }, [loadTasks]);
 
   function handleOpenCheck(task: RefrigeratorTaskItem) {

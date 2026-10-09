@@ -33,18 +33,24 @@ export function PageTransitionWatcher() {
         setProgress(null);
         activeNavRef.current = false;
         setIsNavigating(false);
-      }, 180);
+      }, 150);
       timersRef.current.push(resetTimer);
-    }, 120);
+    }, 100);
     timersRef.current.push(hideTimer);
 
-    resetLoading();
+    resetLoading(true);
     setIsNavigating(false);
   }, [clearTimers, resetLoading, setIsNavigating]);
 
+  // Ensure any stale loading overlay is dismissed on initial mount
+  useEffect(() => {
+    resetLoading(true);
+  }, [resetLoading]);
+
   // When pathname or searchParams change, navigation has landed
   useEffect(() => {
-    const currentUrl = `${pathname}${searchParams ? `?${searchParams.toString()}` : ""}`;
+    const queryStr = searchParams?.toString();
+    const currentUrl = `${pathname}${queryStr ? `?${queryStr}` : ""}`;
 
     if (previousUrlRef.current && previousUrlRef.current !== currentUrl) {
       completeTransition();
@@ -84,11 +90,10 @@ export function PageTransitionWatcher() {
 
         if (url.origin !== currentUrl.origin) return; // External origin
 
-        // If clicking the exact current URL (including hash), no route transition needed
+        // If clicking the exact current URL or an anchor on the same page, no route transition needed
         if (
           url.pathname === currentUrl.pathname &&
-          url.search === currentUrl.search &&
-          url.hash === currentUrl.hash
+          url.search === currentUrl.search
         ) {
           return;
         }
@@ -140,10 +145,10 @@ export function PageTransitionWatcher() {
         timersRef.current.push(setTimeout(() => setProgress(88), 750));
         timersRef.current.push(setTimeout(() => setProgress(94), 1800));
 
-        // Guaranteed safety fallback: auto-complete transition if navigation takes more than 12s
+        // Guaranteed safety fallback: auto-complete transition if navigation takes more than 4s
         const fallbackTimer = setTimeout(() => {
           completeTransition();
-        }, 12000);
+        }, 4000);
         timersRef.current.push(fallbackTimer);
       } catch {
         // Ignore invalid URLs
@@ -151,21 +156,34 @@ export function PageTransitionWatcher() {
     }
 
     const handlePopState = () => {
-      // Browser back/forward button clicked: auto-complete promptly
+      // Browser back/forward button clicked:
+      // History traversal is handled by the browser and client router cache.
+      // We NEVER lock the screen with the full-screen modal or disable buttons on history navigation.
+      // We immediately clear any pending loading overlays, show the subtle top progress bar,
+      // and complete the transition promptly.
       clearTimers();
+      resetLoading(true);
+      setIsNavigating(false);
+
       activeNavRef.current = true;
       setIsVisible(true);
       setProgress(40);
-      startLoading("กำลังเปลี่ยนหน้า...", true);
-      setIsNavigating(true);
 
       // Smooth step
-      timersRef.current.push(setTimeout(() => setProgress(80), 100));
+      timersRef.current.push(setTimeout(() => setProgress(85), 80));
 
+      // Quick auto-completion ensuring the loading bar never hangs on back/forward navigation
       const popstateCompleteTimer = setTimeout(() => {
         completeTransition();
-      }, 12000);
+      }, 200);
       timersRef.current.push(popstateCompleteTimer);
+    };
+
+    const handlePageShow = () => {
+      // When page is restored from browser bfcache (Back/Forward Cache) or shown
+      clearTimers();
+      completeTransition();
+      resetLoading(true);
     };
 
     const handleCustomNav = (e: Event) => {
@@ -181,24 +199,26 @@ export function PageTransitionWatcher() {
       timersRef.current.push(setTimeout(() => setProgress(85), 400));
       timersRef.current.push(setTimeout(() => setProgress(94), 1800));
 
-      // Safety fallback for custom navigation: 12 seconds
+      // Safety fallback for custom navigation: 4 seconds
       const customFallback = setTimeout(() => {
         completeTransition();
-      }, 12000);
+      }, 4000);
       timersRef.current.push(customFallback);
     };
 
     document.addEventListener("click", handleAnchorClick, true);
     window.addEventListener("popstate", handlePopState);
+    window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("app:navigating", handleCustomNav);
 
     return () => {
       document.removeEventListener("click", handleAnchorClick, true);
       window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("app:navigating", handleCustomNav);
       clearTimers();
     };
-  }, [clearTimers, startLoading, completeTransition, setIsNavigating]);
+  }, [clearTimers, startLoading, resetLoading, completeTransition, setIsNavigating]);
 
   if (!isVisible && progress === null) return null;
 
