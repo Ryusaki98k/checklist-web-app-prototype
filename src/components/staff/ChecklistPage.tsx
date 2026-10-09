@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ChecklistItem, ShiftSession, ShiftType } from "../../types";
-import { fmtTime, isTodayThai } from "../../data/storage";
+import { fmtTime, isTodayThai, getThaiDateString } from "../../data/storage";
 import { secureGetItem, secureSetItem, secureRemoveItem } from "../../utils/crypto";
 import { getShiftBadge } from "../common/Badge";
 import { useModalFocusTrap } from "../common/ModalFocusTrap";
@@ -240,7 +240,7 @@ export function ChecklistPage({
     );
 
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = getThaiDateString();
       const res = await toggleJointTaskItemAction({
         jointWorkId: task.id,
         taskId: task.taskId,

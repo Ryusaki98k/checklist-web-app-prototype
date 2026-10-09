@@ -1914,6 +1914,7 @@ export class ChecklistService implements IChecklistService {
 
       let activeRow: any;
       const now = completed ? new Date() : null;
+      const nowIso = (now || new Date()).toISOString();
 
       if (existingWork) {
         const [updated] = await this.db
@@ -1958,7 +1959,7 @@ export class ChecklistService implements IChecklistService {
             target: [jointTaskWork.task_id, jointTaskWork.branch_id, jointTaskWork.task_date],
             set: {
               completed_by: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${userId} ELSE ${jointTaskWork.completed_by} END`,
-              completed_at: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${now} ELSE ${jointTaskWork.completed_at} END`,
+              completed_at: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${nowIso}::timestamptz ELSE ${jointTaskWork.completed_at} END`,
               comment: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${comment || null} ELSE ${jointTaskWork.comment} END`,
             },
           })

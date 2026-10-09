@@ -1,4 +1,4 @@
-import { eq, and, or, sql, inArray, isNull } from "drizzle-orm";
+import { eq, and, or, sql, inArray, isNull, isNotNull } from "drizzle-orm";
 import { refrigerators, branches, refrigeratorTasks, users, tasks, branchTasks, jointTaskWork } from "../db/schema";
 import { IRefrigeratorService, INotificationService, RefrigeratorTaskItem } from "./types";
 import { ShiftType } from "../types";
@@ -500,19 +500,30 @@ export class RefrigeratorService implements IRefrigeratorService {
       }
 
       // Also ensure tasks table has the joint daily tasks for morning and afternoon for each active refrigerator
+      const existingRefTasksInDb = await this.db
+        .select({
+          id: tasks.id,
+          refrigerator_id: tasks.refrigerator_id,
+          shift: tasks.shift,
+          name: tasks.name,
+          disabled: tasks.disabled,
+        })
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.branch_id, branchId),
+            isNotNull(tasks.refrigerator_id)
+          )
+        );
+
+      const taskKeyMap = new Map<string, typeof existingRefTasksInDb[0]>(
+        existingRefTasksInDb.map((t: any) => [`${t.refrigerator_id}_${t.shift}`, t])
+      );
+
       for (const ref of activeRefs) {
         for (const s of shiftsToEnsure) {
-          const [existingTask] = await this.db
-            .select({ id: tasks.id })
-            .from(tasks)
-            .where(
-              and(
-                eq(tasks.refrigerator_id, ref.id),
-                eq(tasks.shift, s)
-              )
-            )
-            .limit(1);
-
+          const key = `${ref.id}_${s}`;
+          const existingTask = taskKeyMap.get(key);
           const shiftLabel = s === "morning" ? "รอบเช้า" : "รอบบ่าย";
           const taskName = `ตรวจเช็คอุณหภูมิตู้แช่: ${ref.name} (${shiftLabel})`;
 
@@ -543,7 +554,7 @@ export class RefrigeratorService implements IRefrigeratorService {
                 .values({ branch_id: branchId, task_id: created.id })
                 .onConflictDoNothing();
             }
-          } else {
+          } else if (existingTask.name !== taskName || existingTask.disabled !== Boolean(ref.disable_check)) {
             await this.db
               .update(tasks)
               .set({
@@ -636,6 +647,14 @@ export class RefrigeratorService implements IRefrigeratorService {
         if (b) branchName = b.name;
       }
 
+      // Fetch branch's assigned refrigerators to know all units including disabled ones
+      const allBranchRefs = await this.db
+        .select()
+        .from(refrigerators)
+        .where(eq(refrigerators.branch_id, targetBranchId));
+
+      const activeRefs = allBranchRefs.filter((r: any) => !r.disable_check);
+
       // Automatically ensure initial tasks exist for today (morning and afternoon)
       let tasksRows = await this.db
         .select()
@@ -647,7 +666,12 @@ export class RefrigeratorService implements IRefrigeratorService {
           )
         );
 
-      if (tasksRows.length === 0) {
+      const expectedCount = shift && shift !== "both" ? activeRefs.length : activeRefs.length * 2;
+      const currentShiftCount = shift && shift !== "both"
+        ? tasksRows.filter((t: any) => t.shift === shift).length
+        : tasksRows.length;
+
+      if (currentShiftCount < expectedCount) {
         await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
         tasksRows = await this.db
           .select()
@@ -664,12 +688,6 @@ export class RefrigeratorService implements IRefrigeratorService {
       if (shift && shift !== "both") {
         tasksRows = tasksRows.filter((t: any) => t.shift === shift || !t.shift);
       }
-
-      // Fetch branch's assigned refrigerators to know all units including disabled ones
-      const allBranchRefs = await this.db
-        .select()
-        .from(refrigerators)
-        .where(eq(refrigerators.branch_id, targetBranchId));
 
       const refMap = new Map<string, any>(allBranchRefs.map((r: any) => [r.id, r]));
 
