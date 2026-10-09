@@ -1,5 +1,5 @@
 import { eq, ne, and, or, gte, lte, lt, desc, inArray, sql, isNull } from "drizzle-orm";
-import { tasks, taskWork, shiftSession, users, branches, employeeLeaves, pointTransactions, specialTasks, jointTaskWork, refrigerators, refrigeratorTasks } from "../db/schema";
+import { tasks, taskWork, shiftSession, users, branches, employeeLeaves, pointTransactions, specialTasks, jointTaskWork, refrigerators } from "../db/schema";
 import { IManagerService, IPointService, INotificationService, BranchEmployeeStatus, RefrigeratorTaskItem } from "./types";
 import { ShiftType, Role, LeaveType, EmployeeLeave, LeaveQuotaInfo, ManagerType, SpecialTaskItem, JointTaskItem } from "../types";
 import { isPaidLeave, toDbLeaveType } from "../utils/leave";
@@ -2952,18 +2952,22 @@ export class ManagerService implements IManagerService {
             )
         : [];
 
-      // 2. Fetch refrigerator tasks for this date (filtered by shift if given)
-      const refQueryConditions = [
-        eq(refrigeratorTasks.branch_id, branchId),
-        eq(refrigeratorTasks.task_date, dateStr),
-      ];
-      if (shift && shift !== "both") {
-        refQueryConditions.push(eq(refrigeratorTasks.shift, shift));
-      }
-      const refWorks = await this.db.select().from(refrigeratorTasks).where(and(...refQueryConditions));
-
       const allBranchRefs = await this.db.select().from(refrigerators).where(eq(refrigerators.branch_id, branchId));
       const refMap = new Map<string, any>(allBranchRefs.map((r: any) => [r.id, r]));
+
+      // 2. Separate regular joint tasks from refrigerator joint tasks
+      const isRefDef = (def: any) => def.custom?.type === "refrigerator" || def.category === "ตู้แช่";
+      let regularJointDefs = jointDefs.filter((d: any) => !isRefDef(d));
+      let refJointDefs = jointDefs.filter((d: any) => isRefDef(d));
+
+      if (shift && shift !== "both") {
+        regularJointDefs = regularJointDefs.filter(
+          (d: any) => d.shift === shift || !d.shift || d.shift === "morning_afternoon"
+        );
+        refJointDefs = refJointDefs.filter(
+          (d: any) => d.shift === shift || !d.shift || d.shift === "morning_afternoon"
+        );
+      }
 
       // 3. User mapping & participant counts
       const participantCounts = new Map<string, number>();
@@ -2973,12 +2977,6 @@ export class ManagerService implements IManagerService {
         if (w.completed_by) {
           participantUserIds.add(w.completed_by);
           participantCounts.set(w.completed_by, (participantCounts.get(w.completed_by) || 0) + 1);
-        }
-      });
-      refWorks.forEach((r: any) => {
-        if (r.completed_by) {
-          participantUserIds.add(r.completed_by);
-          participantCounts.set(r.completed_by, (participantCounts.get(r.completed_by) || 0) + 1);
         }
       });
 
@@ -3015,7 +3013,7 @@ export class ManagerService implements IManagerService {
 
       // Assemble joint items
       const jointWorkMap = new Map<string, any>(jointWorks.map((w: any) => [w.task_id, w]));
-      const items: JointTaskItem[] = jointDefs.map((def: any) => {
+      const items: JointTaskItem[] = regularJointDefs.map((def: any) => {
         const work = jointWorkMap.get(def.id);
         const completed = Boolean(work?.completed_at);
         return {
@@ -3032,28 +3030,41 @@ export class ManagerService implements IManagerService {
           completedByUserId: work?.completed_by || null,
           completedByUserName: work?.completed_by ? staffMap.get(work.completed_by)?.name || null : null,
           comment: work?.comment || null,
+          isDaily: Boolean(def.is_daily),
+          refrigeratorId: def.custom?.refrigeratorId || null,
+          custom: work?.custom || def.custom || {},
         };
       });
 
       // Assemble refrigerator items
-      const refItems: RefrigeratorTaskItem[] = refWorks.map((rw: any) => {
-        const ref = refMap.get(rw.refrigerator_id);
+      const refItems: RefrigeratorTaskItem[] = refJointDefs.map((def: any) => {
+        const refId = def.custom?.refrigeratorId;
+        const ref = refId ? refMap.get(refId) : null;
+        const work = jointWorkMap.get(def.id);
         return {
-          taskId: rw.id,
-          refrigeratorId: rw.refrigerator_id,
-          name: ref?.name || "ตู้แช่",
+          taskId: def.id,
+          refrigeratorId: refId || def.id,
+          name: ref?.name || def.name,
           minTemperature: ref?.min_temperature ?? 0,
           maxTemperature: ref?.max_temperature ?? 4,
-          taskDate: rw.task_date,
-          shift: rw.shift ? (rw.shift === "morning_afternoon" ? "both" : rw.shift) : null,
-          completed: Boolean(rw.completed_at),
-          completedAt: rw.completed_at ? new Date(rw.completed_at).toISOString() : null,
-          completedByUserId: rw.completed_by,
-          completedByUserName: rw.completed_by ? staffMap.get(rw.completed_by)?.name || null : null,
-          temperature: rw.temperature,
-          isOkay: rw.is_okay ?? true,
-          comment: rw.comment,
+          targetTemperature: ref?.max_temperature ?? 4,
+          disableCheck: Boolean(ref?.disable_check),
+          taskDate: dateStr,
+          shift: work?.shift ? (work.shift === "morning_afternoon" ? "both" : work.shift) : (def.shift === "morning_afternoon" ? "both" : def.shift),
+          completed: Boolean(work?.completed_at),
+          completedAt: work?.completed_at ? new Date(work.completed_at).toISOString() : null,
+          completedByUserId: work?.completed_by || null,
+          completedByUserName: work?.completed_by ? staffMap.get(work.completed_by)?.name || null : null,
+          temperature: work?.custom?.temperature !== undefined ? work.custom.temperature : null,
+          isOkay: work?.custom?.isOkay !== undefined ? work.custom.isOkay : true,
+          comment: work?.comment || null,
         };
+      });
+
+      refItems.sort((a, b) => {
+        const cmp = a.name.localeCompare(b.name, "th");
+        if (cmp !== 0) return cmp;
+        return (a.shift || "").localeCompare(b.shift || "");
       });
 
       return {

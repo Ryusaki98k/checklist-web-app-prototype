@@ -191,8 +191,8 @@ export interface JointTaskItem {
   completedByUserName: string | null;
   comment: string | null;
   isDaily?: boolean;
-  shiftTypes?: string[];
   refrigeratorId?: string | null;
+  custom?: Record<string, any>;
 }
 
 export interface SpecialTaskItem {
@@ -236,16 +236,16 @@ export interface BranchDailyTask {
   branchId?: string | null;
   name: string;
   taskRole: "cashier" | "stock" | "manager_assistant";
-  shift: ShiftType;
+  shift: ShiftType | null;
   startTime: string;
   endTime: string;
   disabled: boolean;
   forManagers: boolean;
   isJoint: boolean;
   isDaily?: boolean;
-  shiftTypes?: string[];
   refrigeratorId?: string | null;
   selectableRoles: string[];
   category?: string | null;
+  custom?: Record<string, any>;
 }
 

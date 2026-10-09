@@ -1,4 +1,4 @@
-import { eq, sql, and, inArray, notInArray, gte, lte } from "drizzle-orm";
+import { eq, sql, and, inArray, notInArray, gte, lte, isNotNull } from "drizzle-orm";
 import {
   branches,
   users,
@@ -6,7 +6,7 @@ import {
   shiftSession,
   taskWork,
   refrigerators,
-  refrigeratorTasks,
+  jointTaskWork,
   employeeLeaves,
 } from "../db/schema";
 import {
@@ -376,8 +376,13 @@ export class BranchService implements IBranchService {
         this.db.select().from(refrigerators),
         this.db
           .select()
-          .from(refrigeratorTasks)
-          .where(eq(refrigeratorTasks.task_date, activeDateStr)),
+          .from(jointTaskWork)
+          .where(
+            and(
+              eq(jointTaskWork.task_date, activeDateStr),
+              isNotNull(jointTaskWork.completed_at)
+            )
+          ),
         this.db
           .select()
           .from(employeeLeaves)
@@ -471,10 +476,13 @@ export class BranchService implements IBranchService {
 
         // Refrigerator compliance
         const bFridges = allFridges.filter((f: any) => f.branch_id === b.id && !f.disable_check);
-        const bRefTasks = todayRefTasks.filter((t: any) => t.branch_id === b.id && t.completed);
+        const bRefTasks = todayRefTasks.filter(
+          (w: any) => w.branch_id === b.id && (w.custom?.temperature !== undefined || w.custom?.isOkay !== undefined)
+        );
+        const expectedRefChecks = bFridges.length * 2;
         const refrigeratorComplianceRate =
-          bFridges.length > 0
-            ? Math.min(100, Math.round((bRefTasks.length / bFridges.length) * 100))
+          expectedRefChecks > 0
+            ? Math.min(100, Math.round((bRefTasks.length / expectedRefChecks) * 100))
             : 100;
 
         // Employees roster

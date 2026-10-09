@@ -253,15 +253,15 @@ export interface IChecklistService {
     branchId?: string | null;
     name: string;
     taskRole: "cashier" | "stock" | "manager_assistant";
-    shift: ShiftType;
+    shift?: ShiftType | null;
     startTime: string;
     endTime: string;
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
     isDaily?: boolean;
-    shiftTypes?: string[];
     refrigeratorId?: string | null;
+    custom?: Record<string, any>;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }>;
@@ -270,15 +270,15 @@ export interface IChecklistService {
     branchId?: string | null;
     name?: string;
     taskRole?: "cashier" | "stock" | "manager_assistant";
-    shift?: ShiftType;
+    shift?: ShiftType | null;
     startTime?: string;
     endTime?: string;
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
     isDaily?: boolean;
-    shiftTypes?: string[];
     refrigeratorId?: string | null;
+    custom?: Record<string, any>;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }>;
@@ -299,6 +299,7 @@ export interface IChecklistService {
     userId: string;
     completed: boolean;
     comment?: string;
+    custom?: Record<string, any>;
   }): Promise<{ success: boolean; data?: JointTaskItem; conflict?: boolean; message?: string; error?: string }>;
 }
 

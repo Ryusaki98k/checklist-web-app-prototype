@@ -55,7 +55,7 @@ export const users = checklistSchema.table.withRLS("users", {
 export const tasks = checklistSchema.table.withRLS("tasks", {
     id: uuid("id").primaryKey().defaultRandom(),
     branch_id: uuid("branch_id").references(() => branches.id, { onDelete: 'cascade' }),
-    shift: shiftEnum("shift").notNull(),
+    shift: shiftEnum("shift"),
     name: text("name").notNull(),
     task_role: taskRoleEnum("task_role").notNull(),
 
@@ -66,17 +66,15 @@ export const tasks = checklistSchema.table.withRLS("tasks", {
     for_managers: boolean("for_managers").notNull().default(false),
     is_joint: boolean("is_joint").notNull().default(false),
     is_daily: boolean("is_daily").notNull().default(false),
-    shift_types: jsonb("shift_types").$type<string[]>().default([]),
     selectable_roles: jsonb("selectable_roles").$type<string[]>().default([]),
     category: text("category"),
-    refrigerator_id: uuid("refrigerator_id").references(() => refrigerators.id, { onDelete: 'cascade' }),
+    custom: jsonb("custom").$type<Record<string, any>>().notNull().default({}),
 }, (table) => [
     index("idx_tasks_role_shift").on(table.task_role, table.shift),
     index("idx_tasks_for_managers").on(table.for_managers),
     index("idx_tasks_branch_id").on(table.branch_id),
     index("idx_tasks_is_joint").on(table.is_joint),
     index("idx_tasks_is_daily").on(table.is_daily),
-    index("idx_tasks_refrigerator_id").on(table.refrigerator_id),
 ]);
 
 export const branchTasks = checklistSchema.table.withRLS("branch_tasks", {
@@ -142,25 +140,6 @@ export const refrigerators = checklistSchema.table.withRLS("refrigerators", {
     index("idx_refrigerators_branch_id").on(table.branch_id),
 ]);
 
-export const refrigeratorTasks = checklistSchema.table.withRLS("refrigerator_tasks", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    branch_id: uuid("branch_id").notNull().references(() => branches.id, { onDelete: 'cascade' }),
-    refrigerator_id: uuid("refrigerator_id").notNull().references(() => refrigerators.id, { onDelete: 'cascade' }),
-    task_date: text("task_date").notNull(),
-    completed_by: uuid("completed_by").references(() => users.id, { onDelete: 'set null' }),
-    completed_at: timestamp("completed_at", { withTimezone: true }),
-    shift_session_id: uuid("shift_session_id").references(() => shiftSession.id, { onDelete: 'set null' }),
-    shift: shiftEnum("shift"),
-    temperature: integer("temperature"),
-    is_okay: boolean("is_okay").default(true),
-    comment: text("comment"),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [
-    index("idx_ref_tasks_branch_date").on(table.branch_id, table.task_date),
-    index("idx_ref_tasks_branch_date_shift").on(table.branch_id, table.task_date, table.shift),
-    index("idx_ref_tasks_refrigerator").on(table.refrigerator_id),
-]);
-
 export const jointTaskWork = checklistSchema.table.withRLS("joint_task_work", {
     id: uuid("id").primaryKey().defaultRandom(),
     task_id: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
@@ -170,6 +149,7 @@ export const jointTaskWork = checklistSchema.table.withRLS("joint_task_work", {
     completed_by: uuid("completed_by").references(() => users.id, { onDelete: 'set null' }),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     comment: text("comment"),
+    custom: jsonb("custom").$type<Record<string, any>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
     uniqueIndex("uq_joint_task_work_task_date").on(table.task_id, table.branch_id, table.task_date),

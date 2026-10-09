@@ -22,6 +22,7 @@ export async function toggleJointTaskItemAction(params: {
   userId: string;
   completed: boolean;
   comment?: string;
+  custom?: Record<string, any>;
 }): Promise<{
   success: boolean;
   data?: JointTaskItem;

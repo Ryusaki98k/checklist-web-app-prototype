@@ -80,15 +80,15 @@ export async function createBranchDailyTaskAction(params: {
     branchId?: string | null;
     name: string;
     taskRole: "cashier" | "stock" | "manager_assistant";
-    shift: ShiftType;
+    shift?: ShiftType | null;
     startTime: string;
     endTime: string;
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
     isDaily?: boolean;
-    shiftTypes?: string[];
     refrigeratorId?: string | null;
+    custom?: Record<string, any>;
     selectableRoles?: string[];
     category?: string | null;
 }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
@@ -101,15 +101,15 @@ export async function updateBranchDailyTaskAction(params: {
     branchId?: string | null;
     name?: string;
     taskRole?: "cashier" | "stock" | "manager_assistant";
-    shift?: ShiftType;
+    shift?: ShiftType | null;
     startTime?: string;
     endTime?: string;
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
     isDaily?: boolean;
-    shiftTypes?: string[];
     refrigeratorId?: string | null;
+    custom?: Record<string, any>;
     selectableRoles?: string[];
     category?: string | null;
 }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {

@@ -1,5 +1,5 @@
 import { eq, and, or, gte, lte, lt, desc, asc, inArray, isNull, sql } from "drizzle-orm";
-import { tasks, branchTasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions, employeeLeaves, jointTaskWork, specialTasks } from "../db/schema";
+import { tasks, branchTasks, taskWork, shiftSession, users, branches, refrigerators, notifications, pointTransactions, employeeLeaves, jointTaskWork, specialTasks } from "../db/schema";
 import { IChecklistService, INotificationService } from "./types";
 import { ShiftSession, ShiftType, ChecklistItem, JointTaskItem, BranchDailyTask } from "../types";
 import { getThaiDateString } from "../data/storage";
@@ -36,7 +36,15 @@ function mapPositionToTaskRole(pos: string): "cashier" | "stock" | "manager_assi
   return "cashier";
 }
 
-function mapShiftToDbShift(shift: ShiftType): "morning" | "afternoon" | "night" | "morning_afternoon" {
+function mapShiftToDbShift(shift?: ShiftType | null): "morning" | "afternoon" | "night" | "morning_afternoon" | null {
+  if (!shift || (shift as any) === "all") return null;
+  if (shift === "morning") return "morning";
+  if (shift === "afternoon") return "afternoon";
+  if (shift === "night") return "night";
+  return "morning_afternoon";
+}
+
+function mapRequiredShiftToDbShift(shift: ShiftType): "morning" | "afternoon" | "night" | "morning_afternoon" {
   if (shift === "morning") return "morning";
   if (shift === "afternoon") return "afternoon";
   if (shift === "night") return "night";
@@ -74,7 +82,7 @@ export class ChecklistService implements IChecklistService {
     try {
       const { userId, userName, position, shift } = params;
       const taskRole = mapPositionToTaskRole(position);
-      const dbShift = mapShiftToDbShift(shift);
+      const dbShift = mapRequiredShiftToDbShift(shift);
 
       let validUserId = userId;
       if (!isValidUuid(userId)) {
@@ -153,7 +161,7 @@ export class ChecklistService implements IChecklistService {
           .where(
             and(
               eq(tasks.task_role, taskRole),
-              inArray(tasks.shift, allowedShifts),
+              or(isNull(tasks.shift), inArray(tasks.shift, allowedShifts)),
               eq(tasks.disabled, false),
               eq(tasks.is_joint, false),
               branchTaskCondition
@@ -335,32 +343,9 @@ export class ChecklistService implements IChecklistService {
               )
             );
 
-          if (activeRefs.length > 0) {
-            const existingTasks = await this.db
-              .select({ refrigerator_id: refrigeratorTasks.refrigerator_id })
-              .from(refrigeratorTasks)
-              .where(
-                and(
-                  eq(refrigeratorTasks.branch_id, branchId),
-                  eq(refrigeratorTasks.task_date, dateStr)
-                )
-              );
-
-            const existingRefIds = new Set(existingTasks.map((t: any) => t.refrigerator_id));
-            const missingRefs = activeRefs.filter((r: any) => !existingRefIds.has(r.id));
-            if (missingRefs.length > 0) {
-              await this.db.insert(refrigeratorTasks).values(
-                missingRefs.map((r: any) => ({
-                  branch_id: branchId,
-                  refrigerator_id: r.id,
-                  task_date: dateStr,
-                  is_okay: true,
-                }))
-              );
-            }
-          }
+          // Branch refrigerators are managed via joint daily tasks in tasks table
         } catch (seedErr) {
-          console.error("Failed to seed initial refrigerator_tasks on stock session start:", seedErr);
+          console.error("Failed to seed initial tasks on stock session start:", seedErr);
         }
       }
 
@@ -951,36 +936,44 @@ export class ChecklistService implements IChecklistService {
           .where(and(eq(refrigerators.branch_id, sess.branch), eq(refrigerators.disable_check, false)));
 
         if (activeBranchRefs.length > 0) {
-          const refTasksToday = await this.db
-            .select()
-            .from(refrigeratorTasks)
+          const refTaskDefs = await this.db
+            .select({ id: tasks.id, name: tasks.name, shift: tasks.shift, custom: tasks.custom })
+            .from(tasks)
             .where(
               and(
-                eq(refrigeratorTasks.branch_id, sess.branch),
-                eq(refrigeratorTasks.task_date, todayStr),
-                inArray(refrigeratorTasks.shift, refShiftsToCheck)
+                eq(tasks.branch_id, sess.branch),
+                eq(tasks.disabled, false),
+                inArray(tasks.shift, refShiftsToCheck),
+                sql`${tasks.custom}->>'type' = 'refrigerator'`
               )
             );
 
-          const completedRefKeySet = new Set(
-            refTasksToday
-              .filter((rt: any) => Boolean(rt.completed_at))
-              .map((rt: any) => `${rt.refrigerator_id}_${rt.shift || "morning"}`)
-          );
+          const taskIds = refTaskDefs.map((t: any) => t.id);
+          const completedWorks = taskIds.length > 0
+            ? await this.db
+                .select({ task_id: jointTaskWork.task_id })
+                .from(jointTaskWork)
+                .where(
+                  and(
+                    eq(jointTaskWork.branch_id, sess.branch),
+                    eq(jointTaskWork.task_date, todayStr),
+                    inArray(jointTaskWork.task_id, taskIds),
+                    sql`${jointTaskWork.completed_at} IS NOT NULL`
+                  )
+                )
+            : [];
+          const completedTaskIdSet = new Set(completedWorks.map((w: any) => w.task_id));
 
-          for (const ref of activeBranchRefs) {
-            for (const s of refShiftsToCheck) {
-              refTotal++;
-              const key = `${ref.id}_${s}`;
-              if (completedRefKeySet.has(key)) {
-                refDone++;
-              } else {
-                const shiftLabel = s === "morning" ? "รอบเช้า" : "รอบบ่าย";
-                pendingTasks.push({
-                  id: `ref_${ref.id}_${s}`,
-                  name: `[ตู้แช่] ตรวจอุณหภูมิ ${ref.name} (${shiftLabel})`,
-                });
-              }
+          for (const task of refTaskDefs) {
+            refTotal++;
+            if (completedTaskIdSet.has(task.id)) {
+              refDone++;
+            } else {
+              const shiftLabel = task.shift === "morning" ? "รอบเช้า" : "รอบบ่าย";
+              pendingTasks.push({
+                id: `ref_${task.id}`,
+                name: `[ตู้แช่] ${task.name}`,
+              });
             }
           }
         }
@@ -1481,18 +1474,18 @@ export class ChecklistService implements IChecklistService {
         deletedTaskWorks = deletedWorks.length;
       }
 
-      // 2. Delete old refrigerator tasks (strictly preserve for 1 month / 30 days)
+      // 2. Delete old joint task work records (strictly preserve for 1 month / 30 days)
       let deletedRefsCount = 0;
       if (doCleanRefs) {
         const refConditions = [
-          lt(refrigeratorTasks.created_at, refCutoffDate),
-          lte(refrigeratorTasks.task_date, refCutoffDateStr),
+          lt(jointTaskWork.created_at, refCutoffDate),
+          lte(jointTaskWork.task_date, refCutoffDateStr),
         ];
 
         const deletedRefs = await this.db
-          .delete(refrigeratorTasks)
+          .delete(jointTaskWork)
           .where(and(...refConditions))
-          .returning({ id: refrigeratorTasks.id });
+          .returning({ id: jointTaskWork.id });
         deletedRefsCount = deletedRefs.length;
       }
 
@@ -1590,15 +1583,15 @@ export class ChecklistService implements IChecklistService {
         branchId: t.branch_id,
         name: t.name,
         taskRole: t.task_role,
-        shift: t.shift === "morning_afternoon" ? "both" : t.shift,
+        shift: t.shift ? (t.shift === "morning_afternoon" ? "both" : t.shift) : null,
         startTime: t.start || "00:00",
         endTime: t.end || "00:00",
         disabled: Boolean(t.disabled),
         forManagers: Boolean(t.for_managers),
         isJoint: Boolean(t.is_joint),
         isDaily: Boolean(t.is_daily),
-        shiftTypes: (t.shift_types as string[]) || [],
-        refrigeratorId: t.refrigerator_id || null,
+        refrigeratorId: t.custom?.refrigeratorId || null,
+        custom: t.custom || {},
         selectableRoles: (t.selectable_roles as string[]) || [t.task_role],
         category: t.category,
       }));
@@ -1614,20 +1607,22 @@ export class ChecklistService implements IChecklistService {
     branchId?: string | null;
     name: string;
     taskRole: "cashier" | "stock" | "manager_assistant";
-    shift: ShiftType;
+    shift?: ShiftType | null;
     startTime: string;
     endTime: string;
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
     isDaily?: boolean;
-    shiftTypes?: string[];
     refrigeratorId?: string | null;
+    custom?: Record<string, any>;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
     try {
       const dbShift = mapShiftToDbShift(params.shift);
+      const customData = params.custom || (params.refrigeratorId ? { type: "refrigerator", refrigeratorId: params.refrigeratorId } : {});
+
       const [newTask] = await this.db
         .insert(tasks)
         .values({
@@ -1641,8 +1636,7 @@ export class ChecklistService implements IChecklistService {
           for_managers: params.forManagers ?? false,
           is_joint: params.isJoint ?? false,
           is_daily: params.isDaily ?? (params.isJoint ?? false),
-          shift_types: params.shiftTypes || (params.shift ? [params.shift] : []),
-          refrigerator_id: params.refrigeratorId || null,
+          custom: customData,
           selectable_roles: params.selectableRoles || [params.taskRole],
           category: params.category || null,
         })
@@ -1662,15 +1656,15 @@ export class ChecklistService implements IChecklistService {
           branchId: newTask.branch_id,
           name: newTask.name,
           taskRole: newTask.task_role,
-          shift: newTask.shift === "morning_afternoon" ? "both" : newTask.shift,
+          shift: newTask.shift ? (newTask.shift === "morning_afternoon" ? "both" : newTask.shift) : null,
           startTime: newTask.start,
           endTime: newTask.end,
           disabled: Boolean(newTask.disabled),
           forManagers: Boolean(newTask.for_managers),
           isJoint: Boolean(newTask.is_joint),
           isDaily: Boolean(newTask.is_daily),
-          shiftTypes: (newTask.shift_types as string[]) || [],
-          refrigeratorId: newTask.refrigerator_id || null,
+          refrigeratorId: newTask.custom?.refrigeratorId || null,
+          custom: newTask.custom || {},
           selectableRoles: (newTask.selectable_roles as string[]) || [newTask.task_role],
           category: newTask.category,
         },
@@ -1686,15 +1680,15 @@ export class ChecklistService implements IChecklistService {
     branchId?: string | null;
     name?: string;
     taskRole?: "cashier" | "stock" | "manager_assistant";
-    shift?: ShiftType;
+    shift?: ShiftType | null;
     startTime?: string;
     endTime?: string;
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
     isDaily?: boolean;
-    shiftTypes?: string[];
     refrigeratorId?: string | null;
+    custom?: Record<string, any>;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
@@ -1709,8 +1703,13 @@ export class ChecklistService implements IChecklistService {
       if (params.forManagers !== undefined) updateData.for_managers = params.forManagers;
       if (params.isJoint !== undefined) updateData.is_joint = params.isJoint;
       if (params.isDaily !== undefined) updateData.is_daily = params.isDaily;
-      if (params.shiftTypes !== undefined) updateData.shift_types = params.shiftTypes;
-      if (params.refrigeratorId !== undefined) updateData.refrigerator_id = params.refrigeratorId;
+      if (params.custom !== undefined) {
+        updateData.custom = params.custom;
+      } else if (params.refrigeratorId !== undefined) {
+        updateData.custom = params.refrigeratorId
+          ? { type: "refrigerator", refrigeratorId: params.refrigeratorId }
+          : {};
+      }
       if (params.selectableRoles !== undefined) updateData.selectable_roles = params.selectableRoles;
       if (params.category !== undefined) updateData.category = params.category;
 
@@ -1735,15 +1734,15 @@ export class ChecklistService implements IChecklistService {
               branchId: updated.branch_id,
               name: updated.name,
               taskRole: updated.task_role,
-              shift: updated.shift === "morning_afternoon" ? "both" : updated.shift,
+              shift: updated.shift ? (updated.shift === "morning_afternoon" ? "both" : updated.shift) : null,
               startTime: updated.start,
               endTime: updated.end,
               disabled: Boolean(updated.disabled),
               forManagers: Boolean(updated.for_managers),
               isJoint: Boolean(updated.is_joint),
               isDaily: Boolean(updated.is_daily),
-              shiftTypes: (updated.shift_types as string[]) || [],
-              refrigeratorId: updated.refrigerator_id || null,
+              refrigeratorId: updated.custom?.refrigeratorId || null,
+              custom: updated.custom || {},
               selectableRoles: (updated.selectable_roles as string[]) || [updated.task_role],
               category: updated.category,
             }
@@ -1846,14 +1845,14 @@ export class ChecklistService implements IChecklistService {
           completedByUserName,
           comment: work?.comment || null,
           isDaily: Boolean(def.is_daily),
-          shiftTypes: (def.shift_types as string[]) || [],
-          refrigeratorId: def.refrigerator_id || null,
+          refrigeratorId: def.custom?.refrigeratorId || null,
+          custom: work?.custom || def.custom || {},
         };
       });
 
       // Filter by shift if shift specified
       const filtered = shift && shift !== "both"
-        ? items.filter((it) => it.shift === shift || !it.shift || (it.shiftTypes && it.shiftTypes.includes(shift)))
+        ? items.filter((it) => it.shift === shift || !it.shift || it.shift === "both")
         : items;
 
       return { success: true, data: filtered };
@@ -1872,6 +1871,7 @@ export class ChecklistService implements IChecklistService {
     userId: string;
     completed: boolean;
     comment?: string;
+    custom?: Record<string, any>;
   }): Promise<{ success: boolean; data?: JointTaskItem; conflict?: boolean; message?: string; error?: string }> {
     try {
       const { taskId, branchId, dateStr, shift, userId, completed, comment } = params;
@@ -1954,6 +1954,7 @@ export class ChecklistService implements IChecklistService {
             completed_by: userId,
             completed_at: now,
             comment: comment || null,
+            custom: params.custom || {},
           })
           .onConflictDoUpdate({
             target: [jointTaskWork.task_id, jointTaskWork.branch_id, jointTaskWork.task_date],
@@ -1961,6 +1962,7 @@ export class ChecklistService implements IChecklistService {
               completed_by: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${userId} ELSE ${jointTaskWork.completed_by} END`,
               completed_at: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${nowIso}::timestamptz ELSE ${jointTaskWork.completed_at} END`,
               comment: sql`CASE WHEN ${jointTaskWork.completed_at} IS NULL THEN ${comment || null} ELSE ${jointTaskWork.comment} END`,
+              custom: params.custom ? params.custom : jointTaskWork.custom,
             },
           })
           .returning();
@@ -1983,68 +1985,6 @@ export class ChecklistService implements IChecklistService {
 
       const [taskDef] = await this.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
 
-      // Two-way sync: If task is linked to a refrigerator, sync refrigerator_tasks table as well!
-      if (taskDef?.refrigerator_id) {
-        const refShift = (taskDef.shift === "afternoon" ? "afternoon" : "morning") as "morning" | "afternoon";
-        try {
-          if (completed) {
-            const [existingRefTask] = await this.db
-              .select({ id: refrigeratorTasks.id })
-              .from(refrigeratorTasks)
-              .where(
-                and(
-                  eq(refrigeratorTasks.branch_id, branchId),
-                  eq(refrigeratorTasks.refrigerator_id, taskDef.refrigerator_id),
-                  eq(refrigeratorTasks.task_date, dateStr),
-                  eq(refrigeratorTasks.shift, refShift)
-                )
-              )
-              .limit(1);
-
-            if (existingRefTask) {
-              await this.db
-                .update(refrigeratorTasks)
-                .set({
-                  completed_by: userId,
-                  completed_at: now,
-                  is_okay: true,
-                  comment: comment || null,
-                })
-                .where(eq(refrigeratorTasks.id, existingRefTask.id));
-            } else {
-              await this.db.insert(refrigeratorTasks).values({
-                branch_id: branchId,
-                refrigerator_id: taskDef.refrigerator_id,
-                task_date: dateStr,
-                shift: refShift,
-                completed_by: userId,
-                completed_at: now,
-                is_okay: true,
-                comment: comment || null,
-              });
-            }
-          } else {
-            await this.db
-              .update(refrigeratorTasks)
-              .set({
-                completed_by: null,
-                completed_at: null,
-                comment: null,
-              })
-              .where(
-                and(
-                  eq(refrigeratorTasks.branch_id, branchId),
-                  eq(refrigeratorTasks.refrigerator_id, taskDef.refrigerator_id),
-                  eq(refrigeratorTasks.task_date, dateStr),
-                  eq(refrigeratorTasks.shift, refShift)
-                )
-              );
-          }
-        } catch (refSyncErr) {
-          console.warn("Failed to sync refrigerator_tasks from joint task:", refSyncErr);
-        }
-      }
-
       let userName: string | null = null;
       if (activeRow?.completed_by) {
         const [u] = await this.db.select({ name: users.name }).from(users).where(eq(users.id, activeRow.completed_by)).limit(1);
@@ -2066,8 +2006,8 @@ export class ChecklistService implements IChecklistService {
         completedByUserName: userName,
         comment: activeRow?.comment || null,
         isDaily: Boolean(taskDef?.is_daily),
-        shiftTypes: (taskDef?.shift_types as string[]) || [],
-        refrigeratorId: taskDef?.refrigerator_id || null,
+        refrigeratorId: taskDef?.custom?.refrigeratorId || null,
+        custom: activeRow?.custom || taskDef?.custom || {},
       };
 
       return { success: true, data: resultItem };
@@ -2097,7 +2037,7 @@ export class ChecklistService implements IChecklistService {
             .from(tasks)
             .where(
               and(
-                eq(tasks.refrigerator_id, ref.id),
+                sql`${tasks.custom}->>'refrigeratorId' = ${ref.id}`,
                 eq(tasks.shift, "morning")
               )
             )
@@ -2117,10 +2057,12 @@ export class ChecklistService implements IChecklistService {
                 for_managers: false,
                 is_joint: true,
                 is_daily: true,
-                shift_types: ["morning"],
                 selectable_roles: ["stock", "manager_assistant"],
                 category: "ตู้แช่",
-                refrigerator_id: ref.id,
+                custom: {
+                  type: "refrigerator",
+                  refrigeratorId: ref.id,
+                },
               })
               .returning({ id: tasks.id });
 
@@ -2139,7 +2081,6 @@ export class ChecklistService implements IChecklistService {
                 disabled: Boolean(ref.disable_check),
                 is_joint: true,
                 is_daily: true,
-                shift_types: ["morning"],
                 category: "ตู้แช่",
               })
               .where(eq(tasks.id, existingMorning.id));
@@ -2151,7 +2092,7 @@ export class ChecklistService implements IChecklistService {
             .from(tasks)
             .where(
               and(
-                eq(tasks.refrigerator_id, ref.id),
+                sql`${tasks.custom}->>'refrigeratorId' = ${ref.id}`,
                 eq(tasks.shift, "afternoon")
               )
             )
@@ -2171,10 +2112,12 @@ export class ChecklistService implements IChecklistService {
                 for_managers: false,
                 is_joint: true,
                 is_daily: true,
-                shift_types: ["afternoon"],
                 selectable_roles: ["stock", "manager_assistant"],
                 category: "ตู้แช่",
-                refrigerator_id: ref.id,
+                custom: {
+                  type: "refrigerator",
+                  refrigeratorId: ref.id,
+                },
               })
               .returning({ id: tasks.id });
 
@@ -2193,7 +2136,6 @@ export class ChecklistService implements IChecklistService {
                 disabled: Boolean(ref.disable_check),
                 is_joint: true,
                 is_daily: true,
-                shift_types: ["afternoon"],
                 category: "ตู้แช่",
               })
               .where(eq(tasks.id, existingAfternoon.id));

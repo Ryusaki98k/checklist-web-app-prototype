@@ -73,14 +73,13 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
   const [dailyForm, setDailyForm] = useState({
     name: "",
     taskRole: "cashier" as "cashier" | "stock" | "manager_assistant",
-    shift: "morning" as ShiftType,
+    shift: "morning" as ShiftType | null,
     startTime: "08:00",
     endTime: "16:00",
     category: "",
     forManagers: false,
     isJoint: false,
     isDaily: true,
-    shiftTypes: ["morning"] as string[],
     refrigeratorId: "",
     selectableRoles: [] as string[],
   });
@@ -208,7 +207,6 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
           forManagers: dailyForm.forManagers,
           isJoint: dailyForm.isJoint,
           isDaily: dailyForm.isDaily,
-          shiftTypes: dailyForm.shiftTypes,
           refrigeratorId: dailyForm.refrigeratorId || null,
           selectableRoles: dailyForm.selectableRoles,
         });
@@ -232,7 +230,6 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
           forManagers: dailyForm.forManagers,
           isJoint: dailyForm.isJoint,
           isDaily: dailyForm.isDaily,
-          shiftTypes: dailyForm.shiftTypes,
           refrigeratorId: dailyForm.refrigeratorId || null,
           selectableRoles: dailyForm.selectableRoles,
         });
@@ -570,7 +567,6 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                       forManagers: false,
                       isJoint: activeTab === "joint",
                       isDaily: true,
-                      shiftTypes: ["morning"],
                       refrigeratorId: "",
                       selectableRoles: activeTab === "joint" ? ["stock"] : [],
                     });
@@ -640,15 +636,9 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                       <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)] flex-wrap">
                         <span>ตำแหน่ง: <strong>{t.taskRole}</strong></span>
                         <span>•</span>
-                        <span>กะ: <strong>{t.shift}</strong></span>
+                        <span>กะ: <strong>{t.shift === "morning" ? "กะเช้า" : t.shift === "afternoon" ? "กะบ่าย" : t.shift === "both" ? "เช้า & บ่าย" : t.shift === "night" ? "กะดึก/ปิดร้าน" : "ทุกกะ (ไม่จำกัด)"}</strong></span>
                         <span>•</span>
                         <span>เวลา: {t.startTime} - {t.endTime}</span>
-                        {t.shiftTypes && t.shiftTypes.length > 0 && (
-                          <>
-                            <span>•</span>
-                            <span className="text-amber-700 dark:text-amber-300 font-semibold">กะที่ใช้: {t.shiftTypes.join(", ")}</span>
-                          </>
-                        )}
                         {t.selectableRoles && t.selectableRoles.length > 0 && (
                           <>
                             <span>•</span>
@@ -684,7 +674,6 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                             forManagers: t.forManagers || false,
                             isJoint: t.isJoint || false,
                             isDaily: t.isDaily ?? true,
-                            shiftTypes: t.shiftTypes && t.shiftTypes.length > 0 ? t.shiftTypes : [t.shift || "morning"],
                             refrigeratorId: t.refrigeratorId || "",
                             selectableRoles: t.selectableRoles || [],
                           });
@@ -948,14 +937,15 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                     ช่วงกะ
                   </label>
                   <select
-                    value={dailyForm.shift}
-                    onChange={(e) => setDailyForm({ ...dailyForm, shift: e.target.value as any })}
+                    value={dailyForm.shift || "all"}
+                    onChange={(e) => setDailyForm({ ...dailyForm, shift: e.target.value === "all" ? null : e.target.value as any })}
                     className="w-full px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] text-xs font-bold text-[var(--color-text)]"
                   >
-                    <option value="morning">กะเช้า</option>
-                    <option value="afternoon">กะบ่าย</option>
-                    <option value="night">กะดึก (ปิดร้าน)</option>
-                    <option value="both">เช้า & บ่าย</option>
+                    <option value="all">ทุกกะ (All Shifts / ไม่ระบุกะ)</option>
+                    <option value="morning">กะเช้า (Morning)</option>
+                    <option value="afternoon">กะบ่าย (Afternoon)</option>
+                    <option value="both">เช้า & บ่าย (Morning & Afternoon)</option>
+                    <option value="night">กะดึก (ปิดร้าน / Night)</option>
                   </select>
                 </div>
               </div>
@@ -1030,52 +1020,6 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                   />
                   <span>เป็นงานสำหรับผู้จัดการ / ผู้ช่วยผู้จัดการ (เช่น งานกะดึกปิดร้าน)</span>
                 </label>
-              </div>
-
-              <div className="pt-2 border-t border-[var(--color-border)] space-y-1.5">
-                <label className="block text-xs font-bold text-[var(--color-text)]">
-                  กะที่สร้างงานอัตโนมัติทุกวัน (Shift Types)
-                </label>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {[
-                    { key: "morning", label: "กะเช้า (Morning)" },
-                    { key: "afternoon", label: "กะบ่าย (Afternoon)" },
-                    { key: "night", label: "กะดึก/ปิดร้าน (Night)" },
-                  ].map((s) => {
-                    const isChecked = dailyForm.shiftTypes.includes(s.key);
-                    return (
-                      <label
-                        key={s.key}
-                        className={`px-2.5 py-1.5 rounded-xl border cursor-pointer font-bold transition-all flex items-center gap-1.5 ${
-                          isChecked
-                            ? "bg-amber-100 dark:bg-amber-950/70 border-amber-400 text-amber-950 dark:text-amber-200"
-                            : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setDailyForm({
-                                ...dailyForm,
-                                shiftTypes: [...dailyForm.shiftTypes, s.key],
-                              });
-                            } else {
-                              setDailyForm({
-                                ...dailyForm,
-                                shiftTypes: dailyForm.shiftTypes.filter((x) => x !== s.key),
-                              });
-                            }
-                          }}
-                          className="sr-only"
-                        />
-                        <span>{s.label}</span>
-                        {isChecked && <Check size={12} className="text-amber-700 dark:text-amber-300" />}
-                      </label>
-                    );
-                  })}
-                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[var(--color-border)]">
