@@ -140,22 +140,24 @@ export const refrigerators = checklistSchema.table.withRLS("refrigerators", {
     index("idx_refrigerators_branch_id").on(table.branch_id),
 ]);
 
-export const jointTaskWork = checklistSchema.table.withRLS("joint_task_work", {
+export const refrigeratorTasks = checklistSchema.table.withRLS("refrigerator_tasks", {
     id: uuid("id").primaryKey().defaultRandom(),
-    task_id: uuid("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
     branch_id: uuid("branch_id").notNull().references(() => branches.id, { onDelete: 'cascade' }),
+    refrigerator_id: uuid("refrigerator_id").notNull().references(() => refrigerators.id, { onDelete: 'cascade' }),
     task_date: text("task_date").notNull(),
     shift: shiftEnum("shift"),
     completed_by: uuid("completed_by").references(() => users.id, { onDelete: 'set null' }),
     completed_at: timestamp("completed_at", { withTimezone: true }),
+    shift_session_id: uuid("shift_session_id").references(() => shiftSession.id, { onDelete: 'set null' }),
+    temperature: integer("temperature"),
+    is_okay: boolean("is_okay").default(true),
     comment: text("comment"),
-    custom: jsonb("custom").$type<Record<string, any>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-    uniqueIndex("uq_joint_task_work_task_date").on(table.task_id, table.branch_id, table.task_date),
-    index("idx_joint_task_work_branch_date").on(table.branch_id, table.task_date),
-    index("idx_joint_task_work_task_date").on(table.task_id, table.task_date),
-    index("idx_joint_task_work_branch_date_shift").on(table.branch_id, table.task_date, table.shift),
+    index("idx_ref_tasks_branch_date").on(table.branch_id, table.task_date),
+    index("idx_ref_tasks_branch_date_shift").on(table.branch_id, table.task_date, table.shift),
+    index("idx_ref_tasks_refrigerator").on(table.refrigerator_id),
+    uniqueIndex("uq_ref_tasks_ref_date_shift").on(table.refrigerator_id, table.task_date, table.shift),
 ]);
 
 export const specialTasks = checklistSchema.table.withRLS("special_tasks", {

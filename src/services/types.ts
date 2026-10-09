@@ -1,4 +1,4 @@
-import { Role, ManagerType, ExecutiveType, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, BranchLeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo, JointTaskItem, SpecialTaskItem, BranchDailyTask } from "../types";
+import { Role, ManagerType, ExecutiveType, ShiftType, User, ShiftSession, Notification, PointTransaction, LeaderboardEntry, BranchLeaderboardEntry, LeaveType, EmployeeLeave, LeaveQuotaInfo, SpecialTaskItem, BranchDailyTask } from "../types";
 
 export interface IAuthService {
   login(username: string, password: string, requestedRole?: Role): Promise<{ success: boolean; user?: User; error?: string }>;
@@ -283,24 +283,6 @@ export interface IChecklistService {
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }>;
   deleteBranchDailyTask(taskId: string, branchId?: string): Promise<{ success: boolean; error?: string }>;
-  syncBranchRefrigeratorJointTasks(branchId?: string): Promise<{ success: boolean; count?: number; error?: string }>;
-
-  getBranchJointTasks(params: {
-    branchId: string;
-    dateStr?: string;
-    shift?: ShiftType;
-  }): Promise<{ success: boolean; data?: JointTaskItem[]; error?: string }>;
-  toggleJointTaskItem(params: {
-    jointWorkId?: string;
-    taskId: string;
-    branchId: string;
-    dateStr: string;
-    shift?: ShiftType;
-    userId: string;
-    completed: boolean;
-    comment?: string;
-    custom?: Record<string, any>;
-  }): Promise<{ success: boolean; data?: JointTaskItem; conflict?: boolean; message?: string; error?: string }>;
 }
 
 export interface BranchEmployeeStatus {
@@ -553,31 +535,6 @@ export interface IManagerService {
     reviewerRole: Role;
     isApproved: boolean;
     declineReason?: string;
-  }): Promise<{ success: boolean; error?: string }>;
-  getJointTaskDaySummary(params: {
-    branchId: string;
-    dateStr: string;
-    shift?: ShiftType;
-  }): Promise<{
-    success: boolean;
-    summary?: {
-      date: string;
-      shift?: ShiftType;
-      branchName?: string;
-      onDutyStaff: Array<{ id: string; name: string; position?: string; role: Role }>;
-      participants: Array<{ id: string; name: string; completedCount: number }>;
-      items: JointTaskItem[];
-      refrigerators: RefrigeratorTaskItem[];
-      assistantApproved: boolean;
-      managerApproved: boolean;
-    };
-    error?: string;
-  }>;
-  approveJointTaskDay(params: {
-    branchId: string;
-    dateStr: string;
-    shift?: ShiftType;
-    role: Role;
   }): Promise<{ success: boolean; error?: string }>;
 }
 

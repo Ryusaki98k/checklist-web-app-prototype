@@ -6,7 +6,7 @@ import {
   shiftSession,
   taskWork,
   refrigerators,
-  jointTaskWork,
+  refrigeratorTasks,
   employeeLeaves,
 } from "../db/schema";
 import {
@@ -376,11 +376,11 @@ export class BranchService implements IBranchService {
         this.db.select().from(refrigerators),
         this.db
           .select()
-          .from(jointTaskWork)
+          .from(refrigeratorTasks)
           .where(
             and(
-              eq(jointTaskWork.task_date, activeDateStr),
-              isNotNull(jointTaskWork.completed_at)
+              eq(refrigeratorTasks.task_date, activeDateStr),
+              isNotNull(refrigeratorTasks.completed_at)
             )
           ),
         this.db
@@ -477,7 +477,7 @@ export class BranchService implements IBranchService {
         // Refrigerator compliance
         const bFridges = allFridges.filter((f: any) => f.branch_id === b.id && !f.disable_check);
         const bRefTasks = todayRefTasks.filter(
-          (w: any) => w.branch_id === b.id && (w.custom?.temperature !== undefined || w.custom?.isOkay !== undefined)
+          (w: any) => w.branch_id === b.id
         );
         const expectedRefChecks = bFridges.length * 2;
         const refrigeratorComplianceRate =

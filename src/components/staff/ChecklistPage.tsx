@@ -29,13 +29,11 @@ import {
   Snowflake,
 } from "lucide-react";
 import { BranchRefrigeratorChecklist } from "./BranchRefrigeratorChecklist";
-import { JointTaskDetailsModal } from "./JointTaskDetailsModal";
 import { LateReasonModal } from "../common/LateReasonModal";
 import { getOrCreateShiftSessionAction, validateShiftCompletionAction } from "../../actions/checklist";
-import { getBranchJointTasksAction, toggleJointTaskItemAction } from "../../actions/jointTask";
 import { getSpecialTasksAction, submitSpecialTaskAction } from "../../actions/specialTask";
-import { getBranchRefrigeratorTasksAction, RefrigeratorTaskItem } from "../../actions/refrigerator";
-import { SpecialTaskItem, JointTaskItem } from "../../types";
+import { RefrigeratorTaskItem } from "../../actions/refrigerator";
+import { SpecialTaskItem } from "../../types";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 import { DbSyncNotification } from "../common/DbSyncNotification";
 import { useApp } from "../../context/AppContext";
@@ -134,25 +132,19 @@ export function ChecklistPage({
   const [prevSession, setPrevSession] = useState(session);
 
   // Main Tabs State (Optimized for Mobile & Desktop without remounts or refetches)
-  const [activeMainTab, setActiveMainTab] = useState<"shift" | "joint" | "special">("shift");
+  const [activeMainTab, setActiveMainTab] = useState<"shift" | "refrigerators" | "special">("shift");
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
-  // --- ROW 2: Joint Tasks State ---
-  const [jointTasks, setJointTasks] = useState<JointTaskItem[]>([]);
-  const [isJointModalOpen, setIsJointModalOpen] = useState(false);
-  const [jointSubTab, setJointSubTab] = useState<"refrigerators" | "joint_tasks">("refrigerators");
-
-  // --- ROW 3: Special Tasks State ---
+  // --- ROW 2: Special Tasks State ---
   const [specialTasks, setSpecialTasks] = useState<SpecialTaskItem[]>([]);
   const [submittingSpecialTask, setSubmittingSpecialTask] = useState<SpecialTaskItem | null>(null);
   const [submissionComment, setSubmissionComment] = useState("");
   const [isSubmittingSpecial, setIsSubmittingSpecial] = useState(false);
 
-  // --- Refrigerator Tasks State (Mandatory for Stock Shift) ---
+  // --- Refrigerator Tasks State (Pushed from BranchRefrigeratorChecklist) ---
   const [refrigeratorTasks, setRefrigeratorTasks] = useState<RefrigeratorTaskItem[]>([]);
-  const [, setIsLoadingRefTasks] = useState(false);
 
-  // Toast feedback for Joint & Special tasks
+  // Toast feedback
   const [rowToast, setRowToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const showRowToast = (type: "success" | "error", text: string) => {
     setRowToast({ type, text });
@@ -160,21 +152,6 @@ export function ChecklistPage({
   };
 
   const branchId = session.branchId || currentUser?.branchId;
-
-  const loadJointTasks = useCallback(async () => {
-    if (!branchId) return;
-    try {
-      const res = await getBranchJointTasksAction({
-        branchId,
-        shift: session.shift,
-      });
-      if (res.success && res.data) {
-        setJointTasks(res.data);
-      }
-    } catch {
-      // non-blocking
-    }
-  }, [branchId, session.shift]);
 
   const loadSpecialTasks = useCallback(async () => {
     if (!branchId) return;
@@ -192,81 +169,15 @@ export function ChecklistPage({
     }
   }, [branchId, session.userId, session.taskRole, currentUser]);
 
-  const loadRefrigeratorTasks = useCallback(async () => {
-    if (!isStockShift || !branchId) return;
-    setIsLoadingRefTasks(true);
-    try {
-      const activeRefShift = session.shift === "afternoon" ? "afternoon" : "morning";
-      const res = await getBranchRefrigeratorTasksAction({ userId: session.userId, shift: activeRefShift });
-      if (res.success && res.data) {
-        setRefrigeratorTasks(res.data);
-      }
-    } catch {
-      // non-blocking
-    } finally {
-      setIsLoadingRefTasks(false);
-    }
-  }, [isStockShift, branchId, session.shift, session.userId]);
-
   useEffect(() => {
-    void loadJointTasks();
     void loadSpecialTasks();
-    void loadRefrigeratorTasks();
     const interval = setInterval(() => {
-      void loadJointTasks();
       void loadSpecialTasks();
-      void loadRefrigeratorTasks();
     }, 12000);
     return () => clearInterval(interval);
-  }, [loadJointTasks, loadSpecialTasks, loadRefrigeratorTasks]);
+  }, [loadSpecialTasks]);
 
-  const handleToggleJointTask = async (task: JointTaskItem) => {
-    if (!branchId) return;
-    const willComplete = !task.completed;
 
-    // Optimistic update
-    setJointTasks((prev) =>
-      prev.map((t) =>
-        t.taskId === task.taskId
-          ? {
-              ...t,
-              completed: willComplete,
-              completedByUserId: willComplete ? session.userId : null,
-              completedByUserName: willComplete ? (session.userName || "คุณ") : null,
-              completedAt: willComplete ? new Date().toISOString() : null,
-            }
-          : t
-      )
-    );
-
-    try {
-      const today = getThaiDateString();
-      const res = await toggleJointTaskItemAction({
-        jointWorkId: task.id,
-        taskId: task.taskId,
-        branchId,
-        dateStr: today,
-        shift: session.shift,
-        userId: session.userId,
-        completed: willComplete,
-      });
-
-      if (res.conflict) {
-        showRowToast("error", res.message || "รายการนี้ถูกตรวจเช็คโดยเพื่อนร่วมงานแล้ว");
-        void loadJointTasks();
-      } else if (!res.success) {
-        showRowToast("error", res.error || "เกิดข้อผิดพลาดในการบันทึก");
-        void loadJointTasks();
-      } else if (res.data) {
-        setJointTasks((prev) =>
-          prev.map((t) => (t.taskId === task.taskId ? res.data! : t))
-        );
-      }
-    } catch (err: any) {
-      showRowToast("error", err?.message || "การเชื่อมต่อขัดข้อง");
-      void loadJointTasks();
-    }
-  };
 
   const handleSubmitSpecialTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -413,9 +324,7 @@ export function ChecklistPage({
       await flushChecklistBuffer();
       await Promise.all([
         syncTasksRef.current ? syncTasksRef.current() : Promise.resolve(),
-        loadJointTasks(),
         loadSpecialTasks(),
-        loadRefrigeratorTasks(),
       ]);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("app:refresh-refrigerators"));
@@ -426,7 +335,7 @@ export function ChecklistPage({
     } finally {
       setIsManualRefreshing(false);
     }
-  }, [isManualRefreshing, isPageBusy, flushChecklistBuffer, loadJointTasks, loadSpecialTasks, loadRefrigeratorTasks]);
+  }, [isManualRefreshing, isPageBusy, flushChecklistBuffer, loadSpecialTasks]);
 
   const pendingRefTasksCount = isStockShift
     ? refrigeratorTasks.filter((t) => !t.completed).length
@@ -841,30 +750,32 @@ export function ChecklistPage({
             </span>
           </button>
 
-          {/* Tab 2: งานส่วนกลาง */}
+          {/* Tab 2: ตู้แช่สินค้า */}
           <button
             type="button"
             role="tab"
-            aria-selected={activeMainTab === "joint"}
-            onClick={() => setActiveMainTab("joint")}
+            aria-selected={activeMainTab === "refrigerators"}
+            onClick={() => setActiveMainTab("refrigerators")}
             className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all cursor-pointer select-none text-center ${
-              activeMainTab === "joint"
+              activeMainTab === "refrigerators"
                 ? "bg-sky-600 text-white font-black shadow-xs dark:bg-sky-500"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] font-bold"
             }`}
           >
             <div className="flex items-center gap-1">
-              <Users size={15} className={activeMainTab === "joint" ? "text-white" : "text-sky-600 dark:text-sky-400"} />
-              <span className="text-xs sm:text-sm truncate">งานส่วนกลาง</span>
+              <Snowflake size={15} className={activeMainTab === "refrigerators" ? "text-white" : "text-sky-600 dark:text-sky-400"} />
+              <span className="text-xs sm:text-sm truncate">ตู้แช่สินค้า</span>
             </div>
             <span
               className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-bold ${
-                activeMainTab === "joint"
+                activeMainTab === "refrigerators"
                   ? "bg-white/20 text-white"
+                  : !hasPendingRefTasks && refrigeratorTasks.length > 0
+                  ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200"
                   : "bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200"
               }`}
             >
-              ตู้แช่ • {jointTasks.length}
+              {refrigeratorTasks.filter((t) => t.completed).length}/{refrigeratorTasks.length}
             </span>
           </button>
 
@@ -1112,112 +1023,58 @@ export function ChecklistPage({
     </div>
 
           {/* ═══════════════════════════════════════════════════════════════════
-              TAB 2: งานส่วนกลาง (Joint Tasks & Refrigerator Checks)
+              TAB 2: ตรวจเช็คตู้แช่สินค้า (Refrigerator Checks)
           ═══════════════════════════════════════════════════════════════════ */}
-          <div className={activeMainTab === "joint" ? "block space-y-4" : "hidden"}>
+          <div className={activeMainTab === "refrigerators" ? "block space-y-4" : "hidden"}>
             <section className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
-              <div>
-                <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-                  <span>แถวที่ 2: งานส่วนกลาง (Joint Tasks)</span>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 font-extrabold">
-                    แชร์ร่วมในสาขา
-                  </span>
-                </h2>
-                <p className="text-xs text-[var(--color-text-muted)] font-medium mt-0.5">
-                  งานที่หลายคนช่วยกันตรวจเช็คได้ พร้อมระบบป้องกันการเขียนทับซ้อน (Concurrency Safe)
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsJointModalOpen(true)}
-                  className="px-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              {/* Stock Employee Mandatory Refrigerator Checklist Banner */}
+              {isStockShift && (
+                <div
+                  className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                    !hasPendingRefTasks && refrigeratorTasks.length > 0
+                      ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
+                      : "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200"
+                  }`}
                 >
-                  <Users size={15} className="text-sky-600 dark:text-sky-400" />
-                  <span>ดูรายละเอียดผู้ร่วมงาน</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Stock Employee Mandatory Refrigerator Checklist Banner */}
-            {isStockShift && (
-              <div
-                className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
-                  !hasPendingRefTasks && refrigeratorTasks.length > 0
-                    ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
-                    : "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`p-2 rounded-xl shrink-0 ${
-                      !hasPendingRefTasks && refrigeratorTasks.length > 0
-                        ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
-                        : "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"
-                    }`}
-                  >
-                    <Snowflake size={20} />
-                  </div>
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-extrabold flex items-center gap-1.5">
-                      <span>
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`p-2 rounded-xl shrink-0 ${
+                        !hasPendingRefTasks && refrigeratorTasks.length > 0
+                          ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
+                          : "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"
+                      }`}
+                    >
+                      <Snowflake size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-extrabold flex items-center gap-1.5">
+                        <span>
+                          {!hasPendingRefTasks && refrigeratorTasks.length > 0
+                            ? "ตรวจเช็คตู้แช่ครบทุกตู้แล้ว ✓"
+                            : `เงื่อนไขบังคับจบกะ: ตรวจเช็คตู้แช่ (เหลือ ${pendingRefTasksCount} ตู้)`}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] opacity-80 font-medium">
                         {!hasPendingRefTasks && refrigeratorTasks.length > 0
-                          ? "ตรวจเช็คตู้แช่ครบทุกตู้แล้ว ✓"
-                          : `เงื่อนไขบังคับจบกะ: ตรวจเช็คตู้แช่ (เหลือ ${pendingRefTasksCount} ตู้)`}
-                      </span>
-                    </h4>
-                    <p className="text-[11px] opacity-80 font-medium">
-                      {!hasPendingRefTasks && refrigeratorTasks.length > 0
-                        ? "คุณผ่านเงื่อนไขการตรวจตู้แช่สำหรับพนักงานสต็อกแล้ว สามารถจบกะได้ตามปกติ"
-                        : "พนักงานสต็อกต้องตรวจเช็คตู้แช่ให้ครบทุกตู้ก่อนจึงจะสามารถจบกะหรือออกจากเซสชันได้"}
-                    </p>
+                          ? "คุณผ่านเงื่อนไขการตรวจตู้แช่สำหรับพนักงานสต็อกแล้ว สามารถจบกะได้ตามปกติ"
+                          : "พนักงานสต็อกต้องตรวจเช็คตู้แช่ให้ครบทุกตู้ก่อนจึงจะสามารถจบกะหรือออกจากเซสชันได้"}
+                      </p>
+                    </div>
                   </div>
+                  {refrigeratorTasks.length > 0 && (
+                    <span
+                      className={`text-xs font-mono font-black px-2.5 py-1 rounded-xl shrink-0 ${
+                        !hasPendingRefTasks
+                          ? "bg-emerald-200/60 dark:bg-emerald-800/60 text-emerald-900 dark:text-emerald-100"
+                          : "bg-amber-200/60 dark:bg-amber-800/60 text-amber-900 dark:text-amber-100"
+                      }`}
+                    >
+                      {refrigeratorTasks.length - pendingRefTasksCount} / {refrigeratorTasks.length} ตู้
+                    </span>
+                  )}
                 </div>
-                {refrigeratorTasks.length > 0 && (
-                  <span
-                    className={`text-xs font-mono font-black px-2.5 py-1 rounded-xl shrink-0 ${
-                      !hasPendingRefTasks
-                        ? "bg-emerald-200/60 dark:bg-emerald-800/60 text-emerald-900 dark:text-emerald-100"
-                        : "bg-amber-200/60 dark:bg-amber-800/60 text-amber-900 dark:text-amber-100"
-                    }`}
-                  >
-                    {refrigeratorTasks.length - pendingRefTasksCount} / {refrigeratorTasks.length} ตู้
-                  </span>
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Joint sub-tabs: Refrigerators vs Other Joint Tasks */}
-            <div className="flex bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] text-xs font-bold gap-1">
-              <button
-                type="button"
-                onClick={() => setJointSubTab("refrigerators")}
-                className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
-                  jointSubTab === "refrigerators"
-                    ? "bg-sky-600 text-white shadow-xs"
-                    : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                }`}
-              >
-                ❄️ ตรวจเช็คตู้แช่สาขา (รอบเช้า & รอบบ่าย)
-              </button>
-              <button
-                type="button"
-                onClick={() => setJointSubTab("joint_tasks")}
-                className={`flex-1 py-2 rounded-lg text-center cursor-pointer transition-all ${
-                  jointSubTab === "joint_tasks"
-                    ? "bg-sky-600 text-white shadow-xs"
-                    : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                }`}
-              >
-                🤝 รายการงานส่วนกลางอื่น ๆ ({jointTasks.length})
-              </button>
-            </div>
-
-            {/* Always keep BranchRefrigeratorChecklist mounted so switching tabs never causes extra DB fetches */}
-            <div className={jointSubTab === "refrigerators" ? "block" : "hidden"}>
               <BranchRefrigeratorChecklist
                 userId={session.userId}
                 userName={session.userName}
@@ -1226,63 +1083,8 @@ export function ChecklistPage({
                 shift={session.shift}
                 onTasksChange={setRefrigeratorTasks}
               />
-            </div>
-
-            <div className={jointSubTab === "joint_tasks" ? "block space-y-2.5" : "hidden"}>
-                {jointTasks.length === 0 ? (
-                  <div className="p-8 text-center bg-[var(--color-surface)] border border-dashed border-[var(--color-border)] rounded-2xl">
-                    <Users size={32} className="mx-auto text-[var(--color-text-muted)] mb-2" />
-                    <p className="text-sm font-bold text-[var(--color-text)]">ไม่มีรายการงานส่วนกลางเพิ่มเติมสำหรับตำแหน่งนี้</p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">ผู้จัดการสามารถกำหนดงานส่วนกลางได้จากระบบจัดการเช็คลิสต์</p>
-                  </div>
-                ) : (
-                  jointTasks.map((jt) => (
-                    <div
-                      key={jt.id}
-                      className={`p-4 rounded-2xl border transition-all flex items-start justify-between gap-3 ${
-                        jt.completed
-                          ? "bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-500/30"
-                          : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-sky-400"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          onClick={() => void handleToggleJointTask(jt)}
-                          className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all cursor-pointer ${
-                            jt.completed
-                              ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
-                              : "border-[var(--color-border)] hover:border-sky-500 bg-[var(--color-surface)]"
-                          }`}
-                        >
-                          {jt.completed && <Check size={14} strokeWidth={3} />}
-                        </button>
-                        <div>
-                          <p className={`text-sm font-extrabold ${jt.completed ? "line-through text-[var(--color-text-muted)]" : "text-[var(--color-text)]"}`}>
-                            {jt.name}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mt-1 flex-wrap">
-                            {jt.category && (
-                              <span className="px-2 py-0.5 rounded-md bg-[var(--color-surface-2)] font-semibold">
-                                {jt.category}
-                              </span>
-                            )}
-                            {jt.completed ? (
-                              <span className="text-emerald-700 dark:text-emerald-300 font-bold">
-                                ✓ ตรวจแล้วโดย {jt.completedByUserName || "เพื่อนร่วมงาน"}{jt.completedAt ? ` เมื่อ ${fmtTime(jt.completedAt)} น.` : ""}
-                              </span>
-                            ) : (
-                              <span>รอดำเนินการตรวจเช็ค</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-          </section>
-        </div>
+            </section>
+          </div>
 
           {/* ═══════════════════════════════════════════════════════════════════
               TAB 3: ภารกิจพิเศษ (Special Period Tasks)
@@ -1404,14 +1206,7 @@ export function ChecklistPage({
       </div>
     </div>
 
-      {/* Modals for Joint Tasks & Special Tasks */}
-      <JointTaskDetailsModal
-        isOpen={isJointModalOpen}
-        onClose={() => setIsJointModalOpen(false)}
-        branchId={branchId || ""}
-        dateStr={new Date().toISOString().split("T")[0]}
-        shift={session.shift}
-      />
+
 
       {submittingSpecialTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
@@ -1651,8 +1446,7 @@ export function ChecklistPage({
                   type="button"
                   onClick={() => {
                     setShowIncompleteModal(false);
-                    setActiveMainTab("joint");
-                    setJointSubTab("refrigerators");
+                    setActiveMainTab("refrigerators");
                   }}
                   className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
@@ -1773,8 +1567,7 @@ export function ChecklistPage({
                     type="button"
                     onClick={() => {
                       setShowExitConfirm(false);
-                      setActiveMainTab("joint");
-                      setJointSubTab("refrigerators");
+                      setActiveMainTab("refrigerators");
                     }}
                     className="w-full min-h-[44px] py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-all"
                   >

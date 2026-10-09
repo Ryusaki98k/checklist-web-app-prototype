@@ -125,11 +125,4 @@ export async function deleteBranchDailyTaskAction(
     return await services.checklist.deleteBranchDailyTask(taskId, branchId);
 }
 
-export async function syncBranchRefrigeratorJointTasksAction(
-    branchId?: string
-): Promise<{ success: boolean; count?: number; error?: string }> {
-    const services = getServices();
-    return await services.checklist.syncBranchRefrigeratorJointTasks(branchId);
-}
-
 

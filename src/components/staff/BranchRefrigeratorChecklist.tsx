@@ -52,21 +52,40 @@ export function BranchRefrigeratorChecklist({
   const [tempValue, setTempValue] = useState<number>(4);
   const [isOkayValue, setIsOkayValue] = useState<boolean>(true);
   const [commentValue, setCommentValue] = useState<string>("");
+
+  // Lock shift to session shift if specified (e.g. Stock employee working morning -> only morning tasks)
+  const lockedShift: "morning" | "afternoon" | null =
+    shift === "morning" || shift === "afternoon" ? shift : null;
+
   const [activeShift, setActiveShift] = useState<"morning" | "afternoon">(() => {
-    return shift === "afternoon" ? "afternoon" : "morning";
+    return lockedShift || "morning";
   });
+
+  useEffect(() => {
+    if (lockedShift) {
+      setActiveShift(lockedShift);
+    }
+  }, [lockedShift]);
+
+  const onTasksChangeRef = useRef(onTasksChange);
+  useEffect(() => {
+    onTasksChangeRef.current = onTasksChange;
+  }, [onTasksChange]);
+
+  const effectiveShift = lockedShift || activeShift;
 
   const loadTasks = useCallback(async (isSilent = false) => {
     try {
-      const res = await getBranchRefrigeratorTasksAction({ userId, shift: activeShift });
+      const res = await getBranchRefrigeratorTasksAction({ userId, shift: effectiveShift });
       if (res.success && res.data) {
         setTasks((prev) => {
           const inFlight = savingTaskIdsRef.current;
-          if (inFlight.size === 0) return res.data!;
-          // Merge safely: preserve optimistic state for any task currently in flight
+          const pending = pendingChecksRef.current;
+          if (inFlight.size === 0 && pending.size === 0) return res.data!;
+          // Merge safely: preserve optimistic state for any task currently in flight or queued
           const prevMap = new Map(prev.map((t) => [t.taskId, t]));
           return res.data!.map((serverItem) => {
-            if (inFlight.has(serverItem.taskId)) {
+            if (inFlight.has(serverItem.taskId) || pending.has(serverItem.taskId)) {
               return prevMap.get(serverItem.taskId) || serverItem;
             }
             return serverItem;
@@ -82,7 +101,7 @@ export function BranchRefrigeratorChecklist({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userId, activeShift]);
+  }, [userId, effectiveShift]);
 
   useEffect(() => {
     void loadTasks(true);
@@ -104,8 +123,8 @@ export function BranchRefrigeratorChecklist({
   }, [loadTasks]);
 
   useEffect(() => {
-    onTasksChange?.(tasks);
-  }, [tasks, onTasksChange]);
+    onTasksChangeRef.current?.(tasks);
+  }, [tasks]);
 
   function handleOpenCheck(task: RefrigeratorTaskItem) {
     if (task.disableCheck) {
@@ -447,35 +466,49 @@ export function BranchRefrigeratorChecklist({
           </div>
         </div>
 
-        {/* Shift selector: Morning vs Afternoon */}
-        <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl mb-3">
-          <button
-            type="button"
-            onClick={() => setActiveShift("morning")}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeShift === "morning"
-                ? "bg-sky-600 text-white shadow-xs"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-            }`}
-          >
-            รอบเช้า (Morning)
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveShift("afternoon")}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeShift === "afternoon"
-                ? "bg-sky-600 text-white shadow-xs"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-            }`}
-          >
-            รอบบ่าย (Afternoon)
-          </button>
-        </div>
+        {/* Shift selector: Locked to session shift if stock employee, otherwise toggleable */}
+        {lockedShift ? (
+          <div className="flex items-center justify-between p-2 sm:p-2.5 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl mb-3">
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="text-sky-600 dark:text-sky-400 shrink-0" />
+              <span className="text-xs font-bold text-[var(--color-text)]">
+                รอบการตรวจตู้แช่: {lockedShift === "morning" ? "รอบเช้า (Morning Shift)" : "รอบบ่าย (Afternoon Shift)"}
+              </span>
+            </div>
+            <span className="text-[10px] font-bold text-sky-800 dark:text-sky-200 bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 rounded-full border border-sky-300 dark:border-sky-800">
+              เฉพาะกะที่ทำงาน
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-xl mb-3">
+            <button
+              type="button"
+              onClick={() => setActiveShift("morning")}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeShift === "morning"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              รอบเช้า (Morning)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveShift("afternoon")}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeShift === "afternoon"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              รอบบ่าย (Afternoon)
+            </button>
+          </div>
+        )}
 
         {/* Progress bar */}
         <div className="flex items-center justify-between text-xs font-semibold text-[var(--color-text-muted)] mb-1.5">
-          <span>ตรวจเช็คความเย็นรอบ{activeShift === "morning" ? "เช้า" : "บ่าย"}</span>
+          <span>ตรวจเช็คความเย็นรอบ{effectiveShift === "morning" ? "เช้า" : "บ่าย"}</span>
           <span className="font-mono font-bold text-[var(--color-text)]">
             {done}/{total} ตู้ ({progress}%)
           </span>

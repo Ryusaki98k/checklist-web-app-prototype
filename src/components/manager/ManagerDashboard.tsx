@@ -57,10 +57,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import {
-  getJointTaskDaySummaryAction,
-  approveJointTaskDayAction,
-} from "../../actions/jointTask";
+
 import {
   getSpecialTasksAction,
   approveSpecialTaskAction,
@@ -114,42 +111,13 @@ export function ManagerDashboard({
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
-  // Sub-tabs inside Approvals: daily | joint | special
-  const [approvalSubTab, setApprovalSubTab] = useState<"daily" | "joint" | "special">("daily");
-
-  // Joint tasks approval state
-  const todayDateStr = useMemo(() => new Date().toISOString().split("T")[0], []);
-  const [jointApproveDate, setJointApproveDate] = useState<string>(todayDateStr);
-  const [jointApproveShift, setJointApproveShift] = useState<"morning" | "afternoon">("morning");
-  const [jointSummary, setJointSummary] = useState<any>(null);
-  const [isLoadingJointSummary, setIsLoadingJointSummary] = useState(false);
-  const [isApprovingJoint, setIsApprovingJoint] = useState(false);
+  // Sub-tabs inside Approvals: daily | special
+  const [approvalSubTab, setApprovalSubTab] = useState<"daily" | "special">("daily");
 
   // Special tasks approval state
   const [specialTasksToReview, setSpecialTasksToReview] = useState<SpecialTaskItem[]>([]);
   const [isLoadingSpecialReview, setIsLoadingSpecialReview] = useState(false);
   const [isReviewingSpecial, setIsReviewingSpecial] = useState(false);
-
-  const loadJointSummary = useCallback(async () => {
-    if (!user.branchId) return;
-    setIsLoadingJointSummary(true);
-    try {
-      const res = await getJointTaskDaySummaryAction({
-        branchId: user.branchId,
-        dateStr: jointApproveDate,
-        shift: jointApproveShift,
-      });
-      if (res.success && res.summary) {
-        setJointSummary(res.summary);
-      } else {
-        setJointSummary(null);
-      }
-    } catch {
-      setJointSummary(null);
-    } finally {
-      setIsLoadingJointSummary(false);
-    }
-  }, [user.branchId, jointApproveDate, jointApproveShift]);
 
   const loadSpecialTasksToReview = useCallback(async () => {
     if (!user.branchId) return;
@@ -167,37 +135,10 @@ export function ManagerDashboard({
   }, [user.branchId]);
 
   useEffect(() => {
-    if (activeTab === "approvals") {
-      if (approvalSubTab === "joint") {
-        void loadJointSummary();
-      } else if (approvalSubTab === "special") {
-        void loadSpecialTasksToReview();
-      }
+    if (activeTab === "approvals" && approvalSubTab === "special") {
+      void loadSpecialTasksToReview();
     }
-  }, [activeTab, approvalSubTab, loadJointSummary, loadSpecialTasksToReview]);
-
-  const handleApproveJointDay = async () => {
-    if (!user.branchId) return;
-    setIsApprovingJoint(true);
-    try {
-      const res = await approveJointTaskDayAction({
-        branchId: user.branchId,
-        dateStr: jointApproveDate,
-        shift: jointApproveShift,
-        role: user.role,
-      });
-      if (res.success) {
-        setActionFeedback("บันทึกการอนุมัติงานส่วนกลางประจำวันสำเร็จ");
-        void loadJointSummary();
-      } else {
-        setActionFeedback(`เกิดข้อผิดพลาด: ${res.error || "ไม่สามารถอนุมัติได้"}`);
-      }
-    } catch (err: any) {
-      setActionFeedback(`การเชื่อมต่อขัดข้อง: ${err?.message}`);
-    } finally {
-      setIsApprovingJoint(false);
-    }
-  };
+  }, [activeTab, approvalSubTab, loadSpecialTasksToReview]);
 
   const handleReviewSpecialTask = async (specialTaskId: string, isApproved: boolean) => {
     setIsReviewingSpecial(true);
@@ -1786,21 +1727,7 @@ export function ManagerDashboard({
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setApprovalSubTab("joint");
-                  void loadJointSummary();
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  approvalSubTab === "joint"
-                    ? "bg-[var(--color-brown)] text-amber-100 shadow-sm"
-                    : "bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                }`}
-              >
-                <Users size={16} />
-                <span>งานส่วนกลางประจำวัน (Joint Tasks)</span>
-              </button>
+
 
               <button
                 type="button"
@@ -1985,199 +1912,7 @@ export function ManagerDashboard({
             </div>
             )}
 
-            {/* ─── SUB-TAB 2: JOINT TASKS APPROVAL ──────────────────── */}
-            {approvalSubTab === "joint" && (
-              <div className="space-y-4">
-                {/* Controls: Date & Shift */}
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-[var(--color-surface-2)] p-3 rounded-xl border border-[var(--color-border)]">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-semibold text-[var(--color-text-muted)] flex items-center gap-1.5">
-                      <Calendar size={14} />
-                      <span>วันที่:</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={jointApproveDate}
-                      onChange={(e) => setJointApproveDate(e.target.value)}
-                      className="px-2.5 py-1 text-xs rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
-                    />
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-[var(--color-text-muted)]">รอบกะ:</span>
-                    <div className="inline-flex items-center bg-[var(--color-surface)] p-0.5 rounded-lg border border-[var(--color-border)]">
-                      <button
-                        type="button"
-                        onClick={() => setJointApproveShift("morning")}
-                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
-                          jointApproveShift === "morning"
-                            ? "bg-amber-400 text-amber-950 shadow-2xs"
-                            : "text-[var(--color-text-muted)]"
-                        }`}
-                      >
-                        ☀️ รอบเช้า (Morning)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setJointApproveShift("afternoon")}
-                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
-                          jointApproveShift === "afternoon"
-                            ? "bg-amber-400 text-amber-950 shadow-2xs"
-                            : "text-[var(--color-text-muted)]"
-                        }`}
-                      >
-                        📦 รอบบ่าย (Afternoon)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {isLoadingJointSummary ? (
-                  <div className="py-12 text-center text-[var(--color-text-muted)] text-xs">
-                    <span className="animate-spin inline-block mr-2">⏳</span> กำลังโหลดข้อมูลงานส่วนกลาง...
-                  </div>
-                ) : !jointSummary ? (
-                  <div className="py-12 text-center text-[var(--color-text-muted)] text-xs border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-2)]/40 p-6">
-                    ไม่พบข้อมูลงานส่วนกลางในวันที่เลือก
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Progress & Stat Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="bg-[var(--color-surface-2)] p-3.5 rounded-xl border border-[var(--color-border)]">
-                        <span className="text-xs text-[var(--color-text-muted)] font-semibold">ความคืบหน้างานส่วนกลาง</span>
-                        <div className="text-xl font-black text-amber-600 mt-1">
-                          {jointSummary.completedCount} / {jointSummary.totalTasks} รายการ
-                        </div>
-                        <div className="w-full bg-[var(--color-surface)] h-2 rounded-full overflow-hidden mt-2 border border-[var(--color-border)]">
-                          <div
-                            className="bg-emerald-500 h-full transition-all duration-300"
-                            style={{ width: `${jointSummary.progress}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="bg-[var(--color-surface-2)] p-3.5 rounded-xl border border-[var(--color-border)]">
-                        <span className="text-xs text-[var(--color-text-muted)] font-semibold">พนักงานเข้ากะตามตาราง</span>
-                        <div className="text-sm font-bold text-[var(--color-text)] mt-1 flex flex-wrap gap-1">
-                          {jointSummary.onDutyStaff.length === 0 ? (
-                            <span className="text-xs text-[var(--color-text-muted)]">ไม่มีข้อมูลกะ</span>
-                          ) : (
-                            jointSummary.onDutyStaff.map((staff: any) => (
-                              <span
-                                key={staff.id}
-                                className="px-2 py-0.5 rounded-md bg-[var(--color-surface)] text-[11px] border border-[var(--color-border)]"
-                              >
-                                {staff.name}
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="bg-[var(--color-surface-2)] p-3.5 rounded-xl border border-[var(--color-border)]">
-                        <span className="text-xs text-[var(--color-text-muted)] font-semibold">ผู้ร่วมบันทึกผลจริง (Active)</span>
-                        <div className="text-sm font-bold text-[var(--color-text)] mt-1 flex flex-wrap gap-1">
-                          {jointSummary.activeParticipants.length === 0 ? (
-                            <span className="text-xs text-[var(--color-text-muted)]">ยังไม่มีผู้บันทึก</span>
-                          ) : (
-                            jointSummary.activeParticipants.map((p: any) => (
-                              <span
-                                key={p.userId}
-                                className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-[11px] border border-emerald-300"
-                              >
-                                {p.userName} ({p.count} งาน)
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Approval Status Banner & Action */}
-                    <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-[var(--color-text)]">สถานะการรับรอง:</span>
-                          {jointSummary.approval?.managerApproved ? (
-                            <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              ✓ ผู้จัดการอนุมัติครบถ้วน
-                            </span>
-                          ) : jointSummary.approval?.assistantApproved ? (
-                            <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                              ✓ ผู้ช่วยฯ รับรองแล้ว (รอผู้จัดการ)
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-neutral-200 text-neutral-800">
-                              รอดำเนินการรับรอง
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[var(--color-text-muted)]">
-                          {jointSummary.approval?.managerApproved
-                            ? `ลงนามโดยผู้จัดการเมื่อ ${new Date(jointSummary.approval.managerApprovedAt).toLocaleTimeString("th-TH")}`
-                            : jointSummary.approval?.assistantApproved
-                            ? `ผู้ช่วยฯ ลงนามเมื่อ ${new Date(jointSummary.approval.assistantApprovedAt).toLocaleTimeString("th-TH")}`
-                            : "งานส่วนกลางได้รับการบันทึกร่วมกัน สามารถลงนามเพื่อยืนยันความถูกต้อง"}
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleApproveJointDay}
-                        disabled={
-                          isApprovingJoint ||
-                          (isAssistant && jointSummary.approval?.assistantApproved) ||
-                          (isManager && jointSummary.approval?.managerApproved)
-                        }
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 ${
-                          (isManager && jointSummary.approval?.managerApproved) ||
-                          (isAssistant && jointSummary.approval?.assistantApproved)
-                            ? "bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-default"
-                            : "bg-amber-500 hover:bg-amber-400 text-amber-950 cursor-pointer"
-                        }`}
-                      >
-                        {isApprovingJoint ? (
-                          <span>กำลังบันทึก...</span>
-                        ) : (isManager && jointSummary.approval?.managerApproved) ||
-                          (isAssistant && jointSummary.approval?.assistantApproved) ? (
-                          <span>✓ รับรองเรียบร้อยแล้ว</span>
-                        ) : (
-                          <span>{isManager ? "อนุมัติงานส่วนกลาง (ผู้จัดการ)" : "ลงนามรับรองงานส่วนกลาง (ผู้ช่วยฯ)"}</span>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Checked Items List */}
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
-                        รายละเอียดรายการที่ตรวจแล้ว ({jointSummary.items.filter((i: any) => i.isCompleted).length} / {jointSummary.items.length} รายการ)
-                      </h4>
-                      <div className="space-y-2 max-h-72 overflow-y-auto">
-                        {jointSummary.items.map((item: any) => (
-                          <div
-                            key={item.id}
-                            className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${item.isCompleted ? "bg-emerald-500" : "bg-neutral-300"}`} />
-                              <span className="font-semibold text-[var(--color-text)]">{item.name}</span>
-                            </div>
-                            {item.isCompleted ? (
-                              <span className="text-[11px] text-[var(--color-text-muted)]">
-                                ตรวจโดย <strong className="text-[var(--color-text)]">{item.checkedByName || "พนักงาน"}</strong> {item.checkedAt ? `(${new Date(item.checkedAt).toLocaleTimeString("th-TH")})` : ""}
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-amber-600 font-medium">ยังไม่ตรวจ</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ─── SUB-TAB 3: SPECIAL TASKS APPROVAL ────────────────── */}
             {approvalSubTab === "special" && (

@@ -1,5 +1,5 @@
-import { eq, and, or, sql, inArray, isNull } from "drizzle-orm";
-import { refrigerators, branches, users, tasks, branchTasks, jointTaskWork } from "../db/schema";
+import { eq, and, sql, inArray, isNull } from "drizzle-orm";
+import { refrigerators, branches, refrigeratorTasks, users } from "../db/schema";
 import { IRefrigeratorService, INotificationService, RefrigeratorTaskItem } from "./types";
 import { ShiftType } from "../types";
 
@@ -220,57 +220,20 @@ export class RefrigeratorService implements IRefrigeratorService {
       const targetBranchId = updatedRef?.branch_id;
       const targetDate = getThaiDateString();
 
-      // Find tasks linked to this refrigerator via custom jsonb
-      const refTasks = await this.db
-        .select({ id: tasks.id, shift: tasks.shift })
-        .from(tasks)
-        .where(
-          and(
-            sql`${tasks.custom}->>'type' = 'refrigerator'`,
-            sql`${tasks.custom}->>'refrigeratorId' = ${id}`
-          )
-        );
-
-      const taskIds = refTasks.map((t: any) => t.id);
-
       if (disableCheck) {
-        // If disabled, mark task definitions disabled and delete today's incomplete work
-        if (taskIds.length > 0) {
-          await this.db
-            .update(tasks)
-            .set({ disabled: true })
-            .where(inArray(tasks.id, taskIds));
-
-          await this.db
-            .delete(jointTaskWork)
-            .where(
-              and(
-                inArray(jointTaskWork.task_id, taskIds),
-                eq(jointTaskWork.task_date, targetDate),
-                isNull(jointTaskWork.completed_at)
-              )
-            );
-        }
-      } else {
-        // If re-enabled, re-enable tasks and ensure daily tasks exist
-        if (taskIds.length > 0) {
-          await this.db
-            .update(tasks)
-            .set({
-              disabled: false,
-              name: sql`CASE WHEN ${tasks.shift} = 'morning' THEN ${`ตรวจเช็คอุณหภูมิตู้แช่: ${name} (รอบเช้า)`} ELSE ${`ตรวจเช็คอุณหภูมิตู้แช่: ${name} (รอบบ่าย)`} END`,
-              custom: {
-                type: "refrigerator",
-                refrigeratorId: id,
-                minTemp: clampedMin,
-                maxTemp: clampedMax,
-              },
-            })
-            .where(inArray(tasks.id, taskIds));
-        }
-        if (targetBranchId) {
-          await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
-        }
+        // If disabled, delete incomplete tasks for today so it disappears live
+        await this.db
+          .delete(refrigeratorTasks)
+          .where(
+            and(
+              eq(refrigeratorTasks.refrigerator_id, id),
+              eq(refrigeratorTasks.task_date, targetDate),
+              isNull(refrigeratorTasks.completed_at)
+            )
+          );
+      } else if (targetBranchId) {
+        // If re-enabled, ensure daily tasks exist right now
+        await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
       }
 
       if (targetBranchId) {
@@ -306,37 +269,18 @@ export class RefrigeratorService implements IRefrigeratorService {
       const branchId = existing.branch_id;
       const targetDate = getThaiDateString();
 
-      // Find tasks linked to this refrigerator
-      const refTasks = await this.db
-        .select({ id: tasks.id })
-        .from(tasks)
+      // Delete today's incomplete tasks for this refrigerator
+      await this.db
+        .delete(refrigeratorTasks)
         .where(
           and(
-            sql`${tasks.custom}->>'type' = 'refrigerator'`,
-            sql`${tasks.custom}->>'refrigeratorId' = ${id}`
+            eq(refrigeratorTasks.refrigerator_id, id),
+            eq(refrigeratorTasks.task_date, targetDate),
+            isNull(refrigeratorTasks.completed_at)
           )
         );
 
-      const taskIds = refTasks.map((t: any) => t.id);
-
-      if (taskIds.length > 0) {
-        // Delete today's incomplete work for this refrigerator
-        await this.db
-          .delete(jointTaskWork)
-          .where(
-            and(
-              inArray(jointTaskWork.task_id, taskIds),
-              eq(jointTaskWork.task_date, targetDate),
-              isNull(jointTaskWork.completed_at)
-            )
-          );
-
-        // Delete branch link and task definitions
-        await this.db.delete(branchTasks).where(inArray(branchTasks.task_id, taskIds));
-        await this.db.delete(tasks).where(inArray(tasks.id, taskIds));
-      }
-
-      // Delete the refrigerator itself
+      // Delete the refrigerator itself (foreign keys on delete cascade will handle completed history if any)
       await this.db.delete(refrigerators).where(eq(refrigerators.id, id));
 
       if (branchId) {
@@ -399,45 +343,19 @@ export class RefrigeratorService implements IRefrigeratorService {
         .set({ branch_id: targetBranchId })
         .where(eq(refrigerators.id, refrigeratorId));
 
-      // Update task definitions branch assignment
+      const targetDate = getThaiDateString();
+
+      // Transfer incomplete tasks for today to the new branch
       await this.db
-        .update(tasks)
+        .update(refrigeratorTasks)
         .set({ branch_id: targetBranchId })
         .where(
           and(
-            sql`${tasks.custom}->>'type' = 'refrigerator'`,
-            sql`${tasks.custom}->>'refrigeratorId' = ${refrigeratorId}`
+            eq(refrigeratorTasks.refrigerator_id, refrigeratorId),
+            eq(refrigeratorTasks.task_date, targetDate),
+            isNull(refrigeratorTasks.completed_at)
           )
         );
-
-      const targetDate = getThaiDateString();
-
-      // Find tasks linked to this refrigerator
-      const refTasks = await this.db
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(
-          and(
-            sql`${tasks.custom}->>'type' = 'refrigerator'`,
-            sql`${tasks.custom}->>'refrigeratorId' = ${refrigeratorId}`
-          )
-        );
-
-      const taskIds = refTasks.map((t: any) => t.id);
-
-      if (taskIds.length > 0) {
-        // Transfer incomplete tasks for today to the new branch
-        await this.db
-          .update(jointTaskWork)
-          .set({ branch_id: targetBranchId })
-          .where(
-            and(
-              inArray(jointTaskWork.task_id, taskIds),
-              eq(jointTaskWork.task_date, targetDate),
-              isNull(jointTaskWork.completed_at)
-            )
-          );
-      }
 
       // If active, ensure task exists in target branch
       if (!existing.disable_check) {
@@ -492,44 +410,20 @@ export class RefrigeratorService implements IRefrigeratorService {
         .set({ disable_check: disableCheck })
         .where(inArray(refrigerators.id, refrigeratorIds));
 
-      // Find tasks linked to these refrigerators
-      const refTasks = await this.db
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(
-          and(
-            sql`${tasks.custom}->>'type' = 'refrigerator'`,
-            inArray(sql`${tasks.custom}->>'refrigeratorId'`, refrigeratorIds)
-          )
-        );
-
-      const taskIds = refTasks.map((t: any) => t.id);
-
-      if (taskIds.length > 0) {
-        // Update disabled status on task definitions
-        await this.db
-          .update(tasks)
-          .set({ disabled: disableCheck })
-          .where(inArray(tasks.id, taskIds));
-
-        const targetDate = getThaiDateString();
-
-        if (disableCheck) {
-          // If disabled, delete incomplete tasks for today so they disappear live
-          await this.db
-            .delete(jointTaskWork)
-            .where(
-              and(
-                inArray(jointTaskWork.task_id, taskIds),
-                eq(jointTaskWork.task_date, targetDate),
-                isNull(jointTaskWork.completed_at)
-              )
-            );
-        }
-      }
-
       const targetDate = getThaiDateString();
-      if (!disableCheck && effectiveBranchId) {
+
+      if (disableCheck) {
+        // If disabled, delete incomplete tasks for today so they disappear live
+        await this.db
+          .delete(refrigeratorTasks)
+          .where(
+            and(
+              inArray(refrigeratorTasks.refrigerator_id, refrigeratorIds),
+              eq(refrigeratorTasks.task_date, targetDate),
+              isNull(refrigeratorTasks.completed_at)
+            )
+          );
+      } else if (effectiveBranchId) {
         // If re-enabled, ensure daily tasks exist
         await this.ensureDailyRefrigeratorTasks(effectiveBranchId, targetDate);
       }
@@ -548,16 +442,12 @@ export class RefrigeratorService implements IRefrigeratorService {
     }
   }
 
-  async ensureDailyRefrigeratorTasks(branchId: string, _dateStr?: string): Promise<{ success: boolean; error?: string }> {
+  async ensureDailyRefrigeratorTasks(branchId: string, dateStr?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      const targetDate = dateStr || getThaiDateString();
+
       const activeRefs = await this.db
-        .select({
-          id: refrigerators.id,
-          name: refrigerators.name,
-          min_temperature: refrigerators.min_temperature,
-          max_temperature: refrigerators.max_temperature,
-          disable_check: refrigerators.disable_check,
-        })
+        .select({ id: refrigerators.id })
         .from(refrigerators)
         .where(
           and(
@@ -570,102 +460,69 @@ export class RefrigeratorService implements IRefrigeratorService {
         return { success: true };
       }
 
-      const shiftsToEnsure: ("morning" | "afternoon")[] = ["morning", "afternoon"];
-
-      // Query existing refrigerator tasks in tasks table
-      const existingRefTasksInDb = await this.db
+      const existingTasks = await this.db
         .select({
-          id: tasks.id,
-          shift: tasks.shift,
-          name: tasks.name,
-          disabled: tasks.disabled,
-          custom: tasks.custom,
+          id: refrigeratorTasks.id,
+          refrigerator_id: refrigeratorTasks.refrigerator_id,
+          shift: refrigeratorTasks.shift,
         })
-        .from(tasks)
+        .from(refrigeratorTasks)
         .where(
           and(
-            eq(tasks.branch_id, branchId),
-            sql`${tasks.custom}->>'type' = 'refrigerator'`
+            eq(refrigeratorTasks.branch_id, branchId),
+            eq(refrigeratorTasks.task_date, targetDate)
           )
         );
 
-      const taskKeyMap = new Map<string, typeof existingRefTasksInDb[0]>(
-        existingRefTasksInDb.map((t: any) => [`${t.custom?.refrigeratorId}_${t.shift}`, t])
+      const existingKeys = new Set(
+        existingTasks.map((t: any) => `${t.refrigerator_id}_${t.shift || "all"}`)
       );
 
+      const shiftsToCreate: ("morning" | "afternoon")[] = ["morning", "afternoon"];
+      const insertRows: Array<{
+        branch_id: string;
+        refrigerator_id: string;
+        task_date: string;
+        shift: "morning" | "afternoon";
+        is_okay: boolean;
+      }> = [];
+
       for (const ref of activeRefs) {
-        for (const s of shiftsToEnsure) {
+        for (const s of shiftsToCreate) {
           const key = `${ref.id}_${s}`;
-          const existingTask = taskKeyMap.get(key);
-          const shiftLabel = s === "morning" ? "รอบเช้า" : "รอบบ่าย";
-          const taskName = `ตรวจเช็คอุณหภูมิตู้แช่: ${ref.name} (${shiftLabel})`;
-          const customPayload = {
-            type: "refrigerator",
-            refrigeratorId: ref.id,
-            minTemp: ref.min_temperature,
-            maxTemp: ref.max_temperature,
-          };
-
-          if (!existingTask) {
-            const [created] = await this.db
-              .insert(tasks)
-              .values({
-                branch_id: branchId,
-                shift: s,
-                name: taskName,
-                task_role: "stock",
-                start: s === "morning" ? "06:00:00" : "14:00:00",
-                end: s === "morning" ? "14:00:00" : "22:00:00",
-                disabled: Boolean(ref.disable_check),
-                for_managers: false,
-                is_joint: true,
-                is_daily: true,
-                selectable_roles: ["stock", "manager_assistant"],
-                category: "ตู้แช่",
-                custom: customPayload,
-              })
-              .returning({ id: tasks.id });
-
-            if (created) {
-              await this.db
-                .insert(branchTasks)
-                .values({ branch_id: branchId, task_id: created.id })
-                .onConflictDoNothing();
-            }
-          } else if (
-            existingTask.name !== taskName ||
-            existingTask.disabled !== Boolean(ref.disable_check) ||
-            existingTask.custom?.minTemp !== ref.min_temperature ||
-            existingTask.custom?.maxTemp !== ref.max_temperature
-          ) {
-            await this.db
-              .update(tasks)
-              .set({
-                name: taskName,
-                disabled: Boolean(ref.disable_check),
-                is_joint: true,
-                is_daily: true,
-                category: "ตู้แช่",
-                custom: customPayload,
-              })
-              .where(eq(tasks.id, existingTask.id));
+          if (!existingKeys.has(key)) {
+            insertRows.push({
+              branch_id: branchId,
+              refrigerator_id: ref.id,
+              task_date: targetDate,
+              shift: s,
+              is_okay: true,
+            });
           }
         }
       }
 
-      // Ensure night closing tasks are joint tasks
-      await this.db
-        .update(tasks)
-        .set({
-          is_joint: true,
-          is_daily: true,
-        })
-        .where(
-          and(
-            eq(tasks.shift, "night"),
-            or(eq(tasks.branch_id, branchId), isNull(tasks.branch_id))
-          )
-        );
+      if (insertRows.length > 0) {
+        await this.db
+          .insert(refrigeratorTasks)
+          .values(insertRows)
+          .onConflictDoNothing();
+      }
+
+      // Also clean up any uncompleted tasks for refrigerators that are now disabled or removed from branch
+      const activeRefIdSet = new Set(activeRefs.map((r: any) => r.id));
+      const staleTasks = existingTasks.filter((t: any) => !activeRefIdSet.has(t.refrigerator_id));
+      if (staleTasks.length > 0) {
+        const staleIds = staleTasks.map((t: any) => t.id);
+        await this.db
+          .delete(refrigeratorTasks)
+          .where(
+            and(
+              inArray(refrigeratorTasks.id, staleIds),
+              isNull(refrigeratorTasks.completed_at)
+            )
+          );
+      }
 
       return { success: true };
     } catch (err: any) {
@@ -714,33 +571,36 @@ export class RefrigeratorService implements IRefrigeratorService {
         if (b) branchName = b.name;
       }
 
-      // Fetch branch's assigned refrigerators to know all units including disabled ones
+      // 1. Check if tasks for today already exist first before running heavy sync
+      let tasksRows = await this.db
+        .select()
+        .from(refrigeratorTasks)
+        .where(
+          and(
+            eq(refrigeratorTasks.branch_id, targetBranchId),
+            eq(refrigeratorTasks.task_date, targetDate)
+          )
+        );
+
+      if (tasksRows.length === 0) {
+        // Automatically ensure initial tasks exist for today only when missing
+        await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
+        tasksRows = await this.db
+          .select()
+          .from(refrigeratorTasks)
+          .where(
+            and(
+              eq(refrigeratorTasks.branch_id, targetBranchId),
+              eq(refrigeratorTasks.task_date, targetDate)
+            )
+          );
+      }
+
+      // 2. Fetch branch's assigned refrigerators to know all units including disabled ones
       const allBranchRefs = await this.db
         .select()
         .from(refrigerators)
         .where(eq(refrigerators.branch_id, targetBranchId));
-
-      const activeRefs = allBranchRefs.filter((r: any) => !r.disable_check);
-
-      // Automatically ensure tasks exist in tasks table
-      if (activeRefs.length > 0) {
-        await this.ensureDailyRefrigeratorTasks(targetBranchId, targetDate);
-      }
-
-      // Query refrigerator task definitions
-      const taskQueryConditions = [
-        eq(tasks.branch_id, targetBranchId),
-        sql`${tasks.custom}->>'type' = 'refrigerator'`,
-      ];
-
-      if (shift && shift !== "both") {
-        taskQueryConditions.push(eq(tasks.shift, shift));
-      }
-
-      const refTasksList = await this.db
-        .select()
-        .from(tasks)
-        .where(and(...taskQueryConditions));
 
       const refMap = new Map<string, any>(allBranchRefs.map((r: any) => [r.id, r]));
 
@@ -753,26 +613,26 @@ export class RefrigeratorService implements IRefrigeratorService {
           maxTemperature: r.max_temperature ?? 4,
         }));
 
-      if (refTasksList.length === 0) {
+      if (tasksRows.length === 0) {
         return { success: true, data: [], disabledRefrigerators, branchName };
       }
 
-      // Fetch today's work entries from joint_task_work
-      const taskIds = refTasksList.map((t: any) => t.id);
-      const workRows = await this.db
-        .select()
-        .from(jointTaskWork)
-        .where(
-          and(
-            eq(jointTaskWork.branch_id, targetBranchId),
-            eq(jointTaskWork.task_date, targetDate),
-            inArray(jointTaskWork.task_id, taskIds)
-          )
+      // Filter by shift if shift is specified and not 'both'
+      let filteredTasksRows = tasksRows;
+      if (shift && shift !== "both") {
+        const targetShift = shift === "morning" ? "morning" : "afternoon";
+        filteredTasksRows = tasksRows.filter(
+          (t: any) => !t.shift || t.shift === targetShift || t.shift === "morning_afternoon"
         );
+      }
 
-      const workMap = new Map<string, any>(workRows.map((w: any) => [w.task_id, w]));
+      // Include all refrigerator tasks that belong to active refrigerators in branch
+      const activeTasksRows = filteredTasksRows.filter((t: any) => {
+        const ref = refMap.get(t.refrigerator_id);
+        return Boolean(ref);
+      });
 
-      const userIds = workRows.map((w: any) => w.completed_by).filter(Boolean);
+      const userIds = activeTasksRows.map((t: any) => t.completed_by).filter(Boolean);
       let userMap = new Map<string, string>();
       if (userIds.length > 0) {
         const userRows = await this.db
@@ -782,36 +642,34 @@ export class RefrigeratorService implements IRefrigeratorService {
         userMap = new Map(userRows.map((u: any) => [u.id, u.name]));
       }
 
-      const items: RefrigeratorTaskItem[] = refTasksList.map((t: any) => {
-        const refId = t.custom?.refrigeratorId;
-        const ref = refId ? refMap.get(refId) : null;
-        const work = workMap.get(t.id);
-        const completed = Boolean(work?.completed_at);
-        const completedByName = work?.completed_by ? userMap.get(work.completed_by) || "พนักงาน" : null;
+      const items: RefrigeratorTaskItem[] = activeTasksRows.map((t: any) => {
+        const ref = refMap.get(t.refrigerator_id) as any;
+        const completed = Boolean(t.completed_at);
+        const completedByName = t.completed_by ? userMap.get(t.completed_by) || "พนักงาน" : null;
 
         return {
           taskId: t.id,
-          refrigeratorId: refId || t.id,
-          name: ref?.name || t.name,
+          refrigeratorId: t.refrigerator_id,
+          name: ref?.name || "ตู้แช่",
           minTemperature: ref?.min_temperature ?? 0,
           maxTemperature: ref?.max_temperature ?? 4,
           targetTemperature: ref?.max_temperature ?? 4,
           disableCheck: Boolean(ref?.disable_check),
-          taskDate: targetDate,
+          taskDate: t.task_date,
           shift: t.shift ? (t.shift === "morning_afternoon" ? "both" : t.shift) : null,
           completed,
-          completedAt: work?.completed_at ? new Date(work.completed_at).toISOString() : null,
-          completedByUserId: work?.completed_by || null,
+          completedAt: t.completed_at ? new Date(t.completed_at).toISOString() : null,
+          completedByUserId: t.completed_by || null,
           completedByUserName: completedByName,
-          temperature: work?.custom?.temperature !== undefined ? work.custom.temperature : null,
-          isOkay: work?.custom?.isOkay !== undefined ? work.custom.isOkay : true,
-          comment: work?.comment || null,
+          temperature: t.temperature !== null ? t.temperature : null,
+          isOkay: t.is_okay ?? true,
+          comment: t.comment || null,
         };
       });
 
-      // Sort alphabetically by refrigerator name, then shift
+      // Sort alphabetically by refrigerator name, then morning before afternoon
       items.sort((a, b) => {
-        const cmp = a.name.localeCompare(b.name, "th");
+        const cmp = a.name.localeCompare(b.name, "th", { numeric: true });
         if (cmp !== 0) return cmp;
         return (a.shift || "").localeCompare(b.shift || "");
       });
@@ -836,20 +694,14 @@ export class RefrigeratorService implements IRefrigeratorService {
     try {
       const { taskId, userId, completed, temperature, isOkay, comment, shiftSessionId, shift } = params;
 
-      // 1. Fetch task definition from tasks
-      const [taskDef] = await this.db
+      const [existingTask] = await this.db
         .select()
-        .from(tasks)
-        .where(eq(tasks.id, taskId))
+        .from(refrigeratorTasks)
+        .where(eq(refrigeratorTasks.id, taskId))
         .limit(1);
 
-      if (!taskDef) {
+      if (!existingTask) {
         return { success: false, error: "ไม่พบรายการงานตู้แช่ที่ระบุ" };
-      }
-
-      const targetBranchId = taskDef.branch_id;
-      if (!targetBranchId) {
-        return { success: false, error: "งานนี้ไม่ได้เชื่อมโยงกับสาขา" };
       }
 
       if (userId) {
@@ -864,68 +716,15 @@ export class RefrigeratorService implements IRefrigeratorService {
         }
       }
 
-      const refId = taskDef.custom?.refrigeratorId;
-      const [ref] = refId
-        ? await this.db.select().from(refrigerators).where(eq(refrigerators.id, refId)).limit(1)
-        : [null];
-
-      if (ref?.disable_check) {
-        return { success: false, error: `ตู้แช่ "${ref.name}" ถูกปิดการตรวจสอบชั่วคราว ไม่สามารถบันทึกผลได้` };
-      }
-
-      const targetDate = getThaiDateString();
-
-      // 2. Fetch existing joint_task_work for concurrency check
-      const [existingWork] = await this.db
-        .select()
-        .from(jointTaskWork)
-        .where(
-          and(
-            eq(jointTaskWork.task_id, taskId),
-            eq(jointTaskWork.branch_id, targetBranchId),
-            eq(jointTaskWork.task_date, targetDate)
-          )
-        )
+      // Check if refrigerator is disabled
+      const [refCheck] = await this.db
+        .select({ disable_check: refrigerators.disable_check, name: refrigerators.name })
+        .from(refrigerators)
+        .where(eq(refrigerators.id, existingTask.refrigerator_id))
         .limit(1);
 
-      // Concurrency check: If another user already completed this item, prevent race condition & overwrite
-      if (completed && existingWork?.completed_at && existingWork.completed_by && existingWork.completed_by !== userId) {
-        const [completedByUser] = await this.db
-          .select({ name: users.name })
-          .from(users)
-          .where(eq(users.id, existingWork.completed_by))
-          .limit(1);
-
-        const completedByName = completedByUser?.name || "พนักงานท่านอื่น";
-        const completedTime = new Date(existingWork.completed_at).toLocaleTimeString("th-TH", {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-
-        const conflictItem: RefrigeratorTaskItem = {
-          taskId: taskDef.id,
-          refrigeratorId: refId || taskDef.id,
-          name: ref?.name || taskDef.name,
-          minTemperature: ref?.min_temperature ?? 0,
-          maxTemperature: ref?.max_temperature ?? 4,
-          targetTemperature: ref?.max_temperature ?? 4,
-          taskDate: targetDate,
-          shift: existingWork.shift ? (existingWork.shift === "morning_afternoon" ? "both" : existingWork.shift) : null,
-          completed: true,
-          completedAt: new Date(existingWork.completed_at).toISOString(),
-          completedByUserId: existingWork.completed_by,
-          completedByUserName: completedByName,
-          temperature: existingWork.custom?.temperature ?? null,
-          isOkay: existingWork.custom?.isOkay ?? true,
-          comment: existingWork.comment,
-        };
-
-        return {
-          success: false,
-          conflict: true,
-          message: `ตู้แช่ "${ref?.name || "ตู้แช่"}" ได้รับการบันทึกโดย ${completedByName} แล้วเมื่อเวลา ${completedTime} น. (ระบบป้องกันการบันทึกซ้ำ)`,
-          data: conflictItem,
-        };
+      if (refCheck?.disable_check) {
+        return { success: false, error: `ตู้แช่ "${refCheck.name}" ถูกปิดการตรวจสอบชั่วคราว ไม่สามารถบันทึกผลได้` };
       }
 
       const completedAt = completed ? new Date() : null;
@@ -937,95 +736,60 @@ export class RefrigeratorService implements IRefrigeratorService {
         ? shift === "both"
           ? "morning_afternoon"
           : shift
-        : taskDef.shift;
+        : existingTask.shift;
 
-      const customPayload = {
-        temperature: clampedTemp,
-        isOkay: completed && isOkay !== undefined ? isOkay : true,
-        shiftSessionId: completed && shiftSessionId ? shiftSessionId : null,
-      };
-
-      let activeWorkRecord: any;
-
-      if (existingWork) {
-        const [updated] = await this.db
-          .update(jointTaskWork)
-          .set({
-            status: completed ? "completed" : "incomplete",
-            completed_by: completed ? userId : null,
-            completed_at: completedAt,
-            comment: completed && comment !== undefined ? comment : null,
-            shift: effectiveShift,
-            custom: customPayload,
-          })
-          .where(
-            and(
-              eq(jointTaskWork.id, existingWork.id),
-              completed
-                ? or(isNull(jointTaskWork.completed_at), eq(jointTaskWork.completed_by, userId))
-                : sql`TRUE`
-            )
-          )
-          .returning();
-
-        if (!updated && completed) {
-          return {
-            success: false,
-            conflict: true,
-            message: `ตู้แช่นี้เพิ่งถูกบันทึกโดยเพื่อนร่วมงาน ระบบกำลังอัปเดตข้อมูลล่าสุด`,
-          };
-        }
-        activeWorkRecord = updated || existingWork;
-      } else {
-        const [inserted] = await this.db
-          .insert(jointTaskWork)
-          .values({
-            task_id: taskId,
-            branch_id: targetBranchId,
-            task_date: targetDate,
-            shift: effectiveShift,
-            status: completed ? "completed" : "incomplete",
-            completed_by: completed ? userId : null,
-            completed_at: completedAt,
-            comment: completed && comment !== undefined ? comment : null,
-            custom: customPayload,
-          })
-          .returning();
-        activeWorkRecord = inserted;
-      }
+      const [updatedTask] = await this.db
+        .update(refrigeratorTasks)
+        .set({
+          completed_by: completed ? userId : null,
+          completed_at: completedAt,
+          temperature: clampedTemp,
+          is_okay: completed && isOkay !== undefined ? isOkay : true,
+          comment: completed && comment !== undefined ? comment : null,
+          shift_session_id: completed && shiftSessionId ? shiftSessionId : null,
+          shift: effectiveShift,
+        })
+        .where(eq(refrigeratorTasks.id, taskId))
+        .returning();
 
       // Update branch last_update for reactivity
       await this.db
         .update(branches)
         .set({ last_update: new Date() })
-        .where(eq(branches.id, targetBranchId));
+        .where(eq(branches.id, existingTask.branch_id));
+
+      const [ref] = await this.db
+        .select()
+        .from(refrigerators)
+        .where(eq(refrigerators.id, updatedTask.refrigerator_id))
+        .limit(1);
 
       let userName: string | null = null;
-      if (activeWorkRecord.completed_by) {
+      if (updatedTask.completed_by) {
         const [u] = await this.db
           .select({ name: users.name })
           .from(users)
-          .where(eq(users.id, activeWorkRecord.completed_by))
+          .where(eq(users.id, updatedTask.completed_by))
           .limit(1);
         userName = u?.name || null;
       }
 
       const resultItem: RefrigeratorTaskItem = {
-        taskId: taskDef.id,
-        refrigeratorId: refId || taskDef.id,
-        name: ref?.name || taskDef.name,
+        taskId: updatedTask.id,
+        refrigeratorId: updatedTask.refrigerator_id,
+        name: ref?.name || "ตู้แช่",
         minTemperature: ref?.min_temperature ?? 0,
         maxTemperature: ref?.max_temperature ?? 4,
         targetTemperature: ref?.max_temperature ?? 4,
-        taskDate: targetDate,
-        shift: activeWorkRecord.shift ? (activeWorkRecord.shift === "morning_afternoon" ? "both" : activeWorkRecord.shift) : null,
-        completed: Boolean(activeWorkRecord.completed_at),
-        completedAt: activeWorkRecord.completed_at ? new Date(activeWorkRecord.completed_at).toISOString() : null,
-        completedByUserId: activeWorkRecord.completed_by,
+        taskDate: updatedTask.task_date,
+        shift: updatedTask.shift ? (updatedTask.shift === "morning_afternoon" ? "both" : updatedTask.shift) : null,
+        completed: Boolean(updatedTask.completed_at),
+        completedAt: updatedTask.completed_at ? new Date(updatedTask.completed_at).toISOString() : null,
+        completedByUserId: updatedTask.completed_by,
         completedByUserName: userName,
-        temperature: activeWorkRecord.custom?.temperature ?? null,
-        isOkay: activeWorkRecord.custom?.isOkay ?? true,
-        comment: activeWorkRecord.comment,
+        temperature: updatedTask.temperature,
+        isOkay: updatedTask.is_okay ?? true,
+        comment: updatedTask.comment,
       };
 
       return { success: true, data: resultItem };
@@ -1055,66 +819,39 @@ export class RefrigeratorService implements IRefrigeratorService {
         return { success: true, data: [] };
       }
 
-      const targetDate = getThaiDateString();
-
-      // 1. Fetch matching task definitions in tasks table
-      const taskDefs = await this.db
+      // 1. Fetch all matching tasks in a single query
+      const existingTasks = await this.db
         .select()
-        .from(tasks)
-        .where(inArray(tasks.id, taskIds));
+        .from(refrigeratorTasks)
+        .where(inArray(refrigeratorTasks.id, taskIds));
 
-      const taskDefMap = new Map<string, any>(taskDefs.map((t: any) => [t.id, t]));
+      const existingMap = new Map<string, any>(existingTasks.map((t: any) => [t.id, t]));
 
-      // 2. Fetch refrigerators
+      // 2. Fetch all matching refrigerators in a single query
       const refIds: string[] = Array.from(
-        new Set(taskDefs.map((t: any) => t.custom?.refrigeratorId).filter((id: any): id is string => Boolean(id)))
+        new Set(existingTasks.map((t: any) => t.refrigerator_id).filter((id: any): id is string => Boolean(id)))
       );
       const refs = refIds.length > 0
         ? await this.db.select().from(refrigerators).where(inArray(refrigerators.id, refIds))
         : [];
       const refMap = new Map<string, any>(refs.map((r: any) => [r.id, r]));
 
-      // 3. Fetch existing joint_task_work for these tasks today
-      const existingWorks = await this.db
-        .select()
-        .from(jointTaskWork)
-        .where(
-          and(
-            inArray(jointTaskWork.task_id, taskIds),
-            eq(jointTaskWork.task_date, targetDate)
-          )
-        );
-
-      const existingWorkMap = new Map<string, any>(existingWorks.map((w: any) => [w.task_id, w]));
-
       const affectedBranchIds = new Set<string>();
       const userIds = new Set<string>();
-      const conflicts: Array<{ taskId: string; message: string }> = [];
 
-      // 4. Concurrently update/insert works with conflict checks
+      // 3. Concurrently update tasks in parallel
       const updatePromises = items.map(async (item) => {
-        const taskDef = taskDefMap.get(item.taskId);
-        if (!taskDef) return null;
+        const existingTask = existingMap.get(item.taskId);
+        if (!existingTask) return null;
 
-        const refId = taskDef.custom?.refrigeratorId;
-        const ref = refId ? refMap.get(refId) : null;
+        const ref = refMap.get(existingTask.refrigerator_id);
         if (ref?.disable_check) {
+          // Refrigerator check disabled
           return null;
         }
 
-        const existingWork = existingWorkMap.get(item.taskId);
-
-        // Prevent race condition overwrite if already completed by another user
-        if (item.completed && existingWork?.completed_at && existingWork.completed_by && existingWork.completed_by !== item.userId) {
-          conflicts.push({
-            taskId: item.taskId,
-            message: `ตู้แช่ "${ref?.name || "ตู้แช่"}" ถูกบันทึกโดยเพื่อนร่วมงานไปก่อนหน้าแล้ว`,
-          });
-          return existingWork;
-        }
-
-        if (taskDef.branch_id) {
-          affectedBranchIds.add(taskDef.branch_id);
+        if (existingTask.branch_id) {
+          affectedBranchIds.add(existingTask.branch_id);
         }
         if (item.completed && item.userId) {
           userIds.add(item.userId);
@@ -1129,59 +866,28 @@ export class RefrigeratorService implements IRefrigeratorService {
           ? item.shift === "both"
             ? "morning_afternoon"
             : item.shift
-          : taskDef.shift;
+          : existingTask.shift;
 
-        const customPayload = {
-          temperature: clampedTemp,
-          isOkay: item.completed && item.isOkay !== undefined ? item.isOkay : true,
-          shiftSessionId: item.completed && item.shiftSessionId ? item.shiftSessionId : null,
-        };
+        const [updatedTask] = await this.db
+          .update(refrigeratorTasks)
+          .set({
+            completed_by: item.completed ? item.userId : null,
+            completed_at: completedAt,
+            temperature: clampedTemp,
+            is_okay: item.completed && item.isOkay !== undefined ? item.isOkay : true,
+            comment: item.completed && item.comment !== undefined ? item.comment : null,
+            shift_session_id: item.completed && item.shiftSessionId ? item.shiftSessionId : null,
+            shift: effectiveShift,
+          })
+          .where(eq(refrigeratorTasks.id, item.taskId))
+          .returning();
 
-        if (existingWork) {
-          const [updated] = await this.db
-            .update(jointTaskWork)
-            .set({
-              status: item.completed ? "completed" : "incomplete",
-              completed_by: item.completed ? item.userId : null,
-              completed_at: completedAt,
-              comment: item.completed && item.comment !== undefined ? item.comment : null,
-              shift: effectiveShift,
-              custom: customPayload,
-            })
-            .where(
-              and(
-                eq(jointTaskWork.id, existingWork.id),
-                item.completed
-                  ? or(isNull(jointTaskWork.completed_at), eq(jointTaskWork.completed_by, item.userId))
-                  : sql`TRUE`
-              )
-            )
-            .returning();
-
-          return updated || existingWork;
-        } else {
-          const [inserted] = await this.db
-            .insert(jointTaskWork)
-            .values({
-              task_id: item.taskId,
-              branch_id: taskDef.branch_id,
-              task_date: targetDate,
-              shift: effectiveShift,
-              status: item.completed ? "completed" : "incomplete",
-              completed_by: item.completed ? item.userId : null,
-              completed_at: completedAt,
-              comment: item.completed && item.comment !== undefined ? item.comment : null,
-              custom: customPayload,
-            })
-            .returning();
-
-          return inserted;
-        }
+        return updatedTask;
       });
 
       const updatedRows = (await Promise.all(updatePromises)).filter(Boolean);
 
-      // 5. Update branch last_update
+      // 4. Update branch last_update in a single query
       if (affectedBranchIds.size > 0) {
         await this.db
           .update(branches)
@@ -1189,7 +895,7 @@ export class RefrigeratorService implements IRefrigeratorService {
           .where(inArray(branches.id, Array.from(affectedBranchIds)));
       }
 
-      // 6. Fetch user names
+      // 5. Fetch user names in batch
       let userMap = new Map<string, string>();
       const userIdsList = Array.from(userIds);
       if (userIdsList.length > 0) {
@@ -1200,33 +906,31 @@ export class RefrigeratorService implements IRefrigeratorService {
         userMap = new Map(userRows.map((u: any) => [u.id, u.name]));
       }
 
-      // 7. Assemble result items
-      const resultItems: RefrigeratorTaskItem[] = updatedRows.map((work: any) => {
-        const taskDef = taskDefMap.get(work.task_id);
-        const refId = taskDef?.custom?.refrigeratorId;
-        const ref = refId ? refMap.get(refId) : null;
-        const userName = work.completed_by ? userMap.get(work.completed_by) || null : null;
+      // 6. Assemble result items
+      const resultItems: RefrigeratorTaskItem[] = updatedRows.map((t: any) => {
+        const ref = refMap.get(t.refrigerator_id);
+        const userName = t.completed_by ? userMap.get(t.completed_by) || null : null;
 
         return {
-          taskId: work.task_id,
-          refrigeratorId: refId || work.task_id,
-          name: ref?.name || taskDef?.name || "ตู้แช่",
+          taskId: t.id,
+          refrigeratorId: t.refrigerator_id,
+          name: ref?.name || "ตู้แช่",
           minTemperature: ref?.min_temperature ?? 0,
           maxTemperature: ref?.max_temperature ?? 4,
           targetTemperature: ref?.max_temperature ?? 4,
-          taskDate: work.task_date,
-          shift: work.shift ? (work.shift === "morning_afternoon" ? "both" : work.shift) : null,
-          completed: Boolean(work.completed_at),
-          completedAt: work.completed_at ? new Date(work.completed_at).toISOString() : null,
-          completedByUserId: work.completed_by,
+          taskDate: t.task_date,
+          shift: t.shift ? (t.shift === "morning_afternoon" ? "both" : t.shift) : null,
+          completed: Boolean(t.completed_at),
+          completedAt: t.completed_at ? new Date(t.completed_at).toISOString() : null,
+          completedByUserId: t.completed_by,
           completedByUserName: userName,
-          temperature: work.custom?.temperature ?? null,
-          isOkay: work.custom?.isOkay ?? true,
-          comment: work.comment,
+          temperature: t.temperature,
+          isOkay: t.is_okay ?? true,
+          comment: t.comment,
         };
       });
 
-      return { success: true, data: resultItems, conflicts: conflicts.length > 0 ? conflicts : undefined };
+      return { success: true, data: resultItems };
     } catch (err: any) {
       console.error("RefrigeratorService.batchUpdateRefrigeratorTasks error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการบันทึกผลการตรวจตู้แช่แบบกลุ่ม" };
@@ -1288,100 +992,131 @@ export class RefrigeratorService implements IRefrigeratorService {
 
         if (activeBranchRefs.length === 0) continue;
 
-        // Fetch task definitions for active refrigerators
-        const branchRefTasks = await this.db
-          .select({
-            id: tasks.id,
-            shift: tasks.shift,
-            custom: tasks.custom,
-          })
-          .from(tasks)
-          .where(
-            and(
-              eq(tasks.branch_id, branch.id),
-              sql`${tasks.custom}->>'type' = 'refrigerator'`
-            )
-          );
+        const activeRefIdSet = new Set(activeBranchRefs.map((r: RefRecord) => r.id));
 
-        const taskIds = branchRefTasks.map((t: any) => t.id);
-
-        // --- Step A: Process yesterday's tasks in joint_task_work ---
+        // --- Step A: Process yesterday's tasks ---
         let missedRefNames: string[] = [];
-        if (doMarkMissed && taskIds.length > 0) {
-          const yesterdayWorks = await this.db
+        if (doMarkMissed) {
+          const yesterdayTasks = await this.db
             .select()
-            .from(jointTaskWork)
+            .from(refrigeratorTasks)
             .where(
               and(
-                eq(jointTaskWork.branch_id, branch.id),
-                eq(jointTaskWork.task_date, yesterdayDate),
-                inArray(jointTaskWork.task_id, taskIds)
+                eq(refrigeratorTasks.branch_id, branch.id),
+                eq(refrigeratorTasks.task_date, yesterdayDate)
               )
             );
 
-          const completedYesterdayTaskIds = new Set(
-            yesterdayWorks.filter((w: any) => Boolean(w.completed_at)).map((w: any) => w.task_id)
-          );
+          type TaskRecord = typeof refrigeratorTasks.$inferSelect;
+          const existingRefIdsYesterday = new Set(yesterdayTasks.map((t: TaskRecord) => t.refrigerator_id));
+          const missingYesterdayRefs = activeBranchRefs.filter((r: RefRecord) => !existingRefIdsYesterday.has(r.id));
 
-          const uncompletedTasks = branchRefTasks.filter((t: any) => !completedYesterdayTaskIds.has(t.id));
-
-          if (uncompletedTasks.length > 0) {
-            for (const ut of uncompletedTasks) {
-              const existingWork = yesterdayWorks.find((w: any) => w.task_id === ut.id);
-              if (existingWork) {
+          // Insert missing yesterday rows as marked unchecked
+          if (missingYesterdayRefs.length > 0) {
+            for (const r of missingYesterdayRefs) {
+              for (const s of ["morning", "afternoon"] as const) {
                 await this.db
-                  .update(jointTaskWork)
-                  .set({
-                    status: "incomplete",
-                    comment: sql`COALESCE(${jointTaskWork.comment}, 'ไม่ได้ตรวจเช็คเมื่อวาน (ขาดการตรวจสอบ)')`,
-                    custom: { isOkay: false },
-                  })
-                  .where(eq(jointTaskWork.id, existingWork.id));
-              } else {
-                await this.db
-                  .insert(jointTaskWork)
+                  .insert(refrigeratorTasks)
                   .values({
-                    task_id: ut.id,
                     branch_id: branch.id,
+                    refrigerator_id: r.id,
                     task_date: yesterdayDate,
-                    shift: ut.shift,
-                    status: "incomplete",
+                    shift: s,
+                    is_okay: false,
                     comment: "ไม่ได้ตรวจเช็คเมื่อวาน (ขาดการตรวจสอบ)",
-                    custom: { isOkay: false },
                   })
                   .onConflictDoNothing();
+                totalMissedTasksMarked++;
               }
             }
-
-            totalMissedTasksMarked += uncompletedTasks.length;
-
-            const missedRefIds = new Set(
-              uncompletedTasks.map((t: any) => t.custom?.refrigeratorId).filter(Boolean)
-            );
-            missedRefNames = Array.from(missedRefIds)
-              .map((id) => refMap.get(id as string)?.name || "ตู้แช่")
-              .filter(Boolean);
           }
+
+          // Mark any uncompleted yesterday tasks as failed
+          const uncompletedYesterdayTasks = yesterdayTasks.filter(
+            (t: TaskRecord) => activeRefIdSet.has(t.refrigerator_id) && !t.completed_at
+          );
+
+          const uncompletedTaskIds = uncompletedYesterdayTasks.map((t: TaskRecord) => t.id);
+          if (uncompletedTaskIds.length > 0) {
+            await this.db
+              .update(refrigeratorTasks)
+              .set({
+                is_okay: false,
+                comment: sql`COALESCE(${refrigeratorTasks.comment}, 'ไม่ได้ตรวจเช็คเมื่อวาน (ขาดการตรวจสอบ)')`,
+              })
+              .where(inArray(refrigeratorTasks.id, uncompletedTaskIds));
+            totalMissedTasksMarked += uncompletedTaskIds.length;
+          }
+
+          const missedRefIds = new Set([
+            ...missingYesterdayRefs.map((r: RefRecord) => r.id),
+            ...uncompletedYesterdayTasks.map((t: TaskRecord) => t.refrigerator_id),
+          ]);
+
+          missedRefNames = Array.from(missedRefIds)
+            .map((id) => refMap.get(id)?.name || "ตู้แช่")
+            .filter(Boolean);
         }
 
         // --- Step B: Ensure today's daily tasks exist (morning & afternoon) ---
         let newBranchTasksCount = 0;
         if (doCreateDaily) {
-          await this.ensureDailyRefrigeratorTasks(branch.id, targetDate);
-
-          const todayTasks = await this.db
-            .select({ id: tasks.id })
-            .from(tasks)
+          const existingTodayTasks = await this.db
+            .select({
+              id: refrigeratorTasks.id,
+              refrigerator_id: refrigeratorTasks.refrigerator_id,
+              shift: refrigeratorTasks.shift,
+            })
+            .from(refrigeratorTasks)
             .where(
               and(
-                eq(tasks.branch_id, branch.id),
-                sql`${tasks.custom}->>'type' = 'refrigerator'`,
-                eq(tasks.disabled, false)
+                eq(refrigeratorTasks.branch_id, branch.id),
+                eq(refrigeratorTasks.task_date, targetDate)
               )
             );
 
-          newBranchTasksCount = todayTasks.length;
-          totalNewTasksCreated += newBranchTasksCount;
+          const existingKeysToday = new Set(
+            existingTodayTasks.map((t: any) => `${t.refrigerator_id}_${t.shift || "all"}`)
+          );
+
+          const shiftsToCreate: ("morning" | "afternoon")[] = ["morning", "afternoon"];
+          const insertToday: any[] = [];
+
+          for (const r of activeBranchRefs) {
+            for (const s of shiftsToCreate) {
+              const key = `${r.id}_${s}`;
+              if (!existingKeysToday.has(key)) {
+                insertToday.push({
+                  branch_id: branch.id,
+                  refrigerator_id: r.id,
+                  task_date: targetDate,
+                  shift: s,
+                  is_okay: true,
+                });
+              }
+            }
+          }
+
+          if (insertToday.length > 0) {
+            await this.db.insert(refrigeratorTasks).values(insertToday).onConflictDoNothing();
+            totalNewTasksCreated += insertToday.length;
+            newBranchTasksCount = insertToday.length;
+          }
+
+          // Clean up any uncompleted tasks for disabled/removed refrigerators today
+          const staleTodayTasks = existingTodayTasks.filter(
+            (t: any) => !activeRefIdSet.has(t.refrigerator_id)
+          );
+          if (staleTodayTasks.length > 0) {
+            await this.db
+              .delete(refrigeratorTasks)
+              .where(
+                and(
+                  inArray(refrigeratorTasks.id, staleTodayTasks.map((t: any) => t.id)),
+                  isNull(refrigeratorTasks.completed_at)
+                )
+              );
+          }
         }
 
         details.push({
@@ -1397,6 +1132,7 @@ export class RefrigeratorService implements IRefrigeratorService {
           if (missedRefNames.length > 0) {
             const warningMsg = `สาขา${branch.name} พบตู้แช่ที่ไม่ได้ตรวจเช็คเมื่อวาน (${yesterdayDate}) จำนวน ${missedRefNames.length} ตู้: ${missedRefNames.join(", ")} ระบบได้บันทึกสถานะไม่ผ่านเรียบร้อยแล้ว และได้เตรียมรายการตรวจเช็คประจำวันใหม่ (${targetDate}) ให้พนักงานสต็อกแล้ว`;
 
+            // 1. Manager of this branch
             await this.notificationService.createNotification({
               branchId: branch.id,
               recipientRole: "manager",
@@ -1405,6 +1141,7 @@ export class RefrigeratorService implements IRefrigeratorService {
               type: "refrigerator_alert",
             });
 
+            // 2. Assistant Manager of this branch
             await this.notificationService.createNotification({
               branchId: branch.id,
               recipientRole: "manager_assistant",

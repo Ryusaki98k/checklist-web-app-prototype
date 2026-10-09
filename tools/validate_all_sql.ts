@@ -47,7 +47,7 @@ async function main() {
     "shift_session",
     "task_work",
     "refrigerators",
-    "joint_task_work",
+    "refrigerator_tasks",
     "notifications",
     "notification_reads",
     "point_transactions",
@@ -73,7 +73,7 @@ async function main() {
     shift_session: schema.shiftSession,
     task_work: schema.taskWork,
     refrigerators: schema.refrigerators,
-    joint_task_work: schema.jointTaskWork,
+    refrigerator_tasks: schema.refrigeratorTasks,
     notifications: schema.notifications,
     notification_reads: schema.notificationReads,
     point_transactions: schema.pointTransactions,
@@ -156,7 +156,7 @@ async function main() {
   await validateSql(
     "AuthService Query",
     "Case-insensitive username lookup",
-    sql`EXPLAIN SELECT id, username, password, role, branch_id FROM checklist_web_app.users WHERE lower(username) = 'test'`
+    sql`EXPLAIN SELECT id, username, password, manager_type, executive_type, is_admin, branch_id FROM checklist_web_app.users WHERE lower(username) = 'test'`
   );
 
   // BranchService queries

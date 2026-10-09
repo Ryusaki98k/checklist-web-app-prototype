@@ -8,7 +8,6 @@ import {
   createBranchDailyTaskAction,
   updateBranchDailyTaskAction,
   deleteBranchDailyTaskAction,
-  syncBranchRefrigeratorJointTasksAction,
 } from "../../../actions/task";
 import {
   getSpecialTasksAction,
@@ -47,8 +46,8 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
   const isAssistant = currentUser.role === "manager_assistant";
   const isManager = currentUser.role === "manager" || currentUser.isAdmin;
 
-  // Tabs: daily | joint | special
-  const [activeTab, setActiveTab] = useState<"daily" | "joint" | "special">("daily");
+  // Tabs: daily | special
+  const [activeTab, setActiveTab] = useState<"daily" | "special">("daily");
 
   // Notifications / feedback toast
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -169,24 +168,7 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
     void loadSpecialTasks();
   }, [loadStaff, loadDailyTasks, loadSpecialTasks]);
 
-  // Handle Sync Refrigerator Joint Tasks
-  const handleSyncRefrigeratorJointTasks = async () => {
-    if (!currentUser.branchId || isSyncingRefrigerators) return;
-    setIsSyncingRefrigerators(true);
-    try {
-      const res = await syncBranchRefrigeratorJointTasksAction(currentUser.branchId);
-      if (res.success) {
-        showToast("success", `ซิงค์งานตู้แช่สำเร็จ (เพิ่มใหม่ ${res.count || 0} รายการ)`);
-        void loadDailyTasks();
-      } else {
-        showToast("error", res.error || "ไม่สามารถซิงค์งานตู้แช่ได้");
-      }
-    } catch (err: any) {
-      showToast("error", err?.message || "เกิดข้อผิดพลาดในการซิงค์งานตู้แช่");
-    } finally {
-      setIsSyncingRefrigerators(false);
-    }
-  };
+
 
   // Handle Save Daily Task
   const handleSaveDailyTask = async (e: React.FormEvent) => {
@@ -389,16 +371,11 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
   // Filtered Daily Tasks
   const filteredDailyTasks = useMemo(() => {
     return dailyTasks.filter((t) => {
-      if (activeTab === "joint") {
-        if (!t.isJoint) return false;
-      } else {
-        if (t.isJoint) return false;
-      }
       if (dailyRoleFilter !== "all" && t.taskRole !== dailyRoleFilter) return false;
       if (dailyShiftFilter !== "all" && t.shift !== dailyShiftFilter) return false;
       return true;
     });
-  }, [dailyTasks, activeTab, dailyRoleFilter, dailyShiftFilter]);
+  }, [dailyTasks, dailyRoleFilter, dailyShiftFilter]);
 
   // Allowed staff for assign select
   const assignableStaff = useMemo(() => {
@@ -468,23 +445,7 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
             <ListTodo size={17} />
             <span>1. งานประจำวัน</span>
             <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10 font-mono">
-              {dailyTasks.filter((t) => !t.isJoint).length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("joint")}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === "joint"
-                ? "bg-sky-600 text-white shadow-xs"
-                : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-            }`}
-          >
-            <Users size={17} />
-            <span>2. งานส่วนกลาง & ตู้แช่</span>
-            <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10 font-mono">
-              {dailyTasks.filter((t) => t.isJoint).length}
+              {dailyTasks.length}
             </span>
           </button>
 
@@ -506,9 +467,9 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
         </div>
 
         {/* ═════════════════════════════════════════════════════════════════════
-            TAB 1 & 2: DAILY TASKS / JOINT TASKS
+            TAB 1: DAILY TASKS
         ═════════════════════════════════════════════════════════════════════ */}
-        {(activeTab === "daily" || activeTab === "joint") && (
+        {activeTab === "daily" && (
           <div className="space-y-4">
             {/* Action Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] shadow-xs">
@@ -540,42 +501,29 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
               </div>
 
               <div className="flex items-center gap-2">
-                {activeTab === "joint" && (
-                  <button
-                    type="button"
-                    disabled={isSyncingRefrigerators}
-                    onClick={handleSyncRefrigeratorJointTasks}
-                    className="px-3.5 py-2 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-800 dark:text-sky-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                    title="ตรวจเช็คและสร้างงานส่วนกลางกะเช้า/บ่ายสำหรับตู้แช่ทุกตู้ในสาขา"
-                  >
-                    <RefreshCw size={15} className={isSyncingRefrigerators ? "animate-spin" : ""} />
-                    <span>ซิงค์งานตู้แช่สาขา</span>
-                  </button>
-                )}
-
                 <button
                   type="button"
                   onClick={() => {
                     setEditingDailyTask(null);
                     setDailyForm({
                       name: "",
-                      taskRole: activeTab === "joint" ? "stock" : "cashier",
+                      taskRole: "cashier",
                       shift: "morning",
                       startTime: "08:00",
                       endTime: "16:00",
-                      category: activeTab === "joint" ? "ตู้แช่" : "",
+                      category: "",
                       forManagers: false,
-                      isJoint: activeTab === "joint",
+                      isJoint: false,
                       isDaily: true,
                       refrigeratorId: "",
-                      selectableRoles: activeTab === "joint" ? ["stock"] : [],
+                      selectableRoles: [],
                     });
                     setIsDailyModalOpen(true);
                   }}
                   className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
                 >
                   <Plus size={16} strokeWidth={2.5} />
-                  <span>{activeTab === "joint" ? "สร้างงานส่วนกลางใหม่" : "สร้างงานประจำวันใหม่"}</span>
+                  <span>สร้างงานประจำวันใหม่</span>
                 </button>
               </div>
             </div>
@@ -617,11 +565,7 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                             {t.category}
                           </span>
                         )}
-                        {t.isJoint && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300">
-                            งานส่วนกลาง (Joint)
-                          </span>
-                        )}
+
                         {t.forManagers || t.shift === "night" ? (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 flex items-center gap-1">
                             <ShieldAlert size={11} /> สำหรับผู้จัดการ/กะดึก
@@ -891,7 +835,7 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
           <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
               <h3 className="text-base font-extrabold text-[var(--color-text)]">
-                {editingDailyTask ? "แก้ไขรายการงาน" : activeTab === "joint" ? "สร้างงานส่วนกลางใหม่" : "สร้างงานประจำวันใหม่"}
+                {editingDailyTask ? "แก้ไขรายการงาน" : "สร้างงานประจำวันใหม่"}
               </h3>
               <button
                 onClick={() => setIsDailyModalOpen(false)}
@@ -991,15 +935,7 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
               </div>
 
               <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[var(--color-text)]">
-                  <input
-                    type="checkbox"
-                    checked={dailyForm.isJoint}
-                    onChange={(e) => setDailyForm({ ...dailyForm, isJoint: e.target.checked })}
-                    className="rounded border-[var(--color-border)] text-sky-600 focus:ring-sky-500"
-                  />
-                  <span>กำหนดเป็นงานส่วนกลาง (Joint Task - หลายคนช่วยกันเช็คได้)</span>
-                </label>
+
 
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[var(--color-text)]">
                   <input
