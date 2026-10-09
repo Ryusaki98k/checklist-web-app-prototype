@@ -65,13 +65,18 @@ export const tasks = checklistSchema.table.withRLS("tasks", {
     disabled: boolean("disabled").notNull().default(false),
     for_managers: boolean("for_managers").notNull().default(false),
     is_joint: boolean("is_joint").notNull().default(false),
+    is_daily: boolean("is_daily").notNull().default(false),
+    shift_types: jsonb("shift_types").$type<string[]>().default([]),
     selectable_roles: jsonb("selectable_roles").$type<string[]>().default([]),
     category: text("category"),
+    refrigerator_id: uuid("refrigerator_id").references(() => refrigerators.id, { onDelete: 'cascade' }),
 }, (table) => [
     index("idx_tasks_role_shift").on(table.task_role, table.shift),
     index("idx_tasks_for_managers").on(table.for_managers),
     index("idx_tasks_branch_id").on(table.branch_id),
     index("idx_tasks_is_joint").on(table.is_joint),
+    index("idx_tasks_is_daily").on(table.is_daily),
+    index("idx_tasks_refrigerator_id").on(table.refrigerator_id),
 ]);
 
 export const branchTasks = checklistSchema.table.withRLS("branch_tasks", {

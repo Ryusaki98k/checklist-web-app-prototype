@@ -86,6 +86,9 @@ export async function createBranchDailyTaskAction(params: {
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
+    isDaily?: boolean;
+    shiftTypes?: string[];
+    refrigeratorId?: string | null;
     selectableRoles?: string[];
     category?: string | null;
 }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
@@ -104,6 +107,9 @@ export async function updateBranchDailyTaskAction(params: {
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
+    isDaily?: boolean;
+    shiftTypes?: string[];
+    refrigeratorId?: string | null;
     selectableRoles?: string[];
     category?: string | null;
 }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
@@ -117,6 +123,13 @@ export async function deleteBranchDailyTaskAction(
 ): Promise<{ success: boolean; error?: string }> {
     const services = getServices();
     return await services.checklist.deleteBranchDailyTask(taskId, branchId);
+}
+
+export async function syncBranchRefrigeratorJointTasksAction(
+    branchId?: string
+): Promise<{ success: boolean; count?: number; error?: string }> {
+    const services = getServices();
+    return await services.checklist.syncBranchRefrigeratorJointTasks(branchId);
 }
 
 

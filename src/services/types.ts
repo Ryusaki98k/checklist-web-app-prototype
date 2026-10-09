@@ -259,6 +259,9 @@ export interface IChecklistService {
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
+    isDaily?: boolean;
+    shiftTypes?: string[];
+    refrigeratorId?: string | null;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }>;
@@ -273,10 +276,14 @@ export interface IChecklistService {
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
+    isDaily?: boolean;
+    shiftTypes?: string[];
+    refrigeratorId?: string | null;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }>;
   deleteBranchDailyTask(taskId: string, branchId?: string): Promise<{ success: boolean; error?: string }>;
+  syncBranchRefrigeratorJointTasks(branchId?: string): Promise<{ success: boolean; count?: number; error?: string }>;
 
   getBranchJointTasks(params: {
     branchId: string;

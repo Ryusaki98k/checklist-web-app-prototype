@@ -17,12 +17,14 @@ export function BranchRefrigeratorChecklist({
   branchName,
   shiftSessionId,
   shift,
+  onTasksChange,
 }: {
   userId: string;
   userName?: string;
   branchName?: string;
   shiftSessionId?: string;
   shift?: ShiftType;
+  onTasksChange?: (tasks: RefrigeratorTaskItem[]) => void;
 }) {
   const [tasks, setTasks] = useState<RefrigeratorTaskItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +102,10 @@ export function BranchRefrigeratorChecklist({
       window.removeEventListener("app:refresh-refrigerators", handleGlobalRefresh);
     };
   }, [loadTasks]);
+
+  useEffect(() => {
+    onTasksChange?.(tasks);
+  }, [tasks, onTasksChange]);
 
   function handleOpenCheck(task: RefrigeratorTaskItem) {
     if (task.disableCheck) {

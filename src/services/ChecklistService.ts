@@ -1,7 +1,8 @@
 import { eq, and, or, gte, lte, lt, desc, asc, inArray, isNull, sql } from "drizzle-orm";
-import { tasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions, employeeLeaves, jointTaskWork, specialTasks } from "../db/schema";
+import { tasks, branchTasks, taskWork, shiftSession, users, branches, refrigerators, refrigeratorTasks, notifications, pointTransactions, employeeLeaves, jointTaskWork, specialTasks } from "../db/schema";
 import { IChecklistService, INotificationService } from "./types";
 import { ShiftSession, ShiftType, ChecklistItem, JointTaskItem, BranchDailyTask } from "../types";
+import { getThaiDateString } from "../data/storage";
 
 export function isSpecialZeroPointTask(taskName: string): boolean {
   // Retained for backward compatibility if called with a task name
@@ -932,8 +933,61 @@ export class ChecklistService implements IChecklistService {
         }
       }
 
-      const totalTasks = activeTasks.length;
-      const doneTasks = totalTasks - pendingTasks.length;
+      // For stock role: Check whether all active refrigerators for this branch & shift are finished
+      let refTotal = 0;
+      let refDone = 0;
+      if (sess.task_role === "stock") {
+        const todayStr = getThaiDateString(sess.start);
+        const refShiftsToCheck: ("morning" | "afternoon")[] =
+          sess.shift === "afternoon"
+            ? ["afternoon"]
+            : sess.shift === "morning"
+            ? ["morning"]
+            : ["morning", "afternoon"];
+
+        const activeBranchRefs = await this.db
+          .select({ id: refrigerators.id, name: refrigerators.name })
+          .from(refrigerators)
+          .where(and(eq(refrigerators.branch_id, sess.branch), eq(refrigerators.disable_check, false)));
+
+        if (activeBranchRefs.length > 0) {
+          const refTasksToday = await this.db
+            .select()
+            .from(refrigeratorTasks)
+            .where(
+              and(
+                eq(refrigeratorTasks.branch_id, sess.branch),
+                eq(refrigeratorTasks.task_date, todayStr),
+                inArray(refrigeratorTasks.shift, refShiftsToCheck)
+              )
+            );
+
+          const completedRefKeySet = new Set(
+            refTasksToday
+              .filter((rt: any) => Boolean(rt.completed_at))
+              .map((rt: any) => `${rt.refrigerator_id}_${rt.shift || "morning"}`)
+          );
+
+          for (const ref of activeBranchRefs) {
+            for (const s of refShiftsToCheck) {
+              refTotal++;
+              const key = `${ref.id}_${s}`;
+              if (completedRefKeySet.has(key)) {
+                refDone++;
+              } else {
+                const shiftLabel = s === "morning" ? "รอบเช้า" : "รอบบ่าย";
+                pendingTasks.push({
+                  id: `ref_${ref.id}_${s}`,
+                  name: `[ตู้แช่] ตรวจอุณหภูมิ ${ref.name} (${shiftLabel})`,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      const totalTasks = activeTasks.length + refTotal;
+      const doneTasks = (activeTasks.length - (pendingTasks.length - (refTotal - refDone))) + refDone;
       const isComplete = totalTasks > 0 && pendingTasks.length === 0;
 
       return {
@@ -958,10 +1012,31 @@ export class ChecklistService implements IChecklistService {
         return { success: false, error: "ID ของกะไม่ถูกต้อง" };
       }
 
+      const [sess] = await this.db
+        .select({ id: shiftSession.id, task_role: shiftSession.task_role, branch: shiftSession.branch })
+        .from(shiftSession)
+        .where(eq(shiftSession.id, shiftSessionId))
+        .limit(1);
+
+      if (!sess) {
+        return { success: false, error: "ไม่พบข้อมูลกะในระบบ" };
+      }
+
       // Check online validation from DB directly
       const validation = await this.validateShiftCompletion(shiftSessionId);
       if (!validation.success) {
         return { success: false, error: validation.error || "ไม่สามารถตรวจสอบสถานะงานในฐานข้อมูลได้" };
+      }
+
+      // For stock employees: Refrigerator checklist is strictly required before quitting/ending session
+      if (sess.task_role === "stock") {
+        const pendingRefTasks = validation.pendingTasks.filter((t) => t.name.startsWith("[ตู้แช่]"));
+        if (pendingRefTasks.length > 0) {
+          return {
+            success: false,
+            error: `พนักงานสต็อกจำเป็นต้องตรวจเช็คตู้แช่ให้ครบทุกตู้ก่อนจบกะ (ตรวจพบตู้แช่ค้างตรวจ ${pendingRefTasks.length} รายการ: ${pendingRefTasks.map((p) => p.name.replace("[ตู้แช่] ", "")).slice(0, 3).join(", ")}${pendingRefTasks.length > 3 ? "..." : ""})`,
+          };
+        }
       }
 
       const isIncomplete = !validation.isComplete;
@@ -1521,6 +1596,9 @@ export class ChecklistService implements IChecklistService {
         disabled: Boolean(t.disabled),
         forManagers: Boolean(t.for_managers),
         isJoint: Boolean(t.is_joint),
+        isDaily: Boolean(t.is_daily),
+        shiftTypes: (t.shift_types as string[]) || [],
+        refrigeratorId: t.refrigerator_id || null,
         selectableRoles: (t.selectable_roles as string[]) || [t.task_role],
         category: t.category,
       }));
@@ -1542,6 +1620,9 @@ export class ChecklistService implements IChecklistService {
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
+    isDaily?: boolean;
+    shiftTypes?: string[];
+    refrigeratorId?: string | null;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
@@ -1559,6 +1640,9 @@ export class ChecklistService implements IChecklistService {
           disabled: params.disabled ?? false,
           for_managers: params.forManagers ?? false,
           is_joint: params.isJoint ?? false,
+          is_daily: params.isDaily ?? (params.isJoint ?? false),
+          shift_types: params.shiftTypes || (params.shift ? [params.shift] : []),
+          refrigerator_id: params.refrigeratorId || null,
           selectable_roles: params.selectableRoles || [params.taskRole],
           category: params.category || null,
         })
@@ -1584,6 +1668,9 @@ export class ChecklistService implements IChecklistService {
           disabled: Boolean(newTask.disabled),
           forManagers: Boolean(newTask.for_managers),
           isJoint: Boolean(newTask.is_joint),
+          isDaily: Boolean(newTask.is_daily),
+          shiftTypes: (newTask.shift_types as string[]) || [],
+          refrigeratorId: newTask.refrigerator_id || null,
           selectableRoles: (newTask.selectable_roles as string[]) || [newTask.task_role],
           category: newTask.category,
         },
@@ -1605,6 +1692,9 @@ export class ChecklistService implements IChecklistService {
     disabled?: boolean;
     forManagers?: boolean;
     isJoint?: boolean;
+    isDaily?: boolean;
+    shiftTypes?: string[];
+    refrigeratorId?: string | null;
     selectableRoles?: string[];
     category?: string | null;
   }): Promise<{ success: boolean; task?: BranchDailyTask; error?: string }> {
@@ -1618,6 +1708,9 @@ export class ChecklistService implements IChecklistService {
       if (params.disabled !== undefined) updateData.disabled = params.disabled;
       if (params.forManagers !== undefined) updateData.for_managers = params.forManagers;
       if (params.isJoint !== undefined) updateData.is_joint = params.isJoint;
+      if (params.isDaily !== undefined) updateData.is_daily = params.isDaily;
+      if (params.shiftTypes !== undefined) updateData.shift_types = params.shiftTypes;
+      if (params.refrigeratorId !== undefined) updateData.refrigerator_id = params.refrigeratorId;
       if (params.selectableRoles !== undefined) updateData.selectable_roles = params.selectableRoles;
       if (params.category !== undefined) updateData.category = params.category;
 
@@ -1648,6 +1741,9 @@ export class ChecklistService implements IChecklistService {
               disabled: Boolean(updated.disabled),
               forManagers: Boolean(updated.for_managers),
               isJoint: Boolean(updated.is_joint),
+              isDaily: Boolean(updated.is_daily),
+              shiftTypes: (updated.shift_types as string[]) || [],
+              refrigeratorId: updated.refrigerator_id || null,
               selectableRoles: (updated.selectable_roles as string[]) || [updated.task_role],
               category: updated.category,
             }
@@ -1749,12 +1845,15 @@ export class ChecklistService implements IChecklistService {
           completedByUserId: work?.completed_by || null,
           completedByUserName,
           comment: work?.comment || null,
+          isDaily: Boolean(def.is_daily),
+          shiftTypes: (def.shift_types as string[]) || [],
+          refrigeratorId: def.refrigerator_id || null,
         };
       });
 
       // Filter by shift if shift specified
       const filtered = shift && shift !== "both"
-        ? items.filter((it) => it.shift === shift || !it.shift)
+        ? items.filter((it) => it.shift === shift || !it.shift || (it.shiftTypes && it.shiftTypes.includes(shift)))
         : items;
 
       return { success: true, data: filtered };
@@ -1882,6 +1981,69 @@ export class ChecklistService implements IChecklistService {
         .where(eq(branches.id, branchId));
 
       const [taskDef] = await this.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+
+      // Two-way sync: If task is linked to a refrigerator, sync refrigerator_tasks table as well!
+      if (taskDef?.refrigerator_id) {
+        const refShift = (taskDef.shift === "afternoon" ? "afternoon" : "morning") as "morning" | "afternoon";
+        try {
+          if (completed) {
+            const [existingRefTask] = await this.db
+              .select({ id: refrigeratorTasks.id })
+              .from(refrigeratorTasks)
+              .where(
+                and(
+                  eq(refrigeratorTasks.branch_id, branchId),
+                  eq(refrigeratorTasks.refrigerator_id, taskDef.refrigerator_id),
+                  eq(refrigeratorTasks.task_date, dateStr),
+                  eq(refrigeratorTasks.shift, refShift)
+                )
+              )
+              .limit(1);
+
+            if (existingRefTask) {
+              await this.db
+                .update(refrigeratorTasks)
+                .set({
+                  completed_by: userId,
+                  completed_at: now,
+                  is_okay: true,
+                  comment: comment || null,
+                })
+                .where(eq(refrigeratorTasks.id, existingRefTask.id));
+            } else {
+              await this.db.insert(refrigeratorTasks).values({
+                branch_id: branchId,
+                refrigerator_id: taskDef.refrigerator_id,
+                task_date: dateStr,
+                shift: refShift,
+                completed_by: userId,
+                completed_at: now,
+                is_okay: true,
+                comment: comment || null,
+              });
+            }
+          } else {
+            await this.db
+              .update(refrigeratorTasks)
+              .set({
+                completed_by: null,
+                completed_at: null,
+                comment: null,
+              })
+              .where(
+                and(
+                  eq(refrigeratorTasks.branch_id, branchId),
+                  eq(refrigeratorTasks.refrigerator_id, taskDef.refrigerator_id),
+                  eq(refrigeratorTasks.task_date, dateStr),
+                  eq(refrigeratorTasks.shift, refShift)
+                )
+              );
+          }
+        } catch (refSyncErr) {
+          console.warn("Failed to sync refrigerator_tasks from joint task:", refSyncErr);
+        }
+      }
+
       let userName: string | null = null;
       if (activeRow?.completed_by) {
         const [u] = await this.db.select({ name: users.name }).from(users).where(eq(users.id, activeRow.completed_by)).limit(1);
@@ -1902,12 +2064,146 @@ export class ChecklistService implements IChecklistService {
         completedByUserId: activeRow?.completed_by || null,
         completedByUserName: userName,
         comment: activeRow?.comment || null,
+        isDaily: Boolean(taskDef?.is_daily),
+        shiftTypes: (taskDef?.shift_types as string[]) || [],
+        refrigeratorId: taskDef?.refrigerator_id || null,
       };
 
       return { success: true, data: resultItem };
     } catch (err: any) {
       console.error("ChecklistService.toggleJointTaskItem error:", err);
       return { success: false, error: err?.message || "เกิดข้อผิดพลาดในการบันทึกงานส่วนกลาง" };
+    }
+  }
+
+  async syncBranchRefrigeratorJointTasks(branchId?: string): Promise<{ success: boolean; count?: number; error?: string }> {
+    try {
+      const branchList = branchId
+        ? await this.db.select({ id: branches.id }).from(branches).where(eq(branches.id, branchId))
+        : await this.db.select({ id: branches.id }).from(branches);
+
+      let totalSynced = 0;
+      for (const b of branchList) {
+        const branchRefs = await this.db
+          .select()
+          .from(refrigerators)
+          .where(eq(refrigerators.branch_id, b.id));
+
+        for (const ref of branchRefs) {
+          // Morning task
+          const [existingMorning] = await this.db
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.refrigerator_id, ref.id),
+                eq(tasks.shift, "morning")
+              )
+            )
+            .limit(1);
+
+          if (!existingMorning) {
+            const [created] = await this.db
+              .insert(tasks)
+              .values({
+                branch_id: b.id,
+                shift: "morning",
+                name: `ตรวจเช็คอุณหภูมิตู้แช่: ${ref.name} (รอบเช้า)`,
+                task_role: "stock",
+                start: "06:00:00",
+                end: "14:00:00",
+                disabled: Boolean(ref.disable_check),
+                for_managers: false,
+                is_joint: true,
+                is_daily: true,
+                shift_types: ["morning"],
+                selectable_roles: ["stock", "manager_assistant"],
+                category: "ตู้แช่",
+                refrigerator_id: ref.id,
+              })
+              .returning({ id: tasks.id });
+
+            if (created) {
+              await this.db
+                .insert(branchTasks)
+                .values({ branch_id: b.id, task_id: created.id })
+                .onConflictDoNothing();
+              totalSynced++;
+            }
+          } else {
+            await this.db
+              .update(tasks)
+              .set({
+                name: `ตรวจเช็คอุณหภูมิตู้แช่: ${ref.name} (รอบเช้า)`,
+                disabled: Boolean(ref.disable_check),
+                is_joint: true,
+                is_daily: true,
+                shift_types: ["morning"],
+                category: "ตู้แช่",
+              })
+              .where(eq(tasks.id, existingMorning.id));
+          }
+
+          // Afternoon task
+          const [existingAfternoon] = await this.db
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.refrigerator_id, ref.id),
+                eq(tasks.shift, "afternoon")
+              )
+            )
+            .limit(1);
+
+          if (!existingAfternoon) {
+            const [created] = await this.db
+              .insert(tasks)
+              .values({
+                branch_id: b.id,
+                shift: "afternoon",
+                name: `ตรวจเช็คอุณหภูมิตู้แช่: ${ref.name} (รอบบ่าย)`,
+                task_role: "stock",
+                start: "14:00:00",
+                end: "22:00:00",
+                disabled: Boolean(ref.disable_check),
+                for_managers: false,
+                is_joint: true,
+                is_daily: true,
+                shift_types: ["afternoon"],
+                selectable_roles: ["stock", "manager_assistant"],
+                category: "ตู้แช่",
+                refrigerator_id: ref.id,
+              })
+              .returning({ id: tasks.id });
+
+            if (created) {
+              await this.db
+                .insert(branchTasks)
+                .values({ branch_id: b.id, task_id: created.id })
+                .onConflictDoNothing();
+              totalSynced++;
+            }
+          } else {
+            await this.db
+              .update(tasks)
+              .set({
+                name: `ตรวจเช็คอุณหภูมิตู้แช่: ${ref.name} (รอบบ่าย)`,
+                disabled: Boolean(ref.disable_check),
+                is_joint: true,
+                is_daily: true,
+                shift_types: ["afternoon"],
+                category: "ตู้แช่",
+              })
+              .where(eq(tasks.id, existingAfternoon.id));
+          }
+        }
+      }
+
+      return { success: true, count: totalSynced };
+    } catch (err: any) {
+      console.error("ChecklistService.syncBranchRefrigeratorJointTasks error:", err);
+      return { success: false, error: err?.message || "ไม่สามารถซิงค์งานตู้แช่ได้" };
     }
   }
 }

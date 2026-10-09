@@ -1,5 +1,5 @@
-import { eq, and, or, sql, inArray } from "drizzle-orm";
-import { refrigerators, branches, refrigeratorTasks, users } from "../db/schema";
+import { eq, and, or, sql, inArray, isNull } from "drizzle-orm";
+import { refrigerators, branches, refrigeratorTasks, users, tasks, branchTasks, jointTaskWork } from "../db/schema";
 import { IRefrigeratorService, INotificationService, RefrigeratorTaskItem } from "./types";
 import { ShiftType } from "../types";
 
@@ -447,7 +447,7 @@ export class RefrigeratorService implements IRefrigeratorService {
       const targetDate = dateStr || getThaiDateString();
 
       const activeRefs = await this.db
-        .select({ id: refrigerators.id })
+        .select({ id: refrigerators.id, name: refrigerators.name, disable_check: refrigerators.disable_check })
         .from(refrigerators)
         .where(
           and(
@@ -498,6 +498,81 @@ export class RefrigeratorService implements IRefrigeratorService {
       if (insertRows.length > 0) {
         await this.db.insert(refrigeratorTasks).values(insertRows);
       }
+
+      // Also ensure tasks table has the joint daily tasks for morning and afternoon for each active refrigerator
+      for (const ref of activeRefs) {
+        for (const s of shiftsToEnsure) {
+          const [existingTask] = await this.db
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.refrigerator_id, ref.id),
+                eq(tasks.shift, s)
+              )
+            )
+            .limit(1);
+
+          const shiftLabel = s === "morning" ? "รอบเช้า" : "รอบบ่าย";
+          const taskName = `ตรวจเช็คอุณหภูมิตู้แช่: ${ref.name} (${shiftLabel})`;
+
+          if (!existingTask) {
+            const [created] = await this.db
+              .insert(tasks)
+              .values({
+                branch_id: branchId,
+                shift: s,
+                name: taskName,
+                task_role: "stock",
+                start: s === "morning" ? "06:00:00" : "14:00:00",
+                end: s === "morning" ? "14:00:00" : "22:00:00",
+                disabled: Boolean(ref.disable_check),
+                for_managers: false,
+                is_joint: true,
+                is_daily: true,
+                shift_types: [s],
+                selectable_roles: ["stock", "manager_assistant"],
+                category: "ตู้แช่",
+                refrigerator_id: ref.id,
+              })
+              .returning({ id: tasks.id });
+
+            if (created) {
+              await this.db
+                .insert(branchTasks)
+                .values({ branch_id: branchId, task_id: created.id })
+                .onConflictDoNothing();
+            }
+          } else {
+            await this.db
+              .update(tasks)
+              .set({
+                name: taskName,
+                disabled: Boolean(ref.disable_check),
+                is_joint: true,
+                is_daily: true,
+                shift_types: [s],
+                category: "ตู้แช่",
+              })
+              .where(eq(tasks.id, existingTask.id));
+          }
+        }
+      }
+
+      // Ensure night closing tasks are joint tasks
+      await this.db
+        .update(tasks)
+        .set({
+          is_joint: true,
+          is_daily: true,
+          shift_types: ["night"],
+        })
+        .where(
+          and(
+            eq(tasks.shift, "night"),
+            or(eq(tasks.branch_id, branchId), isNull(tasks.branch_id))
+          )
+        );
 
       // Also clean up any uncompleted tasks for refrigerators that are now disabled or removed from branch
       const activeRefIdSet = new Set(activeRefs.map((r: any) => r.id));
@@ -823,6 +898,61 @@ export class RefrigeratorService implements IRefrigeratorService {
         userName = u?.name || null;
       }
 
+      // Sync with joint_task_work
+      try {
+        const [taskDef] = await this.db
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.refrigerator_id, activeTaskRecord.refrigerator_id),
+              eq(tasks.shift, activeTaskRecord.shift || "morning")
+            )
+          )
+          .limit(1);
+
+        if (taskDef) {
+          if (activeTaskRecord.completed_at) {
+            await this.db
+              .insert(jointTaskWork)
+              .values({
+                task_id: taskDef.id,
+                branch_id: activeTaskRecord.branch_id,
+                task_date: activeTaskRecord.task_date,
+                shift: activeTaskRecord.shift,
+                completed_by: activeTaskRecord.completed_by,
+                completed_at: activeTaskRecord.completed_at,
+                comment: activeTaskRecord.comment,
+              })
+              .onConflictDoUpdate({
+                target: [jointTaskWork.task_id, jointTaskWork.branch_id, jointTaskWork.task_date],
+                set: {
+                  completed_by: activeTaskRecord.completed_by,
+                  completed_at: activeTaskRecord.completed_at,
+                  comment: activeTaskRecord.comment,
+                },
+              });
+          } else {
+            await this.db
+              .update(jointTaskWork)
+              .set({
+                completed_by: null,
+                completed_at: null,
+                comment: null,
+              })
+              .where(
+                and(
+                  eq(jointTaskWork.task_id, taskDef.id),
+                  eq(jointTaskWork.branch_id, activeTaskRecord.branch_id),
+                  eq(jointTaskWork.task_date, activeTaskRecord.task_date)
+                )
+              );
+          }
+        }
+      } catch (syncErr) {
+        console.warn("Failed to sync joint_task_work from refrigerator task:", syncErr);
+      }
+
       const resultItem: RefrigeratorTaskItem = {
         taskId: activeTaskRecord.id,
         refrigeratorId: activeTaskRecord.refrigerator_id,
@@ -951,6 +1081,63 @@ export class RefrigeratorService implements IRefrigeratorService {
       });
 
       const updatedRows = (await Promise.all(updatePromises)).filter(Boolean);
+
+      // Sync with joint_task_work
+      for (const t of updatedRows) {
+        try {
+          const [taskDef] = await this.db
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(
+              and(
+                eq(tasks.refrigerator_id, t.refrigerator_id),
+                eq(tasks.shift, t.shift || "morning")
+              )
+            )
+            .limit(1);
+
+          if (taskDef) {
+            if (t.completed_at) {
+              await this.db
+                .insert(jointTaskWork)
+                .values({
+                  task_id: taskDef.id,
+                  branch_id: t.branch_id,
+                  task_date: t.task_date,
+                  shift: t.shift,
+                  completed_by: t.completed_by,
+                  completed_at: t.completed_at,
+                  comment: t.comment,
+                })
+                .onConflictDoUpdate({
+                  target: [jointTaskWork.task_id, jointTaskWork.branch_id, jointTaskWork.task_date],
+                  set: {
+                    completed_by: t.completed_by,
+                    completed_at: t.completed_at,
+                    comment: t.comment,
+                  },
+                });
+            } else {
+              await this.db
+                .update(jointTaskWork)
+                .set({
+                  completed_by: null,
+                  completed_at: null,
+                  comment: null,
+                })
+                .where(
+                  and(
+                    eq(jointTaskWork.task_id, taskDef.id),
+                    eq(jointTaskWork.branch_id, t.branch_id),
+                    eq(jointTaskWork.task_date, t.task_date)
+                  )
+                );
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Failed to sync joint_task_work from batch refrigerator update:", syncErr);
+        }
+      }
 
       // 4. Update branch last_update in a single query
       if (affectedBranchIds.size > 0) {
@@ -1116,9 +1303,11 @@ export class RefrigeratorService implements IRefrigeratorService {
             .filter(Boolean);
         }
 
-        // --- Step B: Ensure today's daily tasks exist ---
+        // --- Step B: Ensure today's daily tasks exist (morning & afternoon) ---
         let newBranchTasksCount = 0;
         if (doCreateDaily) {
+          await this.ensureDailyRefrigeratorTasks(branch.id, targetDate);
+
           const existingTodayTasks = await this.db
             .select({ id: refrigeratorTasks.id, refrigerator_id: refrigeratorTasks.refrigerator_id })
             .from(refrigeratorTasks)
@@ -1129,33 +1318,8 @@ export class RefrigeratorService implements IRefrigeratorService {
               )
             );
 
-          const existingRefIdsToday = new Set(existingTodayTasks.map((t: { id: string; refrigerator_id: string }) => t.refrigerator_id));
-          const missingTodayRefs = activeBranchRefs.filter((r: RefRecord) => !existingRefIdsToday.has(r.id));
-
-          if (missingTodayRefs.length > 0) {
-            const insertToday = missingTodayRefs.map((r: RefRecord) => ({
-              branch_id: branch.id,
-              refrigerator_id: r.id,
-              task_date: targetDate,
-              is_okay: true,
-            }));
-            await this.db.insert(refrigeratorTasks).values(insertToday);
-            totalNewTasksCreated += missingTodayRefs.length;
-            newBranchTasksCount = missingTodayRefs.length;
-          }
-
-          // Clean up any uncompleted tasks for disabled/removed refrigerators today
-          const staleTodayTasks = existingTodayTasks.filter((t: { id: string; refrigerator_id: string }) => !activeRefIdSet.has(t.refrigerator_id));
-          if (staleTodayTasks.length > 0) {
-            await this.db
-              .delete(refrigeratorTasks)
-              .where(
-                and(
-                  inArray(refrigeratorTasks.id, staleTodayTasks.map((t: { id: string }) => t.id)),
-                  sql`${refrigeratorTasks.completed_at} IS NULL`
-                )
-              );
-          }
+          newBranchTasksCount = existingTodayTasks.length;
+          totalNewTasksCreated += newBranchTasksCount;
         }
 
         details.push({

@@ -8,6 +8,7 @@ import {
   createBranchDailyTaskAction,
   updateBranchDailyTaskAction,
   deleteBranchDailyTaskAction,
+  syncBranchRefrigeratorJointTasksAction,
 } from "../../../actions/task";
 import {
   getSpecialTasksAction,
@@ -35,6 +36,7 @@ import {
   X,
   Snowflake,
   ShieldAlert,
+  RefreshCw,
 } from "lucide-react";
 
 interface ChecklistManagementHubProps {
@@ -61,6 +63,7 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
   // --- 1. Daily Tasks State ---
   const [dailyTasks, setDailyTasks] = useState<BranchDailyTask[]>([]);
   const [loadingDaily, setLoadingDaily] = useState(false);
+  const [isSyncingRefrigerators, setIsSyncingRefrigerators] = useState(false);
   const [dailyRoleFilter, setDailyRoleFilter] = useState<string>("all");
   const [dailyShiftFilter, setDailyShiftFilter] = useState<string>("all");
 
@@ -76,6 +79,9 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
     category: "",
     forManagers: false,
     isJoint: false,
+    isDaily: true,
+    shiftTypes: ["morning"] as string[],
+    refrigeratorId: "",
     selectableRoles: [] as string[],
   });
 
@@ -164,6 +170,25 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
     void loadSpecialTasks();
   }, [loadStaff, loadDailyTasks, loadSpecialTasks]);
 
+  // Handle Sync Refrigerator Joint Tasks
+  const handleSyncRefrigeratorJointTasks = async () => {
+    if (!currentUser.branchId || isSyncingRefrigerators) return;
+    setIsSyncingRefrigerators(true);
+    try {
+      const res = await syncBranchRefrigeratorJointTasksAction(currentUser.branchId);
+      if (res.success) {
+        showToast("success", `ซิงค์งานตู้แช่สำเร็จ (เพิ่มใหม่ ${res.count || 0} รายการ)`);
+        void loadDailyTasks();
+      } else {
+        showToast("error", res.error || "ไม่สามารถซิงค์งานตู้แช่ได้");
+      }
+    } catch (err: any) {
+      showToast("error", err?.message || "เกิดข้อผิดพลาดในการซิงค์งานตู้แช่");
+    } finally {
+      setIsSyncingRefrigerators(false);
+    }
+  };
+
   // Handle Save Daily Task
   const handleSaveDailyTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,6 +207,9 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
           category: dailyForm.category.trim() || null,
           forManagers: dailyForm.forManagers,
           isJoint: dailyForm.isJoint,
+          isDaily: dailyForm.isDaily,
+          shiftTypes: dailyForm.shiftTypes,
+          refrigeratorId: dailyForm.refrigeratorId || null,
           selectableRoles: dailyForm.selectableRoles,
         });
         if (res.success) {
@@ -203,6 +231,9 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
           category: dailyForm.category.trim() || null,
           forManagers: dailyForm.forManagers,
           isJoint: dailyForm.isJoint,
+          isDaily: dailyForm.isDaily,
+          shiftTypes: dailyForm.shiftTypes,
+          refrigeratorId: dailyForm.refrigeratorId || null,
           selectableRoles: dailyForm.selectableRoles,
         });
         if (res.success) {
@@ -511,28 +542,46 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingDailyTask(null);
-                  setDailyForm({
-                    name: "",
-                    taskRole: "cashier",
-                    shift: "morning",
-                    startTime: "08:00",
-                    endTime: "16:00",
-                    category: "",
-                    forManagers: false,
-                    isJoint: activeTab === "joint",
-                    selectableRoles: activeTab === "joint" ? ["stock"] : [],
-                  });
-                  setIsDailyModalOpen(true);
-                }}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              >
-                <Plus size={16} strokeWidth={2.5} />
-                <span>{activeTab === "joint" ? "สร้างงานส่วนกลางใหม่" : "สร้างงานประจำวันใหม่"}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {activeTab === "joint" && (
+                  <button
+                    type="button"
+                    disabled={isSyncingRefrigerators}
+                    onClick={handleSyncRefrigeratorJointTasks}
+                    className="px-3.5 py-2 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-800 dark:text-sky-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                    title="ตรวจเช็คและสร้างงานส่วนกลางกะเช้า/บ่ายสำหรับตู้แช่ทุกตู้ในสาขา"
+                  >
+                    <RefreshCw size={15} className={isSyncingRefrigerators ? "animate-spin" : ""} />
+                    <span>ซิงค์งานตู้แช่สาขา</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingDailyTask(null);
+                    setDailyForm({
+                      name: "",
+                      taskRole: activeTab === "joint" ? "stock" : "cashier",
+                      shift: "morning",
+                      startTime: "08:00",
+                      endTime: "16:00",
+                      category: activeTab === "joint" ? "ตู้แช่" : "",
+                      forManagers: false,
+                      isJoint: activeTab === "joint",
+                      isDaily: true,
+                      shiftTypes: ["morning"],
+                      refrigeratorId: "",
+                      selectableRoles: activeTab === "joint" ? ["stock"] : [],
+                    });
+                    setIsDailyModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                >
+                  <Plus size={16} strokeWidth={2.5} />
+                  <span>{activeTab === "joint" ? "สร้างงานส่วนกลางใหม่" : "สร้างงานประจำวันใหม่"}</span>
+                </button>
+              </div>
             </div>
 
             {/* Tasks List */}
@@ -562,6 +611,11 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-sm text-[var(--color-text)]">{t.name}</span>
+                        {t.refrigeratorId || t.name.includes("ตู้แช่") ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 flex items-center gap-1">
+                            <Snowflake size={11} /> งานตู้แช่
+                          </span>
+                        ) : null}
                         {t.category && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
                             {t.category}
@@ -572,18 +626,29 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                             งานส่วนกลาง (Joint)
                           </span>
                         )}
-                        {t.forManagers && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300">
-                            สำหรับผู้จัดการ/ผู้ช่วย
+                        {t.forManagers || t.shift === "night" ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 flex items-center gap-1">
+                            <ShieldAlert size={11} /> สำหรับผู้จัดการ/กะดึก
+                          </span>
+                        ) : null}
+                        {t.isDaily && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+                            🔄 ต่ออายุทุกวัน
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
+                      <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)] flex-wrap">
                         <span>ตำแหน่ง: <strong>{t.taskRole}</strong></span>
                         <span>•</span>
                         <span>กะ: <strong>{t.shift}</strong></span>
                         <span>•</span>
                         <span>เวลา: {t.startTime} - {t.endTime}</span>
+                        {t.shiftTypes && t.shiftTypes.length > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-amber-700 dark:text-amber-300 font-semibold">กะที่ใช้: {t.shiftTypes.join(", ")}</span>
+                          </>
+                        )}
                         {t.selectableRoles && t.selectableRoles.length > 0 && (
                           <>
                             <span>•</span>
@@ -618,6 +683,9 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                             category: t.category || "",
                             forManagers: t.forManagers || false,
                             isJoint: t.isJoint || false,
+                            isDaily: t.isDaily ?? true,
+                            shiftTypes: t.shiftTypes && t.shiftTypes.length > 0 ? t.shiftTypes : [t.shift || "morning"],
+                            refrigeratorId: t.refrigeratorId || "",
                             selectableRoles: t.selectableRoles || [],
                           });
                           setIsDailyModalOpen(true);
@@ -946,12 +1014,68 @@ export function ChecklistManagementHub({ currentUser }: ChecklistManagementHubPr
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[var(--color-text)]">
                   <input
                     type="checkbox"
+                    checked={dailyForm.isDaily}
+                    onChange={(e) => setDailyForm({ ...dailyForm, isDaily: e.target.checked })}
+                    className="rounded border-[var(--color-border)] text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>ต่ออายุงานอัตโนมัติทุกวันผ่าน Cronjob (Daily Renewal)</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-[var(--color-text)]">
+                  <input
+                    type="checkbox"
                     checked={dailyForm.forManagers}
                     onChange={(e) => setDailyForm({ ...dailyForm, forManagers: e.target.checked })}
                     className="rounded border-[var(--color-border)] text-amber-600 focus:ring-amber-500"
                   />
                   <span>เป็นงานสำหรับผู้จัดการ / ผู้ช่วยผู้จัดการ (เช่น งานกะดึกปิดร้าน)</span>
                 </label>
+              </div>
+
+              <div className="pt-2 border-t border-[var(--color-border)] space-y-1.5">
+                <label className="block text-xs font-bold text-[var(--color-text)]">
+                  กะที่สร้างงานอัตโนมัติทุกวัน (Shift Types)
+                </label>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {[
+                    { key: "morning", label: "กะเช้า (Morning)" },
+                    { key: "afternoon", label: "กะบ่าย (Afternoon)" },
+                    { key: "night", label: "กะดึก/ปิดร้าน (Night)" },
+                  ].map((s) => {
+                    const isChecked = dailyForm.shiftTypes.includes(s.key);
+                    return (
+                      <label
+                        key={s.key}
+                        className={`px-2.5 py-1.5 rounded-xl border cursor-pointer font-bold transition-all flex items-center gap-1.5 ${
+                          isChecked
+                            ? "bg-amber-100 dark:bg-amber-950/70 border-amber-400 text-amber-950 dark:text-amber-200"
+                            : "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setDailyForm({
+                                ...dailyForm,
+                                shiftTypes: [...dailyForm.shiftTypes, s.key],
+                              });
+                            } else {
+                              setDailyForm({
+                                ...dailyForm,
+                                shiftTypes: dailyForm.shiftTypes.filter((x) => x !== s.key),
+                              });
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                        <span>{s.label}</span>
+                        {isChecked && <Check size={12} className="text-amber-700 dark:text-amber-300" />}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[var(--color-border)]">

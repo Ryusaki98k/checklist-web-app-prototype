@@ -190,6 +190,9 @@ export interface JointTaskItem {
   completedByUserId: string | null;
   completedByUserName: string | null;
   comment: string | null;
+  isDaily?: boolean;
+  shiftTypes?: string[];
+  refrigeratorId?: string | null;
 }
 
 export interface SpecialTaskItem {
@@ -239,6 +242,9 @@ export interface BranchDailyTask {
   disabled: boolean;
   forManagers: boolean;
   isJoint: boolean;
+  isDaily?: boolean;
+  shiftTypes?: string[];
+  refrigeratorId?: string | null;
   selectableRoles: string[];
   category?: string | null;
 }

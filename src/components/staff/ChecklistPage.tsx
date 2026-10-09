@@ -26,6 +26,7 @@ import {
   ShieldAlert,
   X,
   RefreshCw,
+  Snowflake,
 } from "lucide-react";
 import { BranchRefrigeratorChecklist } from "./BranchRefrigeratorChecklist";
 import { JointTaskDetailsModal } from "./JointTaskDetailsModal";
@@ -33,6 +34,7 @@ import { LateReasonModal } from "../common/LateReasonModal";
 import { getOrCreateShiftSessionAction, validateShiftCompletionAction } from "../../actions/checklist";
 import { getBranchJointTasksAction, toggleJointTaskItemAction } from "../../actions/jointTask";
 import { getSpecialTasksAction, submitSpecialTaskAction } from "../../actions/specialTask";
+import { getBranchRefrigeratorTasksAction, RefrigeratorTaskItem } from "../../actions/refrigerator";
 import { SpecialTaskItem, JointTaskItem } from "../../types";
 import { useTaskChecklistBuffer } from "../../utils/taskChecklistBuffer";
 import { DbSyncNotification } from "../common/DbSyncNotification";
@@ -146,6 +148,10 @@ export function ChecklistPage({
   const [submissionComment, setSubmissionComment] = useState("");
   const [isSubmittingSpecial, setIsSubmittingSpecial] = useState(false);
 
+  // --- Refrigerator Tasks State (Mandatory for Stock Shift) ---
+  const [refrigeratorTasks, setRefrigeratorTasks] = useState<RefrigeratorTaskItem[]>([]);
+  const [, setIsLoadingRefTasks] = useState(false);
+
   // Toast feedback for Joint & Special tasks
   const [rowToast, setRowToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const showRowToast = (type: "success" | "error", text: string) => {
@@ -186,15 +192,33 @@ export function ChecklistPage({
     }
   }, [branchId, session.userId, session.taskRole, currentUser]);
 
+  const loadRefrigeratorTasks = useCallback(async () => {
+    if (!isStockShift || !branchId) return;
+    setIsLoadingRefTasks(true);
+    try {
+      const activeRefShift = session.shift === "afternoon" ? "afternoon" : "morning";
+      const res = await getBranchRefrigeratorTasksAction({ userId: session.userId, shift: activeRefShift });
+      if (res.success && res.data) {
+        setRefrigeratorTasks(res.data);
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setIsLoadingRefTasks(false);
+    }
+  }, [isStockShift, branchId, session.shift, session.userId]);
+
   useEffect(() => {
     void loadJointTasks();
     void loadSpecialTasks();
+    void loadRefrigeratorTasks();
     const interval = setInterval(() => {
       void loadJointTasks();
       void loadSpecialTasks();
+      void loadRefrigeratorTasks();
     }, 12000);
     return () => clearInterval(interval);
-  }, [loadJointTasks, loadSpecialTasks]);
+  }, [loadJointTasks, loadSpecialTasks, loadRefrigeratorTasks]);
 
   const handleToggleJointTask = async (task: JointTaskItem) => {
     if (!branchId) return;
@@ -391,6 +415,7 @@ export function ChecklistPage({
         syncTasksRef.current ? syncTasksRef.current() : Promise.resolve(),
         loadJointTasks(),
         loadSpecialTasks(),
+        loadRefrigeratorTasks(),
       ]);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("app:refresh-refrigerators"));
@@ -401,14 +426,19 @@ export function ChecklistPage({
     } finally {
       setIsManualRefreshing(false);
     }
-  }, [isManualRefreshing, isPageBusy, flushChecklistBuffer, loadJointTasks, loadSpecialTasks]);
+  }, [isManualRefreshing, isPageBusy, flushChecklistBuffer, loadJointTasks, loadSpecialTasks, loadRefrigeratorTasks]);
+
+  const pendingRefTasksCount = isStockShift
+    ? refrigeratorTasks.filter((t) => !t.completed).length
+    : 0;
+  const hasPendingRefTasks = isStockShift && pendingRefTasksCount > 0;
 
   const total = items.length;
   const done = items.filter((i) => i.completedAt).length;
   const progress = total > 0 ? Math.round((done / total) * 100) : 0;
-  const allDone = progress === 100;
+  const allDone = progress === 100 && !hasPendingRefTasks;
 
-  const canContinueShift = hasNextShift && progress === 100 && !shiftCompleted;
+  const canContinueShift = hasNextShift && progress === 100 && !shiftCompleted && !hasPendingRefTasks;
 
   const filteredItems = items.filter((i) => {
     if (filter === "pending") return !i.completedAt;
@@ -543,20 +573,34 @@ export function ChecklistPage({
         }
       } else {
         // Fallback to local check if connection fails
-        if (done === total && total > 0) {
+        if (done === total && total > 0 && !hasPendingRefTasks) {
           setShowConfirm(true);
         } else {
           const localPending = items.filter((i) => !i.completedAt).map((i) => ({ id: i.id, name: i.label }));
+          if (hasPendingRefTasks) {
+            localPending.push(
+              ...refrigeratorTasks
+                .filter((t) => !t.completed)
+                .map((t) => ({ id: `ref-${t.taskId}`, name: `[ตู้แช่] ${t.name} (รอบ${t.shift === "afternoon" ? "กะบ่าย" : "กะเช้า"})` }))
+            );
+          }
           setDbPendingTasks(localPending);
           setShowIncompleteModal(true);
         }
       }
     } catch (err) {
       console.error("Online validation check error:", err);
-      if (done === total && total > 0) {
+      if (done === total && total > 0 && !hasPendingRefTasks) {
         setShowConfirm(true);
       } else {
         const localPending = items.filter((i) => !i.completedAt).map((i) => ({ id: i.id, name: i.label }));
+        if (hasPendingRefTasks) {
+          localPending.push(
+            ...refrigeratorTasks
+              .filter((t) => !t.completed)
+              .map((t) => ({ id: `ref-${t.taskId}`, name: `[ตู้แช่] ${t.name} (รอบ${t.shift === "afternoon" ? "กะบ่าย" : "กะเช้า"})` }))
+          );
+        }
         setDbPendingTasks(localPending);
         setShowIncompleteModal(true);
       }
@@ -567,6 +611,10 @@ export function ChecklistPage({
 
   async function endCompleteShift() {
     if (isEnding) return;
+    if (isStockShift && hasPendingRefTasks) {
+      alert("พนักงานสต็อกจำเป็นต้องตรวจเช็คตู้แช่ให้ครบทุกตู้ก่อนจบกะ");
+      return;
+    }
     setIsEnding(true);
     try {
       setShiftCompleted(true);
@@ -582,6 +630,10 @@ export function ChecklistPage({
 
   async function endIncompleteShift() {
     if (!incompleteReason.trim() || isEnding) return;
+    if (isStockShift && (hasPendingRefTasks || dbPendingTasks.some((t) => t.name.includes("ตู้แช่")))) {
+      alert("พนักงานสต็อกจำเป็นต้องตรวจเช็คตู้แช่ให้ครบทุกตู้ก่อนจบกะ (ไม่อนุญาตให้จบกะโดยยังตรวจตู้แช่ไม่ครบ)");
+      return;
+    }
     setIsEnding(true);
     try {
       setShiftCompleted(true);
@@ -1090,6 +1142,54 @@ export function ChecklistPage({
               </div>
             </div>
 
+            {/* Stock Employee Mandatory Refrigerator Checklist Banner */}
+            {isStockShift && (
+              <div
+                className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                  !hasPendingRefTasks && refrigeratorTasks.length > 0
+                    ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
+                    : "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`p-2 rounded-xl shrink-0 ${
+                      !hasPendingRefTasks && refrigeratorTasks.length > 0
+                        ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
+                        : "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"
+                    }`}
+                  >
+                    <Snowflake size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-extrabold flex items-center gap-1.5">
+                      <span>
+                        {!hasPendingRefTasks && refrigeratorTasks.length > 0
+                          ? "ตรวจเช็คตู้แช่ครบทุกตู้แล้ว ✓"
+                          : `เงื่อนไขบังคับจบกะ: ตรวจเช็คตู้แช่ (เหลือ ${pendingRefTasksCount} ตู้)`}
+                      </span>
+                    </h4>
+                    <p className="text-[11px] opacity-80 font-medium">
+                      {!hasPendingRefTasks && refrigeratorTasks.length > 0
+                        ? "คุณผ่านเงื่อนไขการตรวจตู้แช่สำหรับพนักงานสต็อกแล้ว สามารถจบกะได้ตามปกติ"
+                        : "พนักงานสต็อกต้องตรวจเช็คตู้แช่ให้ครบทุกตู้ก่อนจึงจะสามารถจบกะหรือออกจากเซสชันได้"}
+                    </p>
+                  </div>
+                </div>
+                {refrigeratorTasks.length > 0 && (
+                  <span
+                    className={`text-xs font-mono font-black px-2.5 py-1 rounded-xl shrink-0 ${
+                      !hasPendingRefTasks
+                        ? "bg-emerald-200/60 dark:bg-emerald-800/60 text-emerald-900 dark:text-emerald-100"
+                        : "bg-amber-200/60 dark:bg-amber-800/60 text-amber-900 dark:text-amber-100"
+                    }`}
+                  >
+                    {refrigeratorTasks.length - pendingRefTasksCount} / {refrigeratorTasks.length} ตู้
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Joint sub-tabs: Refrigerators vs Other Joint Tasks */}
             <div className="flex bg-[var(--color-surface-2)] p-1 rounded-xl border border-[var(--color-border)] text-xs font-bold gap-1">
               <button
@@ -1124,6 +1224,7 @@ export function ChecklistPage({
                 branchName={session.branchName}
                 shiftSessionId={session.id}
                 shift={session.shift}
+                onTasksChange={setRefrigeratorTasks}
               />
             </div>
 
@@ -1536,6 +1637,31 @@ export function ChecklistPage({
               </p>
             </div>
 
+            {/* Stock Employee Refrigerator Warning Banner */}
+            {isStockShift && (hasPendingRefTasks || dbPendingTasks.some((t) => t.name.includes("ตู้แช่"))) && (
+              <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 text-xs space-y-2">
+                <div className="font-extrabold flex items-center gap-1.5 text-rose-700 dark:text-rose-300">
+                  <Snowflake size={16} className="shrink-0" />
+                  <span>พนักงานสต็อกจำเป็นต้องตรวจเช็คตู้แช่ให้ครบ 100% ก่อนจบกะ</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  ระบบไม่อนุญาตให้พนักงานสต็อกจบกะงานหรือส่งเหตุผลผ่านงานตู้แช่ได้ จนกว่าจะบันทึกผลการตรวจตู้แช่ของกะนี้ครบทุกตู้
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowIncompleteModal(false);
+                    setActiveMainTab("joint");
+                    setJointSubTab("refrigerators");
+                  }}
+                  className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Snowflake size={14} />
+                  <span>ไปที่แท็บตรวจตู้แช่ทันที</span>
+                </button>
+              </div>
+            )}
+
             {/* List of pending tasks */}
             {dbPendingTasks.length > 0 && (
               <div className="space-y-1.5">
@@ -1584,11 +1710,19 @@ export function ChecklistPage({
               </button>
               <button
                 type="button"
-                disabled={!incompleteReason.trim() || isEnding}
+                disabled={
+                  !incompleteReason.trim() ||
+                  isEnding ||
+                  Boolean(isStockShift && (hasPendingRefTasks || dbPendingTasks.some((t) => t.name.includes("ตู้แช่"))))
+                }
                 onClick={endIncompleteShift}
                 className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-amber-400 text-amber-950 text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
               >
-                {isEnding ? "กำลังส่งเหตุผล..." : "ยืนยันจบกะและส่งเหตุผล"}
+                {isEnding
+                  ? "กำลังส่งเหตุผล..."
+                  : isStockShift && (hasPendingRefTasks || dbPendingTasks.some((t) => t.name.includes("ตู้แช่")))
+                  ? "ไม่อนุญาตให้จบกะ (ตรวจตู้แช่ก่อน)"
+                  : "ยืนยันจบกะและส่งเหตุผล"}
               </button>
             </div>
           </div>
@@ -1622,36 +1756,65 @@ export function ChecklistPage({
               ความคืบหน้าข้อที่ตรวจเสร็จแล้วได้รับการบันทึกลงฐานข้อมูลเรียบร้อย คุณสามารถกลับมาตรวจต่อได้ตลอดเวลาก่อนหมดเวลากะ
             </p>
 
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                disabled={isPageBusy}
-                onClick={() => setShowExitConfirm(false)}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-              >
-                อยู่ตรวจเช็คลิสต์ต่อ
-              </button>
-              <button
-                type="button"
-                disabled={isPageBusy}
-                onClick={async () => {
-                  setShowExitConfirm(false);
-                  try {
-                    await flushChecklistBuffer();
-                  } catch (e) {
-                    console.warn("Flush before exit:", e);
-                  }
-                  if (onExit) {
-                    onExit();
-                  } else if (typeof window !== "undefined") {
-                    window.location.href = "/shift";
-                  }
-                }}
-                className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-rose-700 hover:bg-rose-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
-              >
-                ออกจากหน้างาน
-              </button>
-            </div>
+            {hasPendingRefTasks ? (
+              <div className="space-y-3 mb-2">
+                <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 text-xs space-y-1.5">
+                  <div className="font-extrabold flex items-center gap-1.5 text-rose-700 dark:text-rose-300">
+                    <Snowflake size={16} className="shrink-0" />
+                    <span>ไม่อนุญาตให้ออกจากระบบ (ตู้แช่ยังตรวจไม่ครบ)</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    สำหรับตำแหน่งสต็อกสินค้า คุณจำเป็นต้องตรวจเช็คตู้แช่ให้ครบทุกตู้ก่อนจึงจะสามารถออกจากเซสชันได้ (เหลืออีก {pendingRefTasksCount} ตู้)
+                  </p>
+                </div>
+
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExitConfirm(false);
+                      setActiveMainTab("joint");
+                      setJointSubTab("refrigerators");
+                    }}
+                    className="w-full min-h-[44px] py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-all"
+                  >
+                    <Snowflake size={16} />
+                    <span>ไปตรวจตู้แช่ให้เสร็จ ({pendingRefTasksCount} ตู้)</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  disabled={isPageBusy}
+                  onClick={() => setShowExitConfirm(false)}
+                  className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl border border-[var(--color-border)] text-xs sm:text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-2)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                >
+                  อยู่ตรวจเช็คลิสต์ต่อ
+                </button>
+                <button
+                  type="button"
+                  disabled={isPageBusy}
+                  onClick={async () => {
+                    setShowExitConfirm(false);
+                    try {
+                      await flushChecklistBuffer();
+                    } catch (e) {
+                      console.warn("Flush before exit:", e);
+                    }
+                    if (onExit) {
+                      onExit();
+                    } else if (typeof window !== "undefined") {
+                      window.location.href = "/shift";
+                    }
+                  }}
+                  className="flex-1 min-h-[44px] sm:min-h-[36px] py-2.5 rounded-xl bg-rose-700 hover:bg-rose-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-extrabold transition-all shadow-sm cursor-pointer"
+                >
+                  ออกจากหน้างาน
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
